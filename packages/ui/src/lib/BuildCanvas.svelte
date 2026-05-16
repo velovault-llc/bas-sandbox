@@ -5,6 +5,8 @@
     Panel,
     SvelteFlow,
     SvelteFlowProvider,
+    addEdge,
+    type Connection,
     type Edge,
     type Node,
   } from '@xyflow/svelte';
@@ -21,6 +23,77 @@
   const nodeTypes = { bas: BasNode };
 
   type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety';
+
+  // ============ Wire kinds (trunk types) ============
+
+  type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
+
+  const WIRE_KINDS: ReadonlyArray<{
+    kind: WireKind;
+    label: string;
+    color: string;
+    description: string;
+  }> = [
+    {
+      kind: 'bacnet-ip',
+      label: 'BACnet/IP',
+      color: '#4a9eff',
+      description: 'BACnet over Ethernet. Used between supervisors and to other engines.',
+    },
+    {
+      kind: 'mstp',
+      label: 'MS/TP',
+      color: '#9c8cff',
+      description: 'BACnet MS/TP — RS-485 token-passing bus. Field controllers, VAVs.',
+    },
+    {
+      kind: 'n2',
+      label: 'N2',
+      color: '#fb923c',
+      description: 'JCI N2 trunk — older RS-485 bus, 9600 baud.',
+    },
+    {
+      kind: 'lon',
+      label: 'LON',
+      color: '#2ecc71',
+      description: 'LonWorks FT-10 free-topology twisted pair.',
+    },
+    {
+      kind: 'hardwired',
+      label: 'Hardwired',
+      color: '#aaa',
+      description: 'Direct analog/digital I/O — sensors and safeties to controller terminals.',
+    },
+  ];
+
+  const WIRE_KIND_BY_ID = new Map<WireKind, (typeof WIRE_KINDS)[number]>(
+    WIRE_KINDS.map((w) => [w.kind, w]),
+  );
+
+  /**
+   * Sensible default trunk kind for a new connection.
+   *   Sensor / Safety ↔ Controller → hardwired
+   *   Supervisor ↔ anything          → bacnet-ip
+   *   Controller ↔ Controller        → mstp
+   */
+  function defaultWireKind(sourceKind: Kind | undefined, targetKind: Kind | undefined): WireKind {
+    const involves = (k: Kind) => sourceKind === k || targetKind === k;
+    if (involves('sensor') || involves('safety')) return 'hardwired';
+    if (involves('supervisor')) return 'bacnet-ip';
+    return 'mstp';
+  }
+
+  function styleForWire(kind: WireKind, animated: boolean): string {
+    const color = WIRE_KIND_BY_ID.get(kind)?.color ?? '#888';
+    // Hardwired stays solid even when animated (no traffic flows on a hardwired sensor).
+    const width = kind === 'hardwired' ? 1.25 : 1.75;
+    return `stroke: ${color}; stroke-width: ${width}px; opacity: ${animated ? 1 : 0.7};`;
+  }
+
+  function withStyle(e: Edge): Edge {
+    const kind: WireKind = (e.data?.wireKind as WireKind) ?? 'mstp';
+    return { ...e, style: styleForWire(kind, !!e.animated) };
+  }
 
   type PaletteItem = {
     kind: Kind;
@@ -96,12 +169,14 @@
     },
   ]);
 
-  let edges = $state.raw<Edge[]>([
-    { id: 'e1-2', source: 'demo-1', target: 'demo-2' },
-    { id: 'e2-3', source: 'demo-2', target: 'demo-3' },
-    { id: 'e3-4', source: 'demo-3', target: 'demo-4' },
-    { id: 'e2-5', source: 'demo-2', target: 'demo-5' },
-  ]);
+  let edges = $state.raw<Edge[]>(
+    [
+      { id: 'e1-2', source: 'demo-1', target: 'demo-2', data: { wireKind: 'bacnet-ip' } },
+      { id: 'e2-3', source: 'demo-2', target: 'demo-3', data: { wireKind: 'mstp' } },
+      { id: 'e3-4', source: 'demo-3', target: 'demo-4', data: { wireKind: 'hardwired' } },
+      { id: 'e2-5', source: 'demo-2', target: 'demo-5', data: { wireKind: 'hardwired' } },
+    ].map(withStyle),
+  );
 
   // Per-kind counter so default names auto-increment ("VAV-1", "VAV-2", ...).
   // Pre-seeded to match the demo topology placed above.
@@ -518,11 +593,11 @@
         };
         for (const id of pollingPathEdgeIds(target)) pathIds.add(id);
       }
-      edges = edges.map((e) => ({ ...e, animated: pathIds.has(e.id) }));
+      edges = edges.map((e) => withStyle({ ...e, animated: pathIds.has(e.id) }));
     } else {
       // No physics target → no real traffic — animate all wires lightly so
       // the canvas isn't completely static while the synthetic ticker runs.
-      edges = edges.map((e) => ({ ...e, animated: true }));
+      edges = edges.map((e) => withStyle({ ...e, animated: true }));
     }
 
     tickOnce();
@@ -535,7 +610,7 @@
     runningSystems = new Map();
     if (intervalId) clearInterval(intervalId);
     intervalId = null;
-    edges = edges.map((e) => ({ ...e, animated: false }));
+    edges = edges.map((e) => withStyle({ ...e, animated: false }));
   }
 
   function resetSim() {
@@ -753,8 +828,37 @@
       };
       for (const id of pollingPathEdgeIds(target)) pathIds.add(id);
     }
-    edges = edges.map((e) => ({ ...e, animated: pathIds.has(e.id) }));
+    edges = edges.map((e) => withStyle({ ...e, animated: pathIds.has(e.id) }));
   }
+
+  /** New wires drawn between handles get a sensible default trunk kind. */
+  function onConnect(connection: Connection) {
+    const src = nodes.find((n) => n.id === connection.source);
+    const tgt = nodes.find((n) => n.id === connection.target);
+    const kind = defaultWireKind(nodeKind(src!), nodeKind(tgt!));
+    const newEdge: Edge = {
+      id: `e-${connection.source}-${connection.target}-${Date.now()}`,
+      source: connection.source!,
+      target: connection.target!,
+      sourceHandle: connection.sourceHandle ?? undefined,
+      targetHandle: connection.targetHandle ?? undefined,
+      data: { wireKind: kind },
+    };
+    edges = addEdge(withStyle(newEdge), edges);
+  }
+
+  function setEdgeKind(edgeId: string, kind: WireKind) {
+    edges = edges.map((e) =>
+      e.id === edgeId
+        ? withStyle({ ...e, data: { ...(e.data ?? {}), wireKind: kind } })
+        : e,
+    );
+  }
+
+  const selectedEdge = $derived.by(() => {
+    const sels = edges.filter((e) => e.selected);
+    return sels.length === 1 ? sels[0] : null;
+  });
 
   function onNodeClick({ node }: { node: Node }) {
     if (nodeKind(node) !== 'controller') return;
@@ -894,8 +998,38 @@
       ondrop={onCanvasDrop}
       ondragover={onCanvasDragOver}
     >
-      <SvelteFlow bind:nodes bind:edges {nodeTypes} fitView onnodeclick={onNodeClick}>
+      <SvelteFlow
+        bind:nodes
+        bind:edges
+        {nodeTypes}
+        fitView
+        onnodeclick={onNodeClick}
+        onconnect={onConnect}
+      >
         <Background />
+
+        {#if selectedEdge}
+          {@const currentKind = (selectedEdge.data?.wireKind as WireKind) ?? 'mstp'}
+          <Panel position="top-center">
+            <div class="wire-panel">
+              <span class="wire-title">Trunk type</span>
+              <div class="wire-chips">
+                {#each WIRE_KINDS as wk (wk.kind)}
+                  <button
+                    type="button"
+                    class="wire-chip"
+                    class:active={currentKind === wk.kind}
+                    style:--c={wk.color}
+                    title={wk.description}
+                    onclick={() => setEdgeKind(selectedEdge.id, wk.kind)}
+                  >
+                    {wk.label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          </Panel>
+        {/if}
 
         {#if running && focusedTarget && (runningSamples.get(focusedTarget.controllerId)?.length ?? 0) > 0}
           {@const primarySeries = {
@@ -1441,6 +1575,54 @@
       monospace;
     font-size: 0.68rem;
     color: color-mix(in srgb, CanvasText 50%, transparent);
+  }
+
+  .wire-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+  }
+
+  .wire-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+
+  .wire-chips {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .wire-chip {
+    --c: #888;
+    border: 1px solid color-mix(in srgb, var(--c) 50%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+
+  .wire-chip:hover {
+    background: color-mix(in srgb, var(--c) 12%, transparent);
+    color: CanvasText;
+  }
+
+  .wire-chip.active {
+    border-color: var(--c);
+    background: color-mix(in srgb, var(--c) 22%, transparent);
+    color: var(--c);
   }
 
   .tune-panel {
