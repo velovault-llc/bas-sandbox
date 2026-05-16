@@ -11,6 +11,8 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import BasNode from './BasNode.svelte';
+  import MiniChart from './MiniChart.svelte';
+  import { SingleZoneSystem, DEFAULT_CONFIG, type Sample } from './sim/thermal';
 
   const nodeTypes = { bas: BasNode };
 
@@ -38,7 +40,8 @@
       label: 'Controller',
       defaultName: 'FEC-1',
       icon: '◈',
-      description: 'Field or zone controller (FEC/FAC/VMA/VAV). Runs equipment logic, downstream of a supervisor.',
+      description:
+        'Field or zone controller (FEC/FAC/VMA/VAV). Runs equipment logic, downstream of a supervisor.',
     },
     {
       kind: 'sensor',
@@ -159,6 +162,21 @@
   let intervalId: ReturnType<typeof setInterval> | null = null;
   const TICK_MS = 1000;
 
+  // Sim A: a single-zone thermal system drives the demo VAV-1 / ZN-T-1 /
+  // FEC-1 trio. The rest of the topology still gets synthetic readings —
+  // only the "controlled system" pairs are physics-driven.
+  //
+  // CONTROLLED_VAV       = controller node whose actuator is the PI output
+  // CONTROLLED_SENSOR    = sensor node whose value is the simulated zone temp
+  // CONTROLLED_PARENT_FE = controller node that "supervises" the controlled
+  //                        system and shows setpoint + OAT info
+  const CONTROLLED_VAV = 'VAV-1';
+  const CONTROLLED_SENSOR = 'ZN-T-1';
+  const CONTROLLED_PARENT_FE = 'FEC-1';
+
+  let system = $state<SingleZoneSystem | null>(null);
+  let samples = $state.raw<Sample[]>([]);
+
   function tempReading(): string {
     return `${(65 + Math.random() * 15).toFixed(1)} °F`;
   }
@@ -173,54 +191,75 @@
   }
 
   function sensorValue(label: string): string {
-    // Crude heuristic: labels containing P / "Press" / "PS" hint at pressure
     if (/(^|[-_ ])(p|ps|press)([-_ ]|$)/i.test(label)) return pressureReading();
     return tempReading();
   }
 
   function safetyValue(label: string): { value: string; status: 'idle' | 'tripped' } {
-    // 96% OK, 4% TRIPPED — adds occasional drama in the demo
     if (Math.random() < 0.04) return { value: `⚠ ${label} TRIPPED`, status: 'tripped' };
     return { value: '✓ OK', status: 'idle' };
   }
 
   function tickOnce() {
     tick++;
+    const sample = system ? system.step() : null;
+    if (sample) {
+      samples = system!.history.slice(); // copy for reactivity
+    }
+
     nodes = nodes.map((n) => {
       const data = n.data as { kind: Kind; label: string; runtime?: unknown };
       let value: string;
       let status: 'idle' | 'polling' | 'responded' | 'tripped' = 'responded';
-      switch (data.kind) {
-        case 'supervisor':
-          value = `uptime t=${tick}s`;
-          status = 'idle';
-          break;
-        case 'controller':
-          value = controllerReading();
-          status = 'polling';
-          break;
-        case 'sensor':
-          value = sensorValue(data.label);
-          break;
-        case 'safety': {
-          const s = safetyValue(data.label);
-          value = s.value;
-          status = s.status;
-          break;
+
+      // Physics-driven nodes
+      if (sample && data.label === CONTROLLED_VAV) {
+        value = `Out ${Math.round(sample.actuator * 100)}% (PI)`;
+        status = 'polling';
+      } else if (sample && data.label === CONTROLLED_SENSOR) {
+        value = `${sample.T_zone.toFixed(1)} °F`;
+      } else if (sample && data.label === CONTROLLED_PARENT_FE) {
+        value = `SP ${sample.setpoint.toFixed(0)}°F · OAT ${sample.T_OA.toFixed(0)}°F`;
+        status = 'polling';
+      } else {
+        // Synthetic
+        switch (data.kind) {
+          case 'supervisor':
+            value = `uptime t=${tick}s`;
+            status = 'idle';
+            break;
+          case 'controller':
+            value = controllerReading();
+            status = 'polling';
+            break;
+          case 'sensor':
+            value = sensorValue(data.label);
+            break;
+          case 'safety': {
+            const s = safetyValue(data.label);
+            value = s.value;
+            status = s.status;
+            break;
+          }
+          default:
+            value = 'idle';
         }
-        default:
-          value = 'idle';
       }
-      return {
-        ...n,
-        data: { ...data, runtime: { value, status } },
-      };
+      return { ...n, data: { ...data, runtime: { value, status } } };
     });
   }
 
   function start() {
     if (running) return;
     running = true;
+    // Only spin up the physics system if the controlled VAV is present.
+    const hasControlledTrio = nodes.some(
+      (n) => (n.data as { label?: string }).label === CONTROLLED_VAV,
+    );
+    if (hasControlledTrio) {
+      system = new SingleZoneSystem();
+      samples = [];
+    }
     edges = edges.map((e) => ({ ...e, animated: true }));
     tickOnce();
     intervalId = setInterval(tickOnce, TICK_MS);
@@ -236,6 +275,8 @@
   function resetSim() {
     stop();
     tick = 0;
+    system = null;
+    samples = [];
     nodes = nodes.map((n) => {
       const data = n.data as Record<string, unknown>;
       const { runtime: _runtime, ...rest } = data;
@@ -247,6 +288,8 @@
     if (!confirm('Clear all nodes and connections?')) return;
     stop();
     tick = 0;
+    system = null;
+    samples = [];
     nodes = [];
     edges = [];
     for (const k of Object.keys(counters)) counters[k] = 0;
@@ -301,6 +344,23 @@
         <Background />
         <Controls />
         <MiniMap zoomable pannable />
+
+        {#if running && system && samples.length > 0}
+          <Panel position="top-left">
+            <div class="chart-panel">
+              <div class="chart-head">
+                <span class="chart-title">Zone response — {CONTROLLED_VAV}</span>
+                <span class="chart-sub">{DEFAULT_CONFIG.dt}s/tick · τ={DEFAULT_CONFIG.tau}s</span>
+              </div>
+              <MiniChart
+                {samples}
+                setpoint={DEFAULT_CONFIG.setpoint}
+                oat={DEFAULT_CONFIG.outdoorAir}
+              />
+            </div>
+          </Panel>
+        {/if}
+
         <Panel position="top-right">
           <div class="sim-panel">
             {#if !running}
@@ -516,5 +576,36 @@
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, CanvasText 70%, transparent);
     padding: 0 0.25rem;
+  }
+
+  .chart-panel {
+    padding: 0.5rem 0.6rem 0.45rem;
+    background: color-mix(in srgb, Canvas 90%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+  }
+
+  .chart-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .chart-title {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+
+  .chart-sub {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.68rem;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
   }
 </style>
