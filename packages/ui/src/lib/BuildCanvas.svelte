@@ -345,6 +345,26 @@
   });
   setContext('basWiredIds', () => wiredIds);
 
+  // ============ Inline rename ============
+
+  let renamingNodeId = $state<string | null>(null);
+  setContext('basRenamingNodeId', () => renamingNodeId);
+  setContext('basCommitRename', (id: string, newLabel: string) => {
+    nodes = nodes.map((n) => {
+      if (n.id !== id) return n;
+      const data = n.data as Record<string, unknown>;
+      return { ...n, data: { ...data, label: newLabel } };
+    });
+    renamingNodeId = null;
+  });
+  setContext('basCancelRename', () => {
+    renamingNodeId = null;
+  });
+
+  function onNodeDoubleClick({ node }: { node: Node }) {
+    renamingNodeId = node.id;
+  }
+
   /** Colors for chart series. First entry is the focused (primary) color;
    *  the rest cycle for ghosts. Picked to match the node-kind palette. */
   const SERIES_COLORS = ['#f39c12', '#2ecc71', '#9c8cff', '#e74c3c', '#fb923c', '#4a9eff'];
@@ -1089,6 +1109,18 @@
         {nodeTypes}
         fitView
         onnodeclick={onNodeClick}
+        onnodecontextmenu={onNodeDoubleClick}
+        ondblclick={(e) => {
+          // xyflow doesn't expose onnodedblclick directly in v1; fall back to
+          // capturing dblclick on the SvelteFlow wrapper and resolving the
+          // closest node element via its data-id attribute.
+          const target = (e.target as HTMLElement | null)?.closest('.svelte-flow__node');
+          if (!target) return;
+          const id = target.getAttribute('data-id');
+          if (!id) return;
+          const node = nodes.find((n) => n.id === id);
+          if (node) onNodeDoubleClick({ node });
+        }}
         onconnect={onConnect}
         ondelete={({ nodes: dn, edges: de }) => {
           if (dn.length > 0) onNodesDelete(dn);

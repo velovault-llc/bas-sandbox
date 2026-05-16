@@ -23,6 +23,39 @@
   const getWiredIds = getContext<() => Set<string>>('basWiredIds');
   const physicsWired = $derived(getWiredIds ? getWiredIds().has(id) : false);
 
+  // Inline-rename plumbing. BuildCanvas tracks which node id is being renamed
+  // and provides commit/cancel handlers via context.
+  const getRenamingId = getContext<() => string | null>('basRenamingNodeId');
+  const commitRename = getContext<(id: string, newLabel: string) => void>('basCommitRename');
+  const cancelRename = getContext<() => void>('basCancelRename');
+  const isEditing = $derived(getRenamingId ? getRenamingId() === id : false);
+
+  let editValue = $state('');
+
+  // Reset the field text whenever we enter edit mode so it shows the current label.
+  $effect(() => {
+    if (isEditing) editValue = data.label;
+  });
+
+  function focusAndSelect(el: HTMLInputElement) {
+    el.focus();
+    el.select();
+  }
+
+  function onEditKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitRename(id, editValue.trim() || data.label);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
+  }
+
+  function onEditBlur() {
+    commitRename(id, editValue.trim() || data.label);
+  }
+
   const ICONS: Record<BasNodeKind, string> = {
     supervisor: '◉',
     controller: '◈',
@@ -53,7 +86,19 @@
       <span class="wired" title="Physics wired">⚡</span>
     {/if}
   </div>
-  <div class="label">{data.label}</div>
+  {#if isEditing}
+    <input
+      class="label label-edit"
+      type="text"
+      bind:value={editValue}
+      onkeydown={onEditKey}
+      onblur={onEditBlur}
+      use:focusAndSelect
+      aria-label="Rename node"
+    />
+  {:else}
+    <div class="label" title="Double-click to rename">{data.label}</div>
+  {/if}
   {#if data.runtime}
     <div class="runtime">{data.runtime.value}</div>
   {/if}
@@ -144,6 +189,21 @@
       monospace;
     font-size: 0.9rem;
     color: CanvasText;
+  }
+
+  .label-edit {
+    background: Canvas;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 0.1rem 0.3rem;
+    color: CanvasText;
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+  }
+
+  .label-edit:focus {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
   }
 
   .runtime {
