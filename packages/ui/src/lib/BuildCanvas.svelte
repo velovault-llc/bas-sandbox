@@ -1088,7 +1088,49 @@
 
   let showFindings = $state(false);
 
+  /**
+   * Toggle visibility of all controllers imported under a given engine. Used
+   * by clicks on imported engine nodes that carry data.childCount > 0.
+   */
+  function toggleSupervisorExpand(supervisorId: string) {
+    const childIds = new Set<string>();
+    for (const n of nodes) {
+      if ((n.data as Record<string, unknown>)?.importedFromEngine === supervisorId) {
+        childIds.add(n.id);
+      }
+    }
+    if (childIds.size === 0) return;
+
+    // Probe a child to know the current collapsed state; flip for all.
+    const probe = nodes.find((n) => childIds.has(n.id));
+    const newHidden = !probe?.hidden;
+
+    nodes = nodes.map((n) => {
+      if (childIds.has(n.id)) return { ...n, hidden: newHidden };
+      if (n.id === supervisorId) {
+        const data = n.data as Record<string, unknown>;
+        return { ...n, data: { ...data, collapsed: newHidden } };
+      }
+      return n;
+    });
+    edges = edges.map((e) => {
+      if (childIds.has(e.source) || childIds.has(e.target)) {
+        return { ...e, hidden: newHidden };
+      }
+      return e;
+    });
+  }
+
   function onNodeClick({ node }: { node: Node }) {
+    // Imported supervisor with hidden children → toggle expand.
+    if (nodeKind(node) === 'supervisor') {
+      const data = node.data as Record<string, unknown>;
+      const childCount = data?.childCount as number | undefined;
+      if (childCount && childCount > 0) {
+        toggleSupervisorExpand(node.id);
+      }
+      return;
+    }
     if (nodeKind(node) !== 'controller') return;
     const sensor = findConnectedSensor(node.id);
     if (!sensor) return; // can't wire physics without a sensor

@@ -13,6 +13,12 @@
       value: string;
       status?: 'idle' | 'polling' | 'responded' | 'tripped';
     };
+    /** Set on imported engine nodes — number of controllers we imported under them. */
+    childCount?: number;
+    /** True when imported children are hidden. Flipped by clicking the supervisor. */
+    collapsed?: boolean;
+    /** Set on imported controllers to point at the engine they belong to. */
+    importedFromEngine?: string;
   };
 
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
@@ -81,7 +87,10 @@
 
   <div class="header">
     <span class="icon">{ICONS[data.kind]}</span>
-    <span class="kind">{KIND_LABEL[data.kind]}</span>
+    <span class="kind">
+      {KIND_LABEL[data.kind]}
+      {#if data.note}<em class="note-tag">{data.note}</em>{/if}
+    </span>
     {#if physicsWired}
       <span class="wired" title="Physics wired">⚡</span>
     {/if}
@@ -102,8 +111,12 @@
   {#if data.runtime}
     <div class="runtime">{data.runtime.value}</div>
   {/if}
-  {#if data.note}
-    <div class="note">{data.note}</div>
+  {#if data.childCount !== undefined && data.childCount > 0}
+    <div class="children-toggle" title={data.collapsed ? 'Click to expand' : 'Click to collapse'}>
+      {data.collapsed ? '▶' : '▼'}
+      {data.childCount}
+      {data.childCount === 1 ? 'controller' : 'controllers'}
+    </div>
   {/if}
 
   <Handle type="source" position={Position.Bottom} />
@@ -219,10 +232,32 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .note {
-    margin-top: 0.2rem;
+  .note-tag {
+    font-style: normal;
+    font-size: 0.62rem;
+    padding: 0.05rem 0.3rem;
+    margin-left: 0.3rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .children-toggle {
+    margin-top: 0.25rem;
+    padding: 0.1rem 0.4rem;
+    background: color-mix(in srgb, var(--accent) 12%, Canvas);
+    border: 1px dashed color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
     font-size: 0.72rem;
-    color: color-mix(in srgb, CanvasText 60%, transparent);
+    color: var(--accent);
+    cursor: pointer;
+    user-select: none;
+    text-align: center;
   }
 
   /* xyflow handles render with their own classes; tweak a bit for visibility */
