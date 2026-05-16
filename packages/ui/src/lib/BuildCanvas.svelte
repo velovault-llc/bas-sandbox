@@ -2,7 +2,6 @@
   import { setContext } from 'svelte';
   import {
     Background,
-    Controls,
     Panel,
     SvelteFlow,
     SvelteFlowProvider,
@@ -841,7 +840,6 @@
     >
       <SvelteFlow bind:nodes bind:edges {nodeTypes} fitView onnodeclick={onNodeClick}>
         <Background />
-        <Controls position="bottom-right" />
 
         {#if running && focusedTarget && (runningSamples.get(focusedTarget.controllerId)?.length ?? 0) > 0}
           <Panel position="top-left">
