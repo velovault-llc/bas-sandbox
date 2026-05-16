@@ -709,8 +709,54 @@
     input.value = ''; // reset so picking the same file twice re-fires
   }
 
+  /**
+   * Keep the running sim state aligned with wiredTargets. When a target is
+   * added mid-run we spin up its SingleZoneSystem from scratch (with the
+   * current slider config). When one is removed mid-run we drop its system
+   * and sample history. Off-path edges flip back to quiet, on-path to animated.
+   */
+  function syncRunningState() {
+    if (!running) return;
+    const desired = new Set(wiredTargets.map((t) => t.controllerId));
+    const current = new Set(runningSnapshot.map((t) => t.controllerId));
+
+    const systems = runningSystems;
+    const samples = runningSamples;
+
+    // Additions
+    for (const t of wiredTargets) {
+      if (!current.has(t.controllerId)) {
+        systems.set(t.controllerId, new SingleZoneSystem(t.config));
+        samples.set(t.controllerId, []);
+      }
+    }
+    // Removals
+    for (const id of Array.from(current)) {
+      if (!desired.has(id)) {
+        systems.delete(id);
+        samples.delete(id);
+      }
+    }
+
+    runningSnapshot = wiredTargets.slice();
+    runningSystems = new Map(systems);
+    runningSamples = new Map(samples);
+
+    // Refresh polling-path animation
+    const pathIds = new Set<string>();
+    for (const t of runningSnapshot) {
+      const target: PhysicsTarget = {
+        controllerId: t.controllerId,
+        sensorId: t.sensorId,
+        controllerLabel: '',
+        sensorLabel: '',
+      };
+      for (const id of pollingPathEdgeIds(target)) pathIds.add(id);
+    }
+    edges = edges.map((e) => ({ ...e, animated: pathIds.has(e.id) }));
+  }
+
   function onNodeClick({ node }: { node: Node }) {
-    if (running) return; // Lock topology of physics targets while sim is running
     if (nodeKind(node) !== 'controller') return;
     const sensor = findConnectedSensor(node.id);
     if (!sensor) return; // can't wire physics without a sensor
@@ -736,14 +782,15 @@
       ];
       focusedTargetId = node.id;
     }
+    syncRunningState();
   }
 
   /** Remove the focused target. Used by the sidebar ✕ button. */
   function clearPhysicsTarget() {
-    if (running) return;
     if (!focusedTargetId) return;
     wiredTargets = wiredTargets.filter((t) => t.controllerId !== focusedTargetId);
     focusedTargetId = wiredTargets[0]?.controllerId ?? null;
+    syncRunningState();
   }
 
   // Auto-cleanup
@@ -797,7 +844,6 @@
                 type="button"
                 class="phys-clear"
                 onclick={clearPhysicsTarget}
-                disabled={running}
                 title="Remove this physics target"
                 aria-label="Remove physics target"
               >
