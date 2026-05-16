@@ -3,17 +3,22 @@
 // .dbexport and continue working with it in the simulator.
 //
 // Scope tradeoffs:
-//   - Engines become Supervisor nodes.
-//   - "equipment" kind in the parsed hierarchy becomes Controller nodes.
-//   - Points / alarms / trend logs are intentionally NOT imported — a real
-//     .dbexport carries 5–15 k objects and xyflow gets sluggish past ~500
-//     nodes. We cap at the equipment level (10s–100s of nodes) which is
-//     plenty to wire up a meaningful sim run.
-//   - Each engine gets its first N equipment nodes imported (N = 24 by
-//     default) so wide sites don't blow up the canvas. Truncated count is
-//     reported back so the UI can surface it.
-//   - Trunk kinds are inferred from the parser's segment-categorization
-//     (fieldbus → MS/TP, n2trunk → N2, bacnettrunk → BACnet/IP, lontrunk → LON).
+//   - The ADX (Application Data Server) sits at the top: it's the database
+//     host, BACnet/IP routes between it and the field engines.
+//   - NAE / NCE / SNE engines become Supervisor nodes below the ADX, wired
+//     to it via BACnet/IP.
+//   - "equipment" kind in the parsed hierarchy becomes Controller nodes
+//     hanging off their engine on whatever trunk type was inferred from
+//     the parsed segment category (FC-* → MS/TP, N2 → N2, etc.).
+//   - SCT, GraphicAssets, Cdm*, $site / $Generic / $Facility folders, and
+//     anything starting with "Schedule" or "Programming" are filtered out
+//     — they're software tools or virtual archive folders, not devices.
+//   - Points / alarms / trend logs / schedules / graphics / logic are
+//     intentionally NOT imported. A real .dbexport carries 5–15 k objects
+//     and xyflow gets sluggish past ~500 nodes; capping at the equipment
+//     level gives 10s–100s of nodes per typical site.
+//   - Per-engine cap: 8 controllers (sorted by parse order). Excess are
+//     reported in the summary's `truncated` count.
 
 import type { Edge, Node } from '@xyflow/svelte';
 import type { TopologyNode } from '@bas/core';
@@ -21,8 +26,10 @@ import type { TopologyNode } from '@bas/core';
 export type ImportedWireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
 
 export type ImportSummary = {
+  adxCount: number;
   engineCount: number;
   controllerCount: number;
+  skipped: string[];
   truncated: number;
 };
 
@@ -32,57 +39,133 @@ export type ImportResult = {
   summary: ImportSummary;
 };
 
-const MAX_CONTROLLERS_PER_ENGINE = 24;
+const MAX_CONTROLLERS_PER_ENGINE = 8;
 
-// Layout constants — simple grid, no auto-layout library.
-const ENGINE_Y = 60;
-const CONTROLLER_Y_START = 220;
-const CONTROLLER_ROW_GAP = 130;
-const CONTROLLER_COL_GAP = 200;
-const COLS_PER_ROW = 4;
-const ENGINE_BLOCK_MIN_WIDTH = COLS_PER_ROW * CONTROLLER_COL_GAP + 80;
+// Layout — ADX on top, engines in a grid below, controllers in a tight 2-col
+// column under each engine. Designed to keep a 17-engine site visible in a
+// 2-3 row band rather than one extreme horizontal strip.
+const ADX_Y = 40;
+const ENGINE_ROW_Y_START = 200;
+const ENGINE_GRID_COLS = 4;
+const ENGINE_BLOCK_WIDTH = 360;
+const ENGINE_BLOCK_HEIGHT = 460;
+const CONTROLLER_Y_OFFSET = 130;
+const CONTROLLER_ROW_GAP = 70;
+const CONTROLLER_COL_GAP = 170;
+const CONTROLLERS_PER_ROW = 2;
+
+/** JCI software tools, virtual folders, and well-known non-device top-level entries. */
+function shouldSkip(label: string): boolean {
+  if (/^SCT$/i.test(label)) return true;
+  if (/GraphicAssets/i.test(label)) return true;
+  if (/^Cdm/i.test(label)) return true;
+  if (/^\$/.test(label)) return true; // $site, $Generic, $Facility
+  if (/^Schedule/i.test(label)) return true;
+  if (/^Programming$/i.test(label)) return true;
+  if (/^Graphics$/i.test(label)) return true;
+  if (/^System Programs$/i.test(label)) return true;
+  return false;
+}
+
+/** ADX = Application Data Server / Application Data Server eXtended. Top tier. */
+function isAdx(label: string): boolean {
+  return /\b(ADX|ADS)\b|-ADX-|-ADS-/i.test(label);
+}
 
 export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResult {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   let nextNumeric = 1;
-  let engineX = 100;
   let totalControllers = 0;
   let truncated = 0;
+  const skipped: string[] = [];
 
-  for (const engine of topology) {
+  // First pass: split top-level entries into ADX / engines / skip.
+  const adxes: TopologyNode[] = [];
+  const engines: TopologyNode[] = [];
+  for (const t of topology) {
+    if (shouldSkip(t.label)) {
+      skipped.push(t.label);
+      continue;
+    }
+    if (isAdx(t.label)) {
+      adxes.push(t);
+    } else {
+      engines.push(t);
+    }
+  }
+
+  // Total width consumed by the engine grid (or a single column if few engines).
+  const cols = Math.min(ENGINE_GRID_COLS, Math.max(engines.length, 1));
+  const gridWidth = cols * ENGINE_BLOCK_WIDTH;
+  const adxX = gridWidth / 2; // center
+
+  // ADX nodes — place horizontally near the center top.
+  const adxIds: string[] = [];
+  for (let i = 0; i < adxes.length; i++) {
+    const id = `imp-${nextNumeric++}`;
+    nodes.push({
+      id,
+      type: 'bas',
+      position: {
+        x: adxX + (i - (adxes.length - 1) / 2) * 220,
+        y: ADX_Y,
+      },
+      data: { kind: 'supervisor', label: adxes[i].label, note: 'ADX' },
+    });
+    adxIds.push(id);
+  }
+
+  // Engines grid below the ADX(es).
+  for (let i = 0; i < engines.length; i++) {
+    const engine = engines[i];
+    const row = Math.floor(i / ENGINE_GRID_COLS);
+    const col = i % ENGINE_GRID_COLS;
+    const engineX = col * ENGINE_BLOCK_WIDTH + ENGINE_BLOCK_WIDTH / 2;
+    const engineY = ENGINE_ROW_Y_START + row * ENGINE_BLOCK_HEIGHT;
+
     const engineId = `imp-${nextNumeric++}`;
     nodes.push({
       id: engineId,
       type: 'bas',
-      position: { x: engineX, y: ENGINE_Y },
+      position: { x: engineX, y: engineY },
       data: { kind: 'supervisor', label: engine.label },
     });
 
-    // Walk the engine subtree, accumulating equipment nodes + the trunk kind
-    // they hang off of.
-    const collected: { node: TopologyNode; trunkKind: ImportedWireKind }[] = [];
-    walkEquipment(engine, 'bacnet-ip', collected);
+    // Wire engine up to the nearest ADX via BACnet/IP. With multiple ADXes we
+    // pick the closest by x-coordinate to keep edges tidy.
+    if (adxIds.length > 0) {
+      const nearestAdxIdx = adxes
+        .map((_, j) => ({ idx: j, dx: Math.abs(j * 220 - col * ENGINE_BLOCK_WIDTH) }))
+        .sort((a, b) => a.dx - b.dx)[0]?.idx ?? 0;
+      edges.push({
+        id: `imp-e-${adxIds[nearestAdxIdx]}-${engineId}`,
+        source: adxIds[nearestAdxIdx],
+        target: engineId,
+        data: { wireKind: 'bacnet-ip' },
+      });
+    }
 
-    // Engine block is at least one row wide.
-    const useCount = Math.min(collected.length, MAX_CONTROLLERS_PER_ENGINE);
-    truncated += collected.length - useCount;
+    // Collect equipment under this engine.
+    const controllers: { node: TopologyNode; trunkKind: ImportedWireKind }[] = [];
+    walkEquipment(engine, 'bacnet-ip', controllers);
+
+    const useCount = Math.min(controllers.length, MAX_CONTROLLERS_PER_ENGINE);
+    truncated += controllers.length - useCount;
     totalControllers += useCount;
 
-    for (let i = 0; i < useCount; i++) {
-      const { node: ctrl, trunkKind } = collected[i];
+    for (let j = 0; j < useCount; j++) {
+      const { node: ctrl, trunkKind } = controllers[j];
       const ctrlId = `imp-${nextNumeric++}`;
-      const row = Math.floor(i / COLS_PER_ROW);
-      const col = i % COLS_PER_ROW;
-      const baseX = engineX - ((COLS_PER_ROW - 1) * CONTROLLER_COL_GAP) / 2;
+      const cRow = Math.floor(j / CONTROLLERS_PER_ROW);
+      const cCol = j % CONTROLLERS_PER_ROW;
+      const cX = engineX + (cCol - (CONTROLLERS_PER_ROW - 1) / 2) * CONTROLLER_COL_GAP;
+      const cY = engineY + CONTROLLER_Y_OFFSET + cRow * CONTROLLER_ROW_GAP;
       nodes.push({
         id: ctrlId,
         type: 'bas',
-        position: {
-          x: baseX + col * CONTROLLER_COL_GAP,
-          y: CONTROLLER_Y_START + row * CONTROLLER_ROW_GAP,
-        },
-        data: { kind: 'controller', label: ctrl.label.slice(0, 40) },
+        position: { x: cX, y: cY },
+        data: { kind: 'controller', label: ctrl.label.slice(0, 32) },
       });
       edges.push({
         id: `imp-e-${engineId}-${ctrlId}`,
@@ -91,15 +174,18 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
         data: { wireKind: trunkKind },
       });
     }
-
-    const blockWidth = Math.max(ENGINE_BLOCK_MIN_WIDTH, COLS_PER_ROW * CONTROLLER_COL_GAP);
-    engineX += blockWidth + 40;
   }
 
   return {
     nodes,
     edges,
-    summary: { engineCount: topology.length, controllerCount: totalControllers, truncated },
+    summary: {
+      adxCount: adxes.length,
+      engineCount: engines.length,
+      controllerCount: totalControllers,
+      skipped,
+      truncated,
+    },
   };
 }
 
@@ -119,6 +205,9 @@ function walkEquipment(
     }
     if (isLeafKind(child.kind)) {
       // Skip points / alarms / trendlogs / schedules / graphics.
+      continue;
+    }
+    if (shouldSkip(child.label)) {
       continue;
     }
     // Otherwise it's a category/folder/trunk — recurse.
