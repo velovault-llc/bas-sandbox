@@ -931,6 +931,141 @@
     return sels.length === 1 ? sels[0] : null;
   });
 
+  // ============ Topology validation (live, build-mode checks) ============
+
+  type TopoFinding = {
+    level: 'error' | 'warning' | 'info';
+    ruleId: string;
+    message: string;
+    subjectId?: string;
+  };
+
+  /** MS/TP and N2 device-count limits we surface as warnings/errors. */
+  const TRUNK_LIMITS: Partial<Record<WireKind, { recommended: number; max: number; label: string }>> = {
+    mstp: { recommended: 30, max: 127, label: 'MS/TP' },
+    n2: { recommended: 50, max: 100, label: 'N2' },
+  };
+
+  const topologyFindings = $derived.by((): TopoFinding[] => {
+    const findings: TopoFinding[] = [];
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const labelOf = (id: string): string => {
+      const n = nodeById.get(id);
+      return n ? nodeLabel(n) : id;
+    };
+
+    // 1. Trunk device count per (parent, wireKind) pair
+    type TrunkKey = `${string}|${string}`;
+    const trunkChildren = new Map<TrunkKey, string[]>();
+    for (const e of edges) {
+      const wk = (e.data?.wireKind as WireKind) ?? undefined;
+      if (!wk || !TRUNK_LIMITS[wk]) continue;
+      const key: TrunkKey = `${e.source}|${wk}`;
+      const arr = trunkChildren.get(key) ?? [];
+      arr.push(e.target);
+      trunkChildren.set(key, arr);
+    }
+    for (const [key, children] of trunkChildren) {
+      const [parentId, wk] = key.split('|') as [string, WireKind];
+      const limits = TRUNK_LIMITS[wk]!;
+      if (children.length > limits.max) {
+        findings.push({
+          level: 'error',
+          ruleId: `${wk}-over-max`,
+          message: `${labelOf(parentId)}: ${limits.label} trunk has ${children.length} devices (hard max ${limits.max})`,
+          subjectId: parentId,
+        });
+      } else if (children.length > limits.recommended) {
+        findings.push({
+          level: 'warning',
+          ruleId: `${wk}-over-recommended`,
+          message: `${labelOf(parentId)}: ${limits.label} trunk has ${children.length} devices (recommended max ${limits.recommended})`,
+          subjectId: parentId,
+        });
+      }
+    }
+
+    // 2. Hardwired wires should terminate at a sensor or safety
+    for (const e of edges) {
+      const wk = (e.data?.wireKind as WireKind) ?? undefined;
+      if (wk !== 'hardwired') continue;
+      const sk = nodeKind(nodeById.get(e.source)!);
+      const tk = nodeKind(nodeById.get(e.target)!);
+      const leaf = sk === 'sensor' || sk === 'safety' || tk === 'sensor' || tk === 'safety';
+      if (!leaf) {
+        findings.push({
+          level: 'warning',
+          ruleId: 'hardwired-no-leaf',
+          message: `Hardwired wire ${labelOf(e.source)} → ${labelOf(e.target)} doesn't end at a sensor or safety`,
+          subjectId: e.id,
+        });
+      }
+    }
+
+    // 3. Sensor / Safety connected via non-hardwired wire
+    for (const e of edges) {
+      const wk = (e.data?.wireKind as WireKind) ?? undefined;
+      if (!wk || wk === 'hardwired') continue;
+      const sk = nodeKind(nodeById.get(e.source)!);
+      const tk = nodeKind(nodeById.get(e.target)!);
+      const leafKind = sk === 'sensor' || sk === 'safety' ? sk : tk === 'sensor' || tk === 'safety' ? tk : null;
+      if (leafKind) {
+        findings.push({
+          level: 'warning',
+          ruleId: 'leaf-not-hardwired',
+          message: `${labelOf(e.source)} ↔ ${labelOf(e.target)}: ${leafKind} should connect via Hardwired, not ${WIRE_KIND_BY_ID.get(wk)?.label ?? wk}`,
+          subjectId: e.id,
+        });
+      }
+    }
+
+    // 4. Supervisor downstream — supervisors should be roots
+    for (const e of edges) {
+      const tgt = nodeById.get(e.target);
+      if (tgt && nodeKind(tgt) === 'supervisor') {
+        findings.push({
+          level: 'warning',
+          ruleId: 'supervisor-downstream',
+          message: `${labelOf(e.target)} is a Supervisor wired downstream of ${labelOf(e.source)} — supervisors are usually roots`,
+          subjectId: e.id,
+        });
+      }
+    }
+
+    // 5. Orphan nodes
+    const referenced = new Set<string>();
+    for (const e of edges) {
+      referenced.add(e.source);
+      referenced.add(e.target);
+    }
+    for (const n of nodes) {
+      if (!referenced.has(n.id)) {
+        findings.push({
+          level: 'info',
+          ruleId: 'orphan-node',
+          message: `${nodeLabel(n)} (${nodeKind(n)}) is not connected to anything`,
+          subjectId: n.id,
+        });
+      }
+    }
+
+    return findings;
+  });
+
+  const findingsByLevel = $derived.by(() => {
+    let errors = 0,
+      warnings = 0,
+      infos = 0;
+    for (const f of topologyFindings) {
+      if (f.level === 'error') errors++;
+      else if (f.level === 'warning') warnings++;
+      else infos++;
+    }
+    return { errors, warnings, infos };
+  });
+
+  let showFindings = $state(false);
+
   function onNodeClick({ node }: { node: Node }) {
     if (nodeKind(node) !== 'controller') return;
     const sensor = findConnectedSensor(node.id);
@@ -1092,6 +1227,49 @@
           <p class="load-message {loadMessage.kind}">{loadMessage.text}</p>
         {/if}
         <button type="button" class="clear" onclick={clearAll}>Clear canvas</button>
+
+        <div class="topology-checks">
+          <button
+            type="button"
+            class="checks-head"
+            class:has-errors={findingsByLevel.errors > 0}
+            class:has-warnings={findingsByLevel.warnings > 0}
+            onclick={() => (showFindings = !showFindings)}
+            aria-expanded={showFindings}
+          >
+            <span class="checks-title">Topology checks</span>
+            <span class="checks-badges">
+              {#if findingsByLevel.errors > 0}
+                <span class="cb err">{findingsByLevel.errors}</span>
+              {/if}
+              {#if findingsByLevel.warnings > 0}
+                <span class="cb warn">{findingsByLevel.warnings}</span>
+              {/if}
+              {#if findingsByLevel.infos > 0}
+                <span class="cb info">{findingsByLevel.infos}</span>
+              {/if}
+              {#if topologyFindings.length === 0}
+                <span class="cb ok">✓</span>
+              {/if}
+              <span class="checks-chevron">{showFindings ? '▾' : '▸'}</span>
+            </span>
+          </button>
+          {#if showFindings}
+            {#if topologyFindings.length === 0}
+              <p class="checks-empty">No issues — topology checks pass.</p>
+            {:else}
+              <ul class="checks-list">
+                {#each topologyFindings as f, i (f.ruleId + '|' + (f.subjectId ?? '') + '|' + i)}
+                  <li class="check level-{f.level}">
+                    <span class="check-dot"></span>
+                    <span class="check-msg">{f.message}</span>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/if}
+        </div>
+
         <p class="meta">{nodes.length} nodes · {edges.length} wires</p>
       </div>
     </aside>
@@ -1689,6 +1867,139 @@
     color: color-mix(in srgb, CanvasText 50%, transparent);
     margin: 0;
     font-variant-numeric: tabular-nums;
+  }
+
+  .topology-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .checks-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.55rem;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .checks-head:hover {
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+  }
+
+  .checks-head.has-errors {
+    border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+  }
+
+  .checks-head.has-warnings:not(.has-errors) {
+    border-color: color-mix(in srgb, #f39c12 50%, transparent);
+  }
+
+  .checks-title {
+    flex: 1;
+  }
+
+  .checks-badges {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .cb {
+    font-size: 0.7rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cb.err {
+    background: color-mix(in srgb, #e74c3c 18%, transparent);
+    color: #e74c3c;
+  }
+
+  .cb.warn {
+    background: color-mix(in srgb, #f39c12 18%, transparent);
+    color: #f39c12;
+  }
+
+  .cb.info {
+    background: color-mix(in srgb, #4a9eff 18%, transparent);
+    color: #4a9eff;
+  }
+
+  .cb.ok {
+    background: color-mix(in srgb, #2ecc71 18%, transparent);
+    color: #2ecc71;
+  }
+
+  .checks-chevron {
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    font-size: 0.7rem;
+    margin-left: 0.15rem;
+  }
+
+  .checks-empty {
+    margin: 0;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.72rem;
+    color: color-mix(in srgb, #2ecc71 80%, CanvasText);
+    background: color-mix(in srgb, #2ecc71 8%, transparent);
+    border-radius: 4px;
+  }
+
+  .checks-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 12rem;
+    overflow-y: auto;
+    border: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+    border-radius: 4px;
+  }
+
+  .check {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.72rem;
+    line-height: 1.3;
+    border-bottom: 1px solid color-mix(in srgb, CanvasText 6%, transparent);
+  }
+
+  .check:last-child {
+    border-bottom: none;
+  }
+
+  .check-dot {
+    flex-shrink: 0;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    margin-top: 0.3rem;
+  }
+
+  .check.level-error .check-dot {
+    background: #e74c3c;
+  }
+
+  .check.level-warning .check-dot {
+    background: #f39c12;
+  }
+
+  .check.level-info .check-dot {
+    background: #4a9eff;
+  }
+
+  .check-msg {
+    color: color-mix(in srgb, CanvasText 80%, transparent);
   }
 
   .flow {
