@@ -273,8 +273,59 @@
   let config = $state<SingleZoneConfig>({ ...DEFAULT_CONFIG });
   let showAdvanced = $state(false);
 
+  // Bundled demo scenarios. Picking one snaps config to its values and
+  // sets it as the "baseline" — the `defaults` link in the tune panel
+  // resets to this, not to DEFAULT_CONFIG. So you can pick a preset,
+  // experiment with the sliders, and snap back without re-clicking.
+  type Preset = {
+    id: string;
+    name: string;
+    description: string;
+    config: SingleZoneConfig;
+  };
+
+  const PRESETS: readonly Preset[] = [
+    {
+      id: 'default',
+      name: 'Default',
+      description: 'Summer cooling — SP 72°F, OAT 92°F, moderate gains. The basic demo.',
+      config: { ...DEFAULT_CONFIG },
+    },
+    {
+      id: 'hot-day',
+      name: 'Hot day',
+      description:
+        'OAT 100°F with SP 72°F. Higher Kp = aggressive response. Expect saturation at the start.',
+      config: { ...DEFAULT_CONFIG, outdoorAir: 100, Kp: 0.6 },
+    },
+    {
+      id: 'mild-day',
+      name: 'Mild day',
+      description:
+        'OAT 78°F. Light cooling demand, gentle Kp. Controller settles quickly with low output.',
+      config: { ...DEFAULT_CONFIG, outdoorAir: 78, Kp: 0.2, initialZone: 73 },
+    },
+    {
+      id: 'setback',
+      name: 'Setback',
+      description: 'Unoccupied period — SP relaxed to 80°F to save energy. Controller barely runs.',
+      config: { ...DEFAULT_CONFIG, setpoint: 80, initialZone: 78 },
+    },
+  ];
+
+  let scenarioBaseline = $state<SingleZoneConfig>({ ...DEFAULT_CONFIG });
+  let activePresetId = $state<string>('default');
+
+  function applyPreset(preset: Preset) {
+    activePresetId = preset.id;
+    scenarioBaseline = { ...preset.config };
+    config = { ...preset.config };
+  }
+
   function resetConfig() {
-    config = { ...DEFAULT_CONFIG };
+    // Snap back to whatever the active baseline is (preset or loaded scenario),
+    // not the hardcoded DEFAULT_CONFIG.
+    config = { ...scenarioBaseline };
   }
 
   function tempReading(): string {
@@ -513,7 +564,11 @@
     nodes = parsed.topology.nodes;
     edges = parsed.topology.edges;
     selectedControllerId = parsed.selection?.controllerId ?? null;
-    config = { ...DEFAULT_CONFIG, ...parsed.config };
+    const merged = { ...DEFAULT_CONFIG, ...parsed.config };
+    config = { ...merged };
+    // The loaded scenario becomes the new baseline so "defaults" snaps back to it.
+    scenarioBaseline = { ...merged };
+    activePresetId = 'custom';
     for (const k of Object.keys(counters)) delete counters[k];
     for (const [k, v] of Object.entries(parsed.counters ?? {})) counters[k] = v;
     nextId = parsed.nextId ?? 100;
@@ -684,7 +739,34 @@
             <div class="tune-panel">
               <div class="tune-head">
                 <span class="tune-title">Tune — {physicsTarget.controllerLabel}</span>
-                <button type="button" class="reset-cfg" onclick={resetConfig}>defaults</button>
+                <button
+                  type="button"
+                  class="reset-cfg"
+                  onclick={resetConfig}
+                  title={activePresetId === 'custom'
+                    ? 'Reset to last loaded scenario'
+                    : `Reset to preset "${PRESETS.find((p) => p.id === activePresetId)?.name ?? 'Default'}"`}
+                >
+                  defaults
+                </button>
+              </div>
+              <div class="preset-row">
+                {#each PRESETS as preset (preset.id)}
+                  <button
+                    type="button"
+                    class="preset-chip"
+                    class:active={activePresetId === preset.id}
+                    title={preset.description}
+                    onclick={() => applyPreset(preset)}
+                  >
+                    {preset.name}
+                  </button>
+                {/each}
+                {#if activePresetId === 'custom'}
+                  <span class="preset-chip custom" title="Values came from a loaded scenario file">
+                    Custom
+                  </span>
+                {/if}
               </div>
               <div class="slider-row">
                 <label for="sp-slider">
@@ -1165,8 +1247,44 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.35rem;
     gap: 0.5rem;
+  }
+
+  .preset-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .preset-chip {
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 12px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+
+  .preset-chip:hover {
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+    color: CanvasText;
+  }
+
+  .preset-chip.active {
+    border-color: #f59e0b;
+    background: color-mix(in srgb, #f59e0b 15%, transparent);
+    color: #f59e0b;
+  }
+
+  .preset-chip.custom {
+    cursor: default;
+    border-style: dashed;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
   }
 
   .tune-title {
