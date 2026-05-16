@@ -11,7 +11,20 @@ export type IngestPlugin = {
   ingest(file: File): Promise<IngestResult>;
 };
 
+export type EngineSummary = {
+  /** Engine reference, e.g. "DACC-NAE35-BCC". */
+  name: string;
+  /** Total objects under this engine, including all nested children. */
+  objectCount: number;
+};
+
 export type IngestResult = {
   graph: import('./brick.js').BrickGraph;
   warnings: readonly string[];
+  metadata?: {
+    sourceName?: string;
+    deviceCount?: number;
+    objectCount?: number;
+    engines?: readonly EngineSummary[];
+  };
 };

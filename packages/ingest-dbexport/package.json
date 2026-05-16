@@ -14,7 +14,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@bas/core": "workspace:*"
+    "@bas/core": "workspace:*",
+    "@velovault/dbexport-parser": "github:velovault-llc/dbexport-parser#main"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
