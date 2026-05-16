@@ -23,6 +23,12 @@
     return PAD_Y + (1 - (temp - tempMin) / (tempMax - tempMin)) * h;
   }
 
+  // Actuator gets its own implicit Y axis 0..1 → bottom..top of the same plot.
+  // Right-side labels make the dual-axis explicit.
+  function actY(a: number): number {
+    return PAD_Y + (1 - Math.max(0, Math.min(1, a))) * h;
+  }
+
   function xFor(i: number, n: number): number {
     if (n <= 1) return PAD_X + w;
     return PAD_X + (i / (n - 1)) * w;
@@ -34,6 +40,16 @@
       .map(
         (s, i) =>
           `${i === 0 ? 'M' : 'L'}${xFor(i, samples.length).toFixed(1)},${yFor(s.T_zone).toFixed(1)}`,
+      )
+      .join(' ');
+  });
+
+  const actPath = $derived.by(() => {
+    if (samples.length === 0) return '';
+    return samples
+      .map(
+        (s, i) =>
+          `${i === 0 ? 'M' : 'L'}${xFor(i, samples.length).toFixed(1)},${actY(s.actuator).toFixed(1)}`,
       )
       .join(' ');
   });
@@ -72,6 +88,9 @@
   <!-- Zone temperature curve -->
   <path d={tempPath} class="zone" />
 
+  <!-- Actuator output curve (separate 0-100% axis on the right) -->
+  <path d={actPath} class="actuator" />
+
   <!-- Current zone temp marker -->
   {#if samples.length > 0 && currentZone !== null}
     <circle
@@ -81,6 +100,18 @@
       class="zone-dot"
     />
   {/if}
+  {#if samples.length > 0 && currentAct !== null}
+    <circle
+      cx={xFor(samples.length - 1, samples.length)}
+      cy={actY(currentAct)}
+      r="2.5"
+      class="actuator-dot"
+    />
+  {/if}
+
+  <!-- Right-side axis hint for the actuator -->
+  <text x={W - PAD_X} y={PAD_Y + 8} text-anchor="end" class="label act-label">Out 100%</text>
+  <text x={W - PAD_X} y={PAD_Y + h - 2} text-anchor="end" class="label act-label">0%</text>
 </svg>
 
 {#if currentZone !== null && currentAct !== null}
@@ -123,6 +154,23 @@
 
   .zone-dot {
     fill: #f39c12;
+  }
+
+  .actuator {
+    fill: none;
+    stroke: #4a9eff;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-dasharray: 4 2;
+    opacity: 0.9;
+  }
+
+  .actuator-dot {
+    fill: #4a9eff;
+  }
+
+  .act-label {
+    fill: color-mix(in srgb, #4a9eff 80%, transparent);
   }
 
   .label {
