@@ -18,6 +18,28 @@ export type EngineSummary = {
   objectCount: number;
 };
 
+/**
+ * Plugin-agnostic tree of the imported topology. Each plugin produces its
+ * own tree from its native format (dbexport hierarchy, Brick SPARQL traversal,
+ * BACnet discovery scan). The UI renders without knowing which plugin built it.
+ */
+export type TopologyNode = {
+  /** Stable id, unique within the topology. */
+  readonly id: string;
+  /** Display label (segment name, device name, or descriptive label). */
+  readonly label: string;
+  /** Semantic kind: engine, fieldbus, equipment, point, schedule, alarm, ... */
+  readonly kind: string;
+  /** JCI class ID (or vendor-equivalent), if known. */
+  readonly classid?: string;
+  /** Full vendor reference path, if known. */
+  readonly ref?: string;
+  /** Total objects in this subtree, including this node. */
+  readonly objectCount: number;
+  /** Direct children, ordered. */
+  readonly children: readonly TopologyNode[];
+};
+
 export type IngestResult = {
   graph: import('./brick.js').BrickGraph;
   warnings: readonly string[];
@@ -27,4 +49,5 @@ export type IngestResult = {
     objectCount?: number;
     engines?: readonly EngineSummary[];
   };
+  topology?: readonly TopologyNode[];
 };

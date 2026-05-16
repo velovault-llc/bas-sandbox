@@ -1,7 +1,13 @@
-import { BrickGraph, type IngestPlugin, type IngestResult, type EngineSummary } from '@bas/core';
 import {
-  parseDbexport,
+  BrickGraph,
+  type EngineSummary,
+  type IngestPlugin,
+  type IngestResult,
+  type TopologyNode,
+} from '@bas/core';
+import {
   buildHierarchy,
+  parseDbexport,
   type HierarchyNode,
   type ParsedArchive,
 } from '@velovault/dbexport-parser';
@@ -33,6 +39,7 @@ export const dbexportPlugin: IngestPlugin = {
     engines.sort((a, b) => b.objectCount - a.objectCount);
 
     const objectCount = archive.devices.reduce((sum, d) => sum + d.objects.length, 0);
+    const topology = hierarchyToTopology(hierarchy);
 
     return {
       graph,
@@ -43,6 +50,7 @@ export const dbexportPlugin: IngestPlugin = {
         objectCount,
         engines,
       },
+      topology,
     };
   },
 };
@@ -78,6 +86,27 @@ function brickTypeForKind(kind: string): string {
     default:
       return 'Equipment';
   }
+}
+
+function hierarchyToTopology(hier: Map<string, HierarchyNode>): TopologyNode[] {
+  return Array.from(hier.values())
+    .sort((a, b) => b.totalCount - a.totalCount)
+    .map(toTopologyNode);
+}
+
+function toTopologyNode(n: HierarchyNode): TopologyNode {
+  const children = Array.from(n.children.values())
+    .sort((a, b) => b.totalCount - a.totalCount || a.label.localeCompare(b.label))
+    .map(toTopologyNode);
+  return {
+    id: n.key,
+    label: n.label,
+    kind: n.kind,
+    classid: n.classid || undefined,
+    ref: n.obj?.ref,
+    objectCount: n.totalCount,
+    children,
+  };
 }
 
 export type { ParsedArchive };
