@@ -507,13 +507,22 @@
         value: `${sample.T_zone.toFixed(1)} °F`,
         status: 'responded',
       });
-      // If a parent controller exists and isn't itself wired, surface SP/OAT there.
-      const parent = findParentController(target.controllerId);
-      if (parent && !physicsValueByNode.has(parent.id)) {
-        physicsValueByNode.set(parent.id, {
-          value: `SP ${sample.setpoint.toFixed(0)}°F · OAT ${sample.T_OA.toFixed(0)}°F`,
-          status: 'polling',
-        });
+    }
+    // Parent SP/OAT readout: only emit for the *focused* target's parent.
+    // Without this, when two wired VAVs share a single FEC parent the
+    // SP/OAT display flickers between targets every tick — easy to misread
+    // as "both setpoints changed."
+    if (focusedTargetId) {
+      const focused = runningSnapshot.find((t) => t.controllerId === focusedTargetId);
+      const focusedSample = focused ? sampleByCtrl.get(focused.controllerId) : null;
+      if (focused && focusedSample) {
+        const parent = findParentController(focused.controllerId);
+        if (parent && !physicsValueByNode.has(parent.id)) {
+          physicsValueByNode.set(parent.id, {
+            value: `SP ${focusedSample.setpoint.toFixed(0)}°F · OAT ${focusedSample.T_OA.toFixed(0)}°F`,
+            status: 'polling',
+          });
+        }
       }
     }
 
