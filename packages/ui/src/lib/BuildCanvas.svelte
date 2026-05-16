@@ -137,6 +137,14 @@
 
   function onCanvasDrop(event: DragEvent) {
     event.preventDefault();
+
+    // Scenario file drop (overrides palette drop)
+    const file = event.dataTransfer?.files?.[0];
+    if (file && /\.(json|bas-scenario)$/i.test(file.name)) {
+      loadScenarioFile(file);
+      return;
+    }
+
     const kind = event.dataTransfer?.getData('application/bas-node-kind') as Kind | undefined;
     if (!kind) return;
     const item = PALETTE.find((p) => p.kind === kind);
@@ -393,6 +401,109 @@
     for (const k of Object.keys(counters)) counters[k] = 0;
   }
 
+  // ============ Scenario save / load ============
+
+  type BasScenarioV1 = {
+    version: 1;
+    savedAt: string;
+    topology: {
+      nodes: Node[];
+      edges: Edge[];
+    };
+    selection: {
+      controllerId: string | null;
+    };
+    config: SingleZoneConfig;
+    counters: Record<string, number>;
+    nextId: number;
+  };
+
+  let saveButtonText = $state('Save scenario');
+  let saveButtonTimer: ReturnType<typeof setTimeout> | null = null;
+  let loadMessage = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  function flashSave(text: string) {
+    saveButtonText = text;
+    if (saveButtonTimer) clearTimeout(saveButtonTimer);
+    saveButtonTimer = setTimeout(() => {
+      saveButtonText = 'Save scenario';
+      saveButtonTimer = null;
+    }, 2000);
+  }
+
+  function flashLoad(kind: 'ok' | 'err', text: string) {
+    loadMessage = { kind, text };
+    setTimeout(() => {
+      loadMessage = null;
+    }, 4000);
+  }
+
+  function saveScenario() {
+    // Strip per-tick runtime values so we don't ship a frozen "Out N%" with the topology.
+    const cleanNodes = nodes.map((n) => {
+      const data = n.data as Record<string, unknown>;
+      const { runtime: _runtime, ...rest } = data;
+      return { ...n, data: rest };
+    });
+    const scenario: BasScenarioV1 = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      topology: { nodes: cleanNodes, edges: edges.map((e) => ({ ...e, animated: false })) },
+      selection: { controllerId: selectedControllerId },
+      config: { ...config },
+      counters: { ...counters },
+      nextId,
+    };
+    const blob = new Blob([JSON.stringify(scenario, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    a.download = `bas-scenario-${stamp}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    flashSave('✓ Saved');
+  }
+
+  function applyScenario(parsed: BasScenarioV1) {
+    stop();
+    tick = 0;
+    system = null;
+    samples = [];
+    nodes = parsed.topology.nodes;
+    edges = parsed.topology.edges;
+    selectedControllerId = parsed.selection?.controllerId ?? null;
+    config = { ...DEFAULT_CONFIG, ...parsed.config };
+    for (const k of Object.keys(counters)) delete counters[k];
+    for (const [k, v] of Object.entries(parsed.counters ?? {})) counters[k] = v;
+    nextId = parsed.nextId ?? 100;
+    flashLoad('ok', `Loaded ${parsed.topology.nodes.length} nodes`);
+  }
+
+  function loadScenarioFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        if (!data || data.version !== 1 || !data.topology) {
+          throw new Error('Not a valid bas-scenario file (missing version or topology)');
+        }
+        applyScenario(data as BasScenarioV1);
+      } catch (e) {
+        flashLoad('err', e instanceof Error ? e.message : String(e));
+      }
+    };
+    reader.onerror = () => flashLoad('err', 'Could not read file');
+    reader.readAsText(file);
+  }
+
+  function onLoadInput(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) loadScenarioFile(file);
+    input.value = ''; // reset so picking the same file twice re-fires
+  }
+
   function onNodeClick({ node }: { node: Node }) {
     if (running) return; // Lock physics target while sim is running
     if (nodeKind(node) === 'controller') {
@@ -455,6 +566,23 @@
             </div>
           {/if}
         </div>
+        <div class="scenario-row">
+          <button type="button" class="scenario-btn save" onclick={saveScenario}>
+            {saveButtonText}
+          </button>
+          <label class="scenario-btn load">
+            Load
+            <input
+              type="file"
+              accept=".json,.bas-scenario,application/json"
+              onchange={onLoadInput}
+              hidden
+            />
+          </label>
+        </div>
+        {#if loadMessage}
+          <p class="load-message {loadMessage.kind}">{loadMessage.text}</p>
+        {/if}
         <button type="button" class="clear" onclick={clearAll}>Clear canvas</button>
         <p class="meta">{nodes.length} nodes · {edges.length} wires</p>
       </div>
@@ -787,6 +915,50 @@
 
   .clear:hover {
     background: color-mix(in srgb, CanvasText 6%, transparent);
+  }
+
+  .scenario-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+
+  .scenario-btn {
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .scenario-btn:hover {
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+  }
+
+  .scenario-btn.load {
+    display: inline-block;
+  }
+
+  .load-message {
+    margin: 0;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    line-height: 1.3;
+  }
+
+  .load-message.ok {
+    background: color-mix(in srgb, #2ecc71 14%, transparent);
+    color: #2ecc71;
+  }
+
+  .load-message.err {
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    color: #e74c3c;
   }
 
   .meta {
