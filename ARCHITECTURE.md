@@ -62,7 +62,7 @@ The control-logic interpreter is the strategic moat. Rust because:
 - Rust → WASM has the cleanest tooling (`wasm-bindgen`, `wasm-pack`).
 - The block library is data-driven: each block type's behavior is a small chunk of code plus a JSON spec. Adding a new vendor block type is a data file, not a recompile.
 
-**ASHRAE G36 as the canonical control vocabulary.** Vendor block libraries (JCI CCT, Tridium WB, Siemens APOGEE) are mapped *to* G36 primitives in their respective ingest plugins. The interpreter only runs G36 — vendor-specific quirks live in the ingest layer where they belong.
+**ASHRAE G36 as the canonical control vocabulary.** Vendor block libraries (JCI CCT, Tridium WB, Siemens APOGEE) are mapped _to_ G36 primitives in their respective ingest plugins. The interpreter only runs G36 — vendor-specific quirks live in the ingest layer where they belong.
 
 This is the bridge nobody else builds because nobody else has both the open-standards story and the vendor-specific archive parsers.
 
@@ -132,15 +132,15 @@ A hosted "pro" tier (Phase 6+) would add: account-bound scenario sharing, team s
 
 ## Build-vs-borrow summary
 
-| Component | Decision | Rationale |
-|---|---|---|
-| `.dbexport` parser | Borrow (dbexport-viewer) | Already shipped, calibrated to ~88% recall vs. SCT ground truth. |
-| BACnet protocol | Borrow (`bacnet-stack`, WASM) | Spec-accurate, weekly commits since 2003, MIT-compatible. |
-| Control interpreter | Build (Rust) | Strategic moat. No suitable open-source equivalent that targets G36. |
-| Block library mappings | Build (data files) | Per-vendor; updates ship as data, not code. |
-| Thermal model (early) | Build (Rust, ~200 LOC) | Real EnergyPlus is overkill for first demos and slow to compile. |
-| Physics (later) | Borrow (EnergyPlus via FMI / Spawn) | Gold standard. Co-sim via FMI keeps us out of physics-engine maintenance. |
-| Data model | Borrow (Brick Schema + Haystack) | Vendor-neutral, has growing tooling ecosystem. |
-| UI framework | Borrow (Svelte) | Solo-maintainer friendly. |
-| Canvas | Build (SVG) | Custom interaction model; no off-the-shelf BAS canvas exists. |
-| Scenario format | Build (`.bas-scenario` bundle) | Need topology + script + result log in one file. |
+| Component              | Decision                            | Rationale                                                                 |
+| ---------------------- | ----------------------------------- | ------------------------------------------------------------------------- |
+| `.dbexport` parser     | Borrow (dbexport-viewer)            | Already shipped, calibrated to ~88% recall vs. SCT ground truth.          |
+| BACnet protocol        | Borrow (`bacnet-stack`, WASM)       | Spec-accurate, weekly commits since 2003, MIT-compatible.                 |
+| Control interpreter    | Build (Rust)                        | Strategic moat. No suitable open-source equivalent that targets G36.      |
+| Block library mappings | Build (data files)                  | Per-vendor; updates ship as data, not code.                               |
+| Thermal model (early)  | Build (Rust, ~200 LOC)              | Real EnergyPlus is overkill for first demos and slow to compile.          |
+| Physics (later)        | Borrow (EnergyPlus via FMI / Spawn) | Gold standard. Co-sim via FMI keeps us out of physics-engine maintenance. |
+| Data model             | Borrow (Brick Schema + Haystack)    | Vendor-neutral, has growing tooling ecosystem.                            |
+| UI framework           | Borrow (Svelte)                     | Solo-maintainer friendly.                                                 |
+| Canvas                 | Build (SVG)                         | Custom interaction model; no off-the-shelf BAS canvas exists.             |
+| Scenario format        | Build (`.bas-scenario` bundle)      | Need topology + script + result log in one file.                          |

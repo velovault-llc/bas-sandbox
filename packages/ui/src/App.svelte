@@ -36,7 +36,10 @@
 
 <style>
   main {
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
     max-width: 720px;
     margin: 3rem auto;
     padding: 0 1.25rem;

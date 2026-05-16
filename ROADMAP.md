@@ -30,6 +30,7 @@ A "Validate" mode that runs structural lint rules across an imported archive. No
 **Output**: pass / warning / error per rule, with offending refs and one-click "show in Browse mode" navigation.
 
 **Persona surfaces**:
+
 - Tech: "this edit would fail SCT import in these 4 places."
 - Engineer/CxA: "this submitted SOO has 3 G36 deviations and 1 missing alarm class."
 
@@ -39,7 +40,7 @@ Extension of dbexport-viewer's reverse-lookup into a "what if" UI.
 
 - Right-click any object → "Simulate delete" → show blast radius (downstream graphics, programs, schedules, user trees).
 - Right-click any prefix → "Simulate rename" → preview the repoint plan with confidence pills.
-- Diff-with-validation: drop original in slot A, edited version in slot B, run static lint on the *delta*.
+- Diff-with-validation: drop original in slot A, edited version in slot B, run static lint on the _delta_.
 - In-browser edit mode: change Description, setpoints, schedule patterns, alarm thresholds. Validation runs live. Export the modified archive.
 
 **Output**: by the time you click "save," you know the export will import cleanly.
@@ -73,6 +74,7 @@ The technical moonshot. Interpret the parsed control graph and produce simulated
 **Output**: drop archive, set OAT/RAT/setpoints, watch supply temp track over a simulated day. Step through logic block-by-block.
 
 **Persona surfaces deepen**:
+
 - Tech: "this edit would have caused a freeze-stat trip during last winter's coldest hour."
 - Engineer/CxA: "this sequence deviates from G36 §5.16 at these steps; here are the canonical responses."
 
