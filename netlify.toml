@@ -1,0 +1,19 @@
+[build]
+  command = "pnpm install --frozen-lockfile && pnpm --filter @bas/ui build"
+  publish = "packages/ui/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  PNPM_VERSION = "10"
+
+# SharedArrayBuffer + cross-origin isolation required for WASM sim threads (Phase 3+).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Embedder-Policy = "require-corp"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

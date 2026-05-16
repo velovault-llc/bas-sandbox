@@ -1,0 +1,23 @@
+{
+  "name": "@bas/ingest-dbexport",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "echo 'ingest-dbexport: consumed as source by ui'",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@bas/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "bas-sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vendor-neutral simulator for building automation systems",
+  "license": "FSL-1.1-ALv2",
+  "homepage": "https://github.com/velovault-llc/bas-sandbox",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/velovault-llc/bas-sandbox.git"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @bas/ui dev",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "prettier-plugin-svelte": "^3.3.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.33.4",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
