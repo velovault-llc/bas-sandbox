@@ -4,8 +4,12 @@
   import { brickTtlPlugin } from '@bas/ingest-brick';
   import TreeNode from './lib/TreeNode.svelte';
   import FindingsPanel from './lib/FindingsPanel.svelte';
+  import BuildCanvas from './lib/BuildCanvas.svelte';
 
   const plugins = [dbexportPlugin, brickTtlPlugin];
+
+  type Mode = 'view' | 'build';
+  let mode = $state<Mode>('view');
 
   let dragOver = $state(false);
   let loading = $state(false);
@@ -35,8 +39,6 @@
       result = await plugin.ingest(file);
       loading = false;
 
-      // Run validators after ingest succeeds. Yield to the UI so the topology
-      // paints first, then validators run while user is already looking at the tree.
       const validators = plugin.validators ?? [];
       if (validators.length > 0) {
         validating = true;
@@ -89,153 +91,224 @@
   }
 </script>
 
-<main class:has-result={!!result}>
-  <header>
-    <h1>bas-sandbox</h1>
-    <span class="badge">Phase 1 · v{VERSION}</span>
+<div class="layout" class:wide={mode === 'build' || !!result}>
+  <header class="app-header">
+    <div class="brand">
+      <h1>bas-sandbox</h1>
+      <span class="badge">Phase 1 · v{VERSION}</span>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'view'}
+        class:active={mode === 'view'}
+        onclick={() => (mode = 'view')}
+      >
+        View
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'build'}
+        class:active={mode === 'build'}
+        onclick={() => (mode = 'build')}
+      >
+        Build
+      </button>
+    </div>
   </header>
 
-  <p class="lede">
-    Vendor-neutral simulator for building automation systems. Drag-and-drop topology, real BACnet
-    behavior, thermal response — try the edit before you ship it to the live engine.
-  </p>
+  {#if mode === 'view'}
+    <main class="view">
+      <p class="lede">
+        Vendor-neutral simulator for building automation systems. Drag-and-drop topology, real
+        BACnet behavior, thermal response — try the edit before you ship it to the live engine.
+      </p>
 
-  {#if !result}
-    <div
-      class="dropzone"
-      class:dragover={dragOver}
-      role="region"
-      aria-label="Drop an archive to ingest"
-      ondrop={onDrop}
-      ondragover={onDragOver}
-      ondragleave={onDragLeave}
-    >
-      {#if loading}
-        <p>Parsing <strong>{sourceFileName}</strong>…</p>
-      {:else if !error}
-        <p>
-          Drop a <code>.dbexport</code> or <code>.ttl</code> file here, or
-          <label class="file-link">
-            <input type="file" accept=".dbexport,.zip,.ttl" onchange={onFileInput} />
-            choose one
-          </label>.
-        </p>
-        <p class="hint">Files are parsed locally in your browser. Nothing is uploaded.</p>
-      {/if}
-    </div>
-  {/if}
-
-  {#if error}
-    <div class="error" role="alert">
-      <strong>Couldn't parse {sourceFileName}:</strong>
-      {error}
-      <button type="button" class="reset" onclick={reset}>Try another file</button>
-    </div>
-  {/if}
-
-  {#if result}
-    <section class="result">
-      <div class="result-header">
-        <h2>{sourceFileName}</h2>
-        <button type="button" class="reset" onclick={reset}>Load another</button>
-      </div>
-      <ul class="stats">
-        <li><strong>{result.metadata?.deviceCount ?? '?'}</strong> devices</li>
-        <li><strong>{result.metadata?.objectCount?.toLocaleString() ?? '?'}</strong> objects</li>
-        <li><strong>{result.metadata?.engines?.length ?? '?'}</strong> engines</li>
-        <li><strong>{result.graph.size().toLocaleString()}</strong> brick triples</li>
-      </ul>
-
-      {#if result.topology && result.topology.length > 0}
-        <h3>Topology</h3>
-        <div class="topology" role="tree">
-          {#each result.topology as node (node.id)}
-            <TreeNode {node} />
-          {/each}
+      {#if !result}
+        <div
+          class="dropzone"
+          class:dragover={dragOver}
+          role="region"
+          aria-label="Drop an archive to ingest"
+          ondrop={onDrop}
+          ondragover={onDragOver}
+          ondragleave={onDragLeave}
+        >
+          {#if loading}
+            <p>Parsing <strong>{sourceFileName}</strong>…</p>
+          {:else if !error}
+            <p>
+              Drop a <code>.dbexport</code> or <code>.ttl</code> file here, or
+              <label class="file-link">
+                <input type="file" accept=".dbexport,.zip,.ttl" onchange={onFileInput} />
+                choose one
+              </label>.
+            </p>
+            <p class="hint">Files are parsed locally in your browser. Nothing is uploaded.</p>
+          {/if}
         </div>
       {/if}
 
-      <h3>
-        Validation
-        {#if validating}<span class="validating">running…</span>{/if}
-      </h3>
-      {#if validating && findings.length === 0}
-        <div class="empty">Running validators…</div>
-      {:else}
-        <FindingsPanel {findings} durationMs={validateMs} />
+      {#if error}
+        <div class="error" role="alert">
+          <strong>Couldn't parse {sourceFileName}:</strong>
+          {error}
+          <button type="button" class="reset" onclick={reset}>Try another file</button>
+        </div>
       {/if}
 
-      {#if result.warnings.length > 0}
-        <h3>Warnings</h3>
-        <ul class="warnings">
-          {#each result.warnings as warning, i (i)}
-            <li>{warning}</li>
+      {#if result}
+        <section class="result">
+          <div class="result-header">
+            <h2>{sourceFileName}</h2>
+            <button type="button" class="reset" onclick={reset}>Load another</button>
+          </div>
+          <ul class="stats">
+            <li><strong>{result.metadata?.deviceCount ?? '?'}</strong> devices</li>
+            <li>
+              <strong>{result.metadata?.objectCount?.toLocaleString() ?? '?'}</strong> objects
+            </li>
+            <li><strong>{result.metadata?.engines?.length ?? '?'}</strong> engines</li>
+            <li><strong>{result.graph.size().toLocaleString()}</strong> brick triples</li>
+          </ul>
+
+          {#if result.topology && result.topology.length > 0}
+            <h3>Topology</h3>
+            <div class="topology" role="tree">
+              {#each result.topology as node (node.id)}
+                <TreeNode {node} />
+              {/each}
+            </div>
+          {/if}
+
+          <h3>
+            Validation
+            {#if validating}<span class="validating">running…</span>{/if}
+          </h3>
+          {#if validating && findings.length === 0}
+            <div class="empty">Running validators…</div>
+          {:else}
+            <FindingsPanel {findings} durationMs={validateMs} />
+          {/if}
+
+          {#if result.warnings.length > 0}
+            <h3>Warnings</h3>
+            <ul class="warnings">
+              {#each result.warnings as warning, i (i)}
+                <li>{warning}</li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+      {/if}
+
+      <section class="meta">
+        <h2>Registered ingest plugins</h2>
+        <ul class="plugins">
+          {#each plugins as plugin (plugin.id)}
+            <li>
+              <strong>{plugin.displayName}</strong>
+              <span class="accepts">accepts: {plugin.accepts.join(', ')}</span>
+              {#if plugin.validators && plugin.validators.length > 0}
+                <span class="validator-count">{plugin.validators.length} validators</span>
+              {/if}
+            </li>
           {/each}
         </ul>
-      {/if}
-    </section>
+      </section>
+    </main>
+  {:else}
+    <main class="build">
+      <p class="lede">
+        Build mode (preview). Drag equipment from the left palette onto the canvas, then drag
+        between the handles to wire up a network topology. v0.1 — no simulation behavior yet; v0.2
+        will animate state across the wires.
+      </p>
+      <BuildCanvas />
+    </main>
   {/if}
-
-  <section class="meta">
-    <h2>Registered ingest plugins</h2>
-    <ul class="plugins">
-      {#each plugins as plugin (plugin.id)}
-        <li>
-          <strong>{plugin.displayName}</strong>
-          <span class="accepts">accepts: {plugin.accepts.join(', ')}</span>
-          {#if plugin.validators && plugin.validators.length > 0}
-            <span class="validator-count">{plugin.validators.length} validators</span>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  </section>
 
   <footer>
     <a href="https://github.com/velovault-llc/bas-sandbox">github.com/velovault-llc/bas-sandbox</a>
   </footer>
-</main>
+</div>
 
 <style>
-  main {
+  .layout {
     font-family:
       system-ui,
       -apple-system,
       sans-serif;
     max-width: 720px;
-    margin: 3rem auto;
+    margin: 2rem auto;
     padding: 0 1.25rem;
     line-height: 1.5;
     transition: max-width 200ms ease;
   }
 
-  main.has-result {
-    max-width: 960px;
+  .layout.wide {
+    max-width: 1200px;
   }
 
-  header {
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .brand {
     display: flex;
     align-items: baseline;
     gap: 0.75rem;
-    margin-bottom: 0.5rem;
   }
 
   h1 {
     margin: 0;
-    font-size: 1.75rem;
+    font-size: 1.6rem;
   }
 
   .badge {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
     background: color-mix(in srgb, CanvasText 10%, transparent);
     color: color-mix(in srgb, CanvasText 70%, transparent);
   }
 
+  .tabs {
+    display: flex;
+    gap: 0.25rem;
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    padding: 0.15rem;
+    background: color-mix(in srgb, CanvasText 4%, transparent);
+  }
+
+  .tabs button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .tabs button.active {
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
   .lede {
     color: color-mix(in srgb, CanvasText 80%, transparent);
-    margin-bottom: 2rem;
+    margin: 0 0 1.5rem 0;
   }
 
   .dropzone {
