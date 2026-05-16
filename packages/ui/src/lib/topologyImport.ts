@@ -115,8 +115,12 @@ function compactSubtitle(meta: DeviceMeta, isEngine: boolean): string | undefine
     if (meta.ip) parts.push(meta.ip);
     else if (meta.hostName) parts.push(meta.hostName);
     if (meta.bacnetInstance) parts.push(`inst ${meta.bacnetInstance}`);
+    if (meta.model) parts.push(meta.model);
   } else {
-    // Controller: prefer MAC (MS/TP) or N2 address, then instance, then IP fallback.
+    // Controller: lead with model name when known (e.g. "VMA1612") since it
+    // tells a field tech what they're staring at faster than a MAC does, then
+    // fall through to MS/TP / N2 / instance / IP for identity.
+    if (meta.model) parts.push(meta.model);
     if (meta.mac) parts.push(`mac ${meta.mac}`);
     else if (meta.n2Address) parts.push(`n2 ${meta.n2Address}`);
     if (meta.bacnetInstance) parts.push(`inst ${meta.bacnetInstance}`);

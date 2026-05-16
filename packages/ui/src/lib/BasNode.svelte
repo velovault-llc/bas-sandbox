@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getContext } from 'svelte';
   import { Handle, Position, type NodeProps } from '@xyflow/svelte';
+  import { SENSOR_TEMPLATE_BY_ID, type SensorSignal } from './sim/sensorModels';
 
   type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety';
 
@@ -26,6 +27,16 @@
     meta?: Record<string, string | undefined>;
     /** Sensor-only: current fault mode. Drives node tinting + a small badge. */
     fault?: 'normal' | 'open' | 'short' | 'stuck' | 'drift';
+    /** Sensor-only: signal type. Drives subtitle + future poll-cadence sim. */
+    signal?: SensorSignal;
+    /** Sensor-only: seconds since the supervisor last heard a fresh reading.
+     *  Set by BuildCanvas while a comm fault is active. Drives the stale badge. */
+    staleSec?: number;
+    /** Controller-only: high/low alarm thresholds (°F). Crossing flips alarm. */
+    highAlarm?: number;
+    lowAlarm?: number;
+    /** Controller-only: current alarm state (set by BuildCanvas each tick). */
+    alarm?: 'normal' | 'high' | 'low';
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -95,6 +106,21 @@
     sensor: 'Sensor',
     safety: 'Safety',
   };
+
+  /** Subtitle for a sensor — prefers any import-supplied subtitle (mac / instance
+   *  from the dbexport), otherwise synthesizes one from the chosen signal
+   *  template ("Pt1000 RTD · -40 to 250 °F"). */
+  const effectiveSubtitle = $derived.by(() => {
+    if (data.subtitle) return data.subtitle;
+    if (data.kind === 'sensor' && data.signal) {
+      const tpl = SENSOR_TEMPLATE_BY_ID.get(data.signal);
+      if (tpl) {
+        const range = `${tpl.range[0]} to ${tpl.range[1]} ${tpl.units}`.trim();
+        return `${tpl.label} · ${range}`;
+      }
+    }
+    return undefined;
+  });
 </script>
 
 <div
@@ -136,12 +162,29 @@
     />
   {:else}
     <div class="label" title="Double-click to rename">{data.label}</div>
-    {#if data.subtitle}
-      <div class="subtitle" title="From the parsed .dbexport">{data.subtitle}</div>
+    {#if effectiveSubtitle}
+      <div
+        class="subtitle"
+        title={data.subtitle ? 'From the parsed .dbexport' : 'Sensor signal template'}
+      >
+        {effectiveSubtitle}
+      </div>
     {/if}
   {/if}
   {#if data.runtime}
-    <div class="runtime">{data.runtime.value}</div>
+    <div class="runtime">
+      {data.runtime.value}
+      {#if isOffline && typeof data.staleSec === 'number' && data.staleSec > 0}
+        <span class="stale-age" title="Wall-seconds since last good reading"
+          >stale {data.staleSec}s</span
+        >
+      {/if}
+    </div>
+  {/if}
+  {#if data.kind === 'controller' && data.alarm && data.alarm !== 'normal'}
+    <div class="alarm-badge alarm-{data.alarm}" title="Zone temp out of band">
+      {data.alarm === 'high' ? '▲ HIGH TEMP' : '▼ LOW TEMP'}
+    </div>
   {/if}
   {#if data.childCount !== undefined && data.childCount > 0}
     <div class="children-toggle" title={data.collapsed ? 'Click to expand' : 'Click to collapse'}>
@@ -235,6 +278,48 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     white-space: nowrap;
+  }
+
+  .stale-age {
+    margin-left: 0.4rem;
+    font-size: 0.65rem;
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .alarm-badge {
+    margin-top: 0.25rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.04em;
+    animation: alarm-flash 1.2s ease-in-out infinite alternate;
+  }
+
+  .alarm-badge.alarm-high {
+    background: color-mix(in srgb, #e74c3c 22%, transparent);
+    color: #e74c3c;
+    border: 1px solid color-mix(in srgb, #e74c3c 55%, transparent);
+  }
+
+  .alarm-badge.alarm-low {
+    background: color-mix(in srgb, #4a9eff 22%, transparent);
+    color: #4a9eff;
+    border: 1px solid color-mix(in srgb, #4a9eff 55%, transparent);
+  }
+
+  @keyframes alarm-flash {
+    from {
+      opacity: 0.7;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   @keyframes pulse {

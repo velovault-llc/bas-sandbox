@@ -20,6 +20,7 @@
     type SingleZoneConfig,
     type SensorFault,
   } from './sim/thermal';
+  import { SENSOR_TEMPLATES, DEFAULT_SENSOR_SIGNAL, type SensorSignal } from './sim/sensorModels';
   import { importStore } from './canvasStore.svelte';
 
   const nodeTypes = { bas: BasNode };
@@ -582,11 +583,56 @@
       }
     }
 
+    // Look up which wired-target sensor each controller pairs with, so we can
+    // evaluate high/low alarm thresholds against the *real* zone temp (T_zone,
+    // not T_sensed — alarms should fire on what the room actually is, not on
+    // a possibly-frozen sensor read).
+    const sampleByCtrlForAlarm = sampleByCtrl;
+
     nodes = nodes.map((n) => {
-      const data = n.data as { kind: Kind; label: string; runtime?: unknown };
+      const data = n.data as {
+        kind: Kind;
+        label: string;
+        runtime?: unknown;
+        highAlarm?: number;
+        lowAlarm?: number;
+        staleSec?: number;
+      };
+
+      // 1) Bump stale-age counter on offline nodes; clear when they come back.
+      let staleNext = data.staleSec;
+      if (offline.has(n.id)) {
+        staleNext = (data.staleSec ?? 0) + 1;
+      } else if (data.staleSec !== undefined) {
+        staleNext = undefined;
+      }
+
+      // 2) Evaluate controller alarms against the live sample (if any).
+      let alarmNext: 'normal' | 'high' | 'low' | undefined = undefined;
+      if (data.kind === 'controller') {
+        const sample = sampleByCtrlForAlarm.get(n.id);
+        if (sample) {
+          if (data.highAlarm !== undefined && sample.T_zone >= data.highAlarm) {
+            alarmNext = 'high';
+          } else if (data.lowAlarm !== undefined && sample.T_zone <= data.lowAlarm) {
+            alarmNext = 'low';
+          } else {
+            alarmNext = 'normal';
+          }
+        }
+      }
+
       const physVal = physicsValueByNode.get(n.id);
       if (physVal) {
-        return { ...n, data: { ...data, runtime: physVal } };
+        return {
+          ...n,
+          data: {
+            ...data,
+            runtime: physVal,
+            staleSec: staleNext,
+            ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
+          },
+        };
       }
       let value: string;
       let status: 'idle' | 'polling' | 'responded' | 'tripped' = 'responded';
@@ -611,7 +657,15 @@
         default:
           value = 'idle';
       }
-      return { ...n, data: { ...data, runtime: { value, status } } };
+      return {
+        ...n,
+        data: {
+          ...data,
+          runtime: { value, status },
+          staleSec: staleNext,
+          ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
+        },
+      };
     });
   }
 
@@ -1066,6 +1120,33 @@
     if (nodeKind(selectedNode) !== 'sensor') return null;
     return selectedNode;
   });
+
+  const selectedController = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'controller') return null;
+    return selectedNode;
+  });
+
+  /** Update a sensor's signal template. UI-only change today — the template
+   *  feeds the subtitle and (future) poll-cadence sim, but the thermal model
+   *  treats every sensor as a generic zone-temp source. */
+  function setSensorSignal(sensorId: string, signal: SensorSignal): void {
+    nodes = nodes.map((n) =>
+      n.id === sensorId ? { ...n, data: { ...(n.data as Record<string, unknown>), signal } } : n,
+    );
+  }
+
+  /** Set or clear a controller's high/low alarm threshold from the inspector. */
+  function setControllerAlarm(controllerId: string, which: 'high' | 'low', raw: string): void {
+    const parsed = raw === '' ? undefined : Number(raw);
+    const value = parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined;
+    const key = which === 'high' ? 'highAlarm' : 'lowAlarm';
+    nodes = nodes.map((n) =>
+      n.id === controllerId
+        ? { ...n, data: { ...(n.data as Record<string, unknown>), [key]: value } }
+        : n,
+    );
+  }
 
   /** Inject a fault on the sensor. Updates the node's data so it persists into
    *  localStorage / scenario save, AND mutates the running thermal sim (if any)
@@ -1725,31 +1806,88 @@
         {/if}
 
         {#if selectedSensor}
-          {@const currentFault = ((selectedSensor.data as { fault?: SensorFault } | undefined)
-            ?.fault ?? 'normal') as SensorFault}
+          {@const sensorData = selectedSensor.data as
+            | { fault?: SensorFault; signal?: SensorSignal }
+            | undefined}
+          {@const currentFault = (sensorData?.fault ?? 'normal') as SensorFault}
+          {@const currentSignal = (sensorData?.signal ?? DEFAULT_SENSOR_SIGNAL) as SensorSignal}
           {@const wiredHere = wiredTargets.some((t) => t.sensorId === selectedSensor.id)}
           <Panel position="top-center">
             <div class="sensor-panel">
-              <span class="sensor-title">Sensor fault — {nodeLabel(selectedSensor)}</span>
-              <div class="fault-chips">
-                {#each ['normal', 'open', 'short', 'stuck', 'drift'] as f (f)}
-                  <button
-                    type="button"
-                    class="fault-chip"
-                    class:active={currentFault === f}
-                    class:danger={f !== 'normal'}
-                    title={FAULT_TIPS[f as SensorFault]}
-                    onclick={() => setSensorFault(selectedSensor.id, f as SensorFault)}
-                  >
-                    {f}
-                  </button>
-                {/each}
+              <span class="sensor-title">Sensor — {nodeLabel(selectedSensor)}</span>
+              <div class="sensor-row">
+                <span class="sensor-sub">Signal</span>
+                <div class="signal-chips">
+                  {#each SENSOR_TEMPLATES as tpl (tpl.id)}
+                    <button
+                      type="button"
+                      class="signal-chip"
+                      class:active={currentSignal === tpl.id}
+                      title="{tpl.accuracy} · polled ~{tpl.pollSec}s"
+                      onclick={() => setSensorSignal(selectedSensor.id, tpl.id)}
+                    >
+                      {tpl.label}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+              <div class="sensor-row">
+                <span class="sensor-sub">Fault</span>
+                <div class="fault-chips">
+                  {#each ['normal', 'open', 'short', 'stuck', 'drift'] as f (f)}
+                    <button
+                      type="button"
+                      class="fault-chip"
+                      class:active={currentFault === f}
+                      class:danger={f !== 'normal'}
+                      title={FAULT_TIPS[f as SensorFault]}
+                      onclick={() => setSensorFault(selectedSensor.id, f as SensorFault)}
+                    >
+                      {f}
+                    </button>
+                  {/each}
+                </div>
               </div>
               {#if !wiredHere}
                 <span class="sensor-warn"
                   >Not wired to a controller — fault won't affect any sim yet.</span
                 >
               {/if}
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedController}
+          {@const ctrlData = selectedController.data as
+            | { highAlarm?: number; lowAlarm?: number }
+            | undefined}
+          <Panel position="top-center">
+            <div class="ctrl-panel">
+              <span class="ctrl-title">Alarm thresholds — {nodeLabel(selectedController)}</span>
+              <label class="ctrl-field">
+                <span>High</span>
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder="off"
+                  value={ctrlData?.highAlarm ?? ''}
+                  oninput={(e) =>
+                    setControllerAlarm(selectedController.id, 'high', e.currentTarget.value)}
+                />
+                <span class="ctrl-unit">°F</span>
+              </label>
+              <label class="ctrl-field">
+                <span>Low</span>
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder="off"
+                  value={ctrlData?.lowAlarm ?? ''}
+                  oninput={(e) =>
+                    setControllerAlarm(selectedController.id, 'low', e.currentTarget.value)}
+                />
+                <span class="ctrl-unit">°F</span>
+              </label>
             </div>
           </Panel>
         {/if}
@@ -2798,6 +2936,100 @@
     font-size: 0.65rem;
     color: color-mix(in srgb, CanvasText 60%, transparent);
     font-style: italic;
+  }
+
+  .sensor-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .sensor-sub {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    min-width: 2.5rem;
+  }
+
+  .signal-chips {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .signal-chip {
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+
+  .signal-chip:hover {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
+  }
+
+  .signal-chip.active {
+    border-color: #4a9eff;
+    background: color-mix(in srgb, #4a9eff 18%, transparent);
+    color: #4a9eff;
+  }
+
+  .ctrl-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+
+  .ctrl-field {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 80%, transparent);
+  }
+
+  .ctrl-field input {
+    width: 4.5rem;
+    padding: 0.15rem 0.35rem;
+    background: Canvas;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 4px;
+    color: CanvasText;
+    font: inherit;
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+  }
+
+  .ctrl-field input:focus {
+    border-color: #4a9eff;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #4a9eff 30%, transparent);
+  }
+
+  .ctrl-unit {
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
   }
 
   .tune-panel {
