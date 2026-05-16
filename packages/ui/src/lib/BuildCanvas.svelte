@@ -19,6 +19,7 @@
     type Sample,
     type SingleZoneConfig,
   } from './sim/thermal';
+  import { importStore } from './canvasStore.svelte';
 
   const nodeTypes = { bas: BasNode };
 
@@ -1170,6 +1171,35 @@
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
+  });
+
+  /**
+   * When App.svelte hands us a pending topology import (user clicked
+   * "Open in Build" from the dbexport tool), swap it onto the canvas.
+   * Clears all wired targets and sim state since the imported topology
+   * uses fresh node ids that don't match the previous canvas.
+   */
+  $effect(() => {
+    const pending = importStore.pending;
+    if (!pending) return;
+    // Clear the pending slot so we don't re-apply on every reactive recompute.
+    importStore.pending = null;
+    stop();
+    tick = 0;
+    runningSamples = new Map();
+    nodes = pending.nodes;
+    edges = pending.edges.map(withStyle);
+    wiredTargets = [];
+    focusedTargetId = null;
+    // Reset name counters so future palette drops don't collide with imp-*
+    // ids. nextId picks up safely past the highest imp- id.
+    for (const k of Object.keys(counters)) counters[k] = 0;
+    let maxImp = 100;
+    for (const n of nodes) {
+      const m = /^imp-(\d+)$/.exec(n.id);
+      if (m) maxImp = Math.max(maxImp, parseInt(m[1], 10) + 1);
+    }
+    nextId = maxImp;
   });
 
   // ============ localStorage auto-persist ============

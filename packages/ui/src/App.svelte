@@ -5,6 +5,8 @@
   import TreeNode from './lib/TreeNode.svelte';
   import FindingsPanel from './lib/FindingsPanel.svelte';
   import BuildCanvas from './lib/BuildCanvas.svelte';
+  import { importStore } from './lib/canvasStore.svelte';
+  import { topologyToCanvas } from './lib/topologyImport';
 
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
@@ -88,6 +90,24 @@
     sourceFileName = null;
     findings = [];
     validateMs = null;
+  }
+
+  function openInBuild() {
+    if (!result || !result.topology) return;
+    const { nodes: importedNodes, edges: importedEdges, summary } = topologyToCanvas(
+      result.topology,
+    );
+    importStore.pending = {
+      nodes: importedNodes,
+      edges: importedEdges,
+      sourceLabel: sourceFileName ?? 'imported',
+    };
+    const truncMsg =
+      summary.truncated > 0 ? ` (${summary.truncated} controllers truncated per-engine cap)` : '';
+    console.info(
+      `Imported ${summary.engineCount} engines, ${summary.controllerCount} controllers from ${sourceFileName}${truncMsg}`,
+    );
+    mode = 'build';
   }
 </script>
 
@@ -176,7 +196,12 @@
           </ul>
 
           {#if result.topology && result.topology.length > 0}
-            <h3>Topology</h3>
+            <h3>
+              Topology
+              <button type="button" class="open-in-build" onclick={openInBuild}>
+                Open in Build →
+              </button>
+            </h3>
             <div class="topology" role="tree">
               {#each result.topology as node (node.id)}
                 <TreeNode {node} />
@@ -431,6 +456,24 @@
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
+  }
+
+  .open-in-build {
+    margin-left: auto;
+    border: 1px solid color-mix(in srgb, #2ecc71 50%, transparent);
+    background: color-mix(in srgb, #2ecc71 8%, transparent);
+    color: #2ecc71;
+    font: inherit;
+    font-size: 0.72rem;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 0.15rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .open-in-build:hover {
+    background: color-mix(in srgb, #2ecc71 18%, transparent);
   }
 
   .validating {
