@@ -168,9 +168,7 @@
     ];
   }
 
-  // ============ Selection & physics target ============
-
-  let selectedControllerId = $state<string | null>(null);
+  // ============ Selection & physics targets ============
 
   function nodeKind(n: Node): Kind | undefined {
     return (n.data as { kind?: Kind }).kind;
@@ -192,7 +190,7 @@
     return null;
   }
 
-  /** First controller that has a sensor wired to it. Used as a fallback. */
+  /** First controller that has a sensor wired to it. Used for scenario migration. */
   function firstControlledPair(): { controller: Node; sensor: Node } | null {
     for (const n of nodes) {
       if (nodeKind(n) !== 'controller') continue;
@@ -201,16 +199,6 @@
     }
     return null;
   }
-
-  type PhysicsTarget = {
-    controllerId: string;
-    controllerLabel: string;
-    sensorId: string;
-    sensorLabel: string;
-    /** Optional parent controller (one hop upstream) — surfaces SP / OAT info. */
-    parentId?: string;
-    parentLabel?: string;
-  };
 
   /** Find a controller wired *upstream* (edge.target === thisId). */
   function findParentController(controllerId: string): Node | null {
@@ -222,26 +210,48 @@
     return null;
   }
 
+  /** A single physics-wired pair with its own config and (later) running system. */
+  type WiredTarget = {
+    controllerId: string;
+    sensorId: string;
+    config: SingleZoneConfig;
+  };
+
+  type PhysicsTarget = {
+    controllerId: string;
+    controllerLabel: string;
+    sensorId: string;
+    sensorLabel: string;
+    parentId?: string;
+    parentLabel?: string;
+  };
+
+  // Multi-target state. Pre-seeded with the demo VAV-1 ↔ ZN-T-1 pair so the
+  // first-time experience still has something to Run.
+  let wiredTargets = $state<WiredTarget[]>([
+    {
+      controllerId: 'demo-3',
+      sensorId: 'demo-4',
+      config: { ...DEFAULT_CONFIG },
+    },
+  ]);
+  let focusedTargetId = $state<string | null>('demo-3');
+
+  const focusedTarget = $derived.by(() => {
+    if (!focusedTargetId) return null;
+    return wiredTargets.find((t) => t.controllerId === focusedTargetId) ?? null;
+  });
+
+  /** The focused wired target rendered as a PhysicsTarget with looked-up labels. */
   const physicsTarget = $derived.by((): PhysicsTarget | null => {
-    let controller: Node | undefined;
-    let sensor: Node | null = null;
-
-    if (selectedControllerId) {
-      controller = nodes.find((n) => n.id === selectedControllerId);
-      if (!controller || nodeKind(controller) !== 'controller') controller = undefined;
-      if (controller) sensor = findConnectedSensor(controller.id);
-    }
-    if (!controller || !sensor) {
-      const fallback = firstControlledPair();
-      if (!fallback) return null;
-      controller = fallback.controller;
-      sensor = fallback.sensor;
-    }
-
-    const parent = findParentController(controller.id);
+    if (!focusedTarget) return null;
+    const ctrl = nodes.find((n) => n.id === focusedTarget.controllerId);
+    const sensor = nodes.find((n) => n.id === focusedTarget.sensorId);
+    if (!ctrl || !sensor) return null;
+    const parent = findParentController(ctrl.id);
     return {
-      controllerId: controller.id,
-      controllerLabel: nodeLabel(controller),
+      controllerId: ctrl.id,
+      controllerLabel: nodeLabel(ctrl),
       sensorId: sensor.id,
       sensorLabel: nodeLabel(sensor),
       parentId: parent?.id,
@@ -249,11 +259,15 @@
     };
   });
 
-  // Expose the set of physics-wired node ids to BasNode via context so it can
-  // render a ⚡ indicator without us mutating per-node data.
+  // Set of all node ids that are part of *any* wired target — used by BasNode
+  // to render the ⚡ marker. All wired pairs get the indicator regardless of focus.
   const wiredIds = $derived.by((): Set<string> => {
-    if (!physicsTarget) return new Set();
-    return new Set([physicsTarget.controllerId, physicsTarget.sensorId]);
+    const set = new Set<string>();
+    for (const t of wiredTargets) {
+      set.add(t.controllerId);
+      set.add(t.sensorId);
+    }
+    return set;
   });
   setContext('basWiredIds', () => wiredIds);
 
@@ -264,13 +278,11 @@
   let intervalId: ReturnType<typeof setInterval> | null = null;
   const TICK_MS = 1000;
 
-  let system = $state<SingleZoneSystem | null>(null);
-  let samples = $state.raw<Sample[]>([]);
+  // Per-target running state, keyed by controllerId.
+  let runningSystems = $state.raw<Map<string, SingleZoneSystem>>(new Map());
+  let runningSamples = $state.raw<Map<string, Sample[]>>(new Map());
+  let runningSnapshot = $state.raw<WiredTarget[]>([]);
 
-  // Tunable physics config. The system reads these by reference on every
-  // step, so mid-run slider tweaks land on the very next tick — drag the
-  // setpoint while running and you watch the controller chase it.
-  let config = $state<SingleZoneConfig>({ ...DEFAULT_CONFIG });
   let showAdvanced = $state(false);
 
   // Bundled demo scenarios. Picking one snaps config to its values and
@@ -317,15 +329,16 @@
   let activePresetId = $state<string>('default');
 
   function applyPreset(preset: Preset) {
+    if (!focusedTarget) return;
     activePresetId = preset.id;
     scenarioBaseline = { ...preset.config };
-    config = { ...preset.config };
+    focusedTarget.config = { ...preset.config };
   }
 
   function resetConfig() {
-    // Snap back to whatever the active baseline is (preset or loaded scenario),
-    // not the hardcoded DEFAULT_CONFIG.
-    config = { ...scenarioBaseline };
+    // Snap back to whatever the active baseline is (preset or loaded scenario).
+    if (!focusedTarget) return;
+    focusedTarget.config = { ...scenarioBaseline };
   }
 
   function tempReading(): string {
@@ -351,53 +364,83 @@
     return { value: '✓ OK', status: 'idle' };
   }
 
-  // Snapshot of physics target captured at sim-start so changing selection
-  // mid-run doesn't yank the chart out from under the user.
-  let runningTarget = $state<PhysicsTarget | null>(null);
-
   function tickOnce() {
     tick++;
-    const sample = system ? system.step() : null;
-    if (sample) {
-      samples = system!.history.slice();
+
+    // Step every wired system. Build a fast lookup from controllerId → latest sample
+    // so the node-runtime pass below can resolve in O(1).
+    const sampleByCtrl = new Map<string, Sample>();
+    const samples = runningSamples;
+    const systems = runningSystems;
+    for (const target of runningSnapshot) {
+      const sys = systems.get(target.controllerId);
+      if (!sys) continue;
+      const sample = sys.step();
+      sampleByCtrl.set(target.controllerId, sample);
+      let hist = samples.get(target.controllerId) ?? [];
+      hist = [...hist, sample];
+      if (hist.length > target.config.historyLength) {
+        hist = hist.slice(hist.length - target.config.historyLength);
+      }
+      samples.set(target.controllerId, hist);
+    }
+    // Trigger reactivity on the samples map for the chart.
+    runningSamples = new Map(samples);
+
+    // Build a node-id → physics-driven-value lookup so the runtime pass is direct.
+    const physicsValueByNode = new Map<
+      string,
+      { value: string; status: 'polling' | 'responded' }
+    >();
+    for (const target of runningSnapshot) {
+      const sample = sampleByCtrl.get(target.controllerId);
+      if (!sample) continue;
+      physicsValueByNode.set(target.controllerId, {
+        value: `Out ${Math.round(sample.actuator * 100)}% (PI)`,
+        status: 'polling',
+      });
+      physicsValueByNode.set(target.sensorId, {
+        value: `${sample.T_zone.toFixed(1)} °F`,
+        status: 'responded',
+      });
+      // If a parent controller exists and isn't itself wired, surface SP/OAT there.
+      const parent = findParentController(target.controllerId);
+      if (parent && !physicsValueByNode.has(parent.id)) {
+        physicsValueByNode.set(parent.id, {
+          value: `SP ${sample.setpoint.toFixed(0)}°F · OAT ${sample.T_OA.toFixed(0)}°F`,
+          status: 'polling',
+        });
+      }
     }
 
-    const tgt = runningTarget;
     nodes = nodes.map((n) => {
       const data = n.data as { kind: Kind; label: string; runtime?: unknown };
+      const physVal = physicsValueByNode.get(n.id);
+      if (physVal) {
+        return { ...n, data: { ...data, runtime: physVal } };
+      }
       let value: string;
       let status: 'idle' | 'polling' | 'responded' | 'tripped' = 'responded';
-
-      if (sample && tgt && n.id === tgt.controllerId) {
-        value = `Out ${Math.round(sample.actuator * 100)}% (PI)`;
-        status = 'polling';
-      } else if (sample && tgt && n.id === tgt.sensorId) {
-        value = `${sample.T_zone.toFixed(1)} °F`;
-      } else if (sample && tgt && tgt.parentId && n.id === tgt.parentId) {
-        value = `SP ${sample.setpoint.toFixed(0)}°F · OAT ${sample.T_OA.toFixed(0)}°F`;
-        status = 'polling';
-      } else {
-        switch (data.kind) {
-          case 'supervisor':
-            value = `uptime t=${tick}s`;
-            status = 'idle';
-            break;
-          case 'controller':
-            value = controllerReading();
-            status = 'polling';
-            break;
-          case 'sensor':
-            value = sensorValue(data.label);
-            break;
-          case 'safety': {
-            const s = safetyValue(data.label);
-            value = s.value;
-            status = s.status;
-            break;
-          }
-          default:
-            value = 'idle';
+      switch (data.kind) {
+        case 'supervisor':
+          value = `uptime t=${tick}s`;
+          status = 'idle';
+          break;
+        case 'controller':
+          value = controllerReading();
+          status = 'polling';
+          break;
+        case 'sensor':
+          value = sensorValue(data.label);
+          break;
+        case 'safety': {
+          const s = safetyValue(data.label);
+          value = s.value;
+          status = s.status;
+          break;
         }
+        default:
+          value = 'idle';
       }
       return { ...n, data: { ...data, runtime: { value, status } } };
     });
@@ -441,28 +484,46 @@
   function start() {
     if (running) return;
     running = true;
-    runningTarget = physicsTarget;
-    if (runningTarget) {
-      system = new SingleZoneSystem(config);
-      samples = [];
-      // Animate only the wires on the polling path: supervisor → ... → controller → sensor.
-      // Off-path wires (safety branches, sibling controllers) stay quiet.
-      const pathIds = pollingPathEdgeIds(runningTarget);
+
+    // Snapshot the current wired targets so config/topology edits during a run
+    // don't yank the chart or restart a system mid-trajectory.
+    runningSnapshot = wiredTargets.slice();
+    const systems = new Map<string, SingleZoneSystem>();
+    const samples = new Map<string, Sample[]>();
+    for (const t of runningSnapshot) {
+      systems.set(t.controllerId, new SingleZoneSystem(t.config));
+      samples.set(t.controllerId, []);
+    }
+    runningSystems = systems;
+    runningSamples = samples;
+
+    if (runningSnapshot.length > 0) {
+      // Animate the union of all polling paths.
+      const pathIds = new Set<string>();
+      for (const t of runningSnapshot) {
+        const target: PhysicsTarget = {
+          controllerId: t.controllerId,
+          sensorId: t.sensorId,
+          controllerLabel: '',
+          sensorLabel: '',
+        };
+        for (const id of pollingPathEdgeIds(target)) pathIds.add(id);
+      }
       edges = edges.map((e) => ({ ...e, animated: pathIds.has(e.id) }));
     } else {
-      system = null;
-      samples = [];
       // No physics target → no real traffic — animate all wires lightly so
       // the canvas isn't completely static while the synthetic ticker runs.
       edges = edges.map((e) => ({ ...e, animated: true }));
     }
+
     tickOnce();
     intervalId = setInterval(tickOnce, TICK_MS);
   }
 
   function stop() {
     running = false;
-    runningTarget = null;
+    runningSnapshot = [];
+    runningSystems = new Map();
     if (intervalId) clearInterval(intervalId);
     intervalId = null;
     edges = edges.map((e) => ({ ...e, animated: false }));
@@ -471,8 +532,7 @@
   function resetSim() {
     stop();
     tick = 0;
-    system = null;
-    samples = [];
+    runningSamples = new Map();
     nodes = nodes.map((n) => {
       const data = n.data as Record<string, unknown>;
       const { runtime: _runtime, ...rest } = data;
@@ -484,9 +544,9 @@
     if (!confirm('Clear all nodes and connections?')) return;
     stop();
     tick = 0;
-    system = null;
-    samples = [];
-    selectedControllerId = null;
+    runningSamples = new Map();
+    wiredTargets = [];
+    focusedTargetId = null;
     nodes = [];
     edges = [];
     for (const k of Object.keys(counters)) counters[k] = 0;
@@ -501,10 +561,15 @@
       nodes: Node[];
       edges: Edge[];
     };
+    /** Legacy single-selection (v1.0/1.1). Still written for back-compat. */
     selection: {
       controllerId: string | null;
     };
+    /** Legacy single-config (v1.0/1.1). Mirrors the focused target's config. */
     config: SingleZoneConfig;
+    /** v1.2+: explicit multi-target list. */
+    wiredTargets?: WiredTarget[];
+    focusedTargetId?: string | null;
     counters: Record<string, number>;
     nextId: number;
   };
@@ -536,12 +601,17 @@
       const { runtime: _runtime, ...rest } = data;
       return { ...n, data: rest };
     });
+    const focused = focusedTarget;
     const scenario: BasScenarioV1 = {
       version: 1,
       savedAt: new Date().toISOString(),
       topology: { nodes: cleanNodes, edges: edges.map((e) => ({ ...e, animated: false })) },
-      selection: { controllerId: selectedControllerId },
-      config: { ...config },
+      selection: { controllerId: focusedTargetId },
+      // Back-compat: a single `config` field at top level mirrors the focused
+      // target so older readers still get something sensible.
+      config: focused ? { ...focused.config } : { ...DEFAULT_CONFIG },
+      wiredTargets: wiredTargets.map((t) => ({ ...t, config: { ...t.config } })),
+      focusedTargetId,
       counters: { ...counters },
       nextId,
     };
@@ -559,16 +629,47 @@
   function applyScenario(parsed: BasScenarioV1) {
     stop();
     tick = 0;
-    system = null;
-    samples = [];
+    runningSamples = new Map();
     nodes = parsed.topology.nodes;
     edges = parsed.topology.edges;
-    selectedControllerId = parsed.selection?.controllerId ?? null;
-    const merged = { ...DEFAULT_CONFIG, ...parsed.config };
-    config = { ...merged };
-    // The loaded scenario becomes the new baseline so "defaults" snaps back to it.
-    scenarioBaseline = { ...merged };
+
+    // v1.2+ scenarios carry an explicit wiredTargets array.
+    if (parsed.wiredTargets && parsed.wiredTargets.length >= 0) {
+      wiredTargets = parsed.wiredTargets.map((t) => ({
+        controllerId: t.controllerId,
+        sensorId: t.sensorId,
+        config: { ...DEFAULT_CONFIG, ...t.config },
+      }));
+      focusedTargetId = parsed.focusedTargetId ?? wiredTargets[0]?.controllerId ?? null;
+    } else {
+      // v1.0/1.1 back-compat: synthesize a single target from `selection` +
+      // the top-level `config`. If selection is null, fall back to first pair.
+      const merged = { ...DEFAULT_CONFIG, ...(parsed.config ?? {}) };
+      const ctrlId = parsed.selection?.controllerId ?? null;
+      const ctrl = ctrlId ? (nodes.find((n) => n.id === ctrlId) ?? null) : null;
+      const sensor = ctrl ? findConnectedSensor(ctrl.id) : null;
+      if (ctrl && sensor) {
+        wiredTargets = [{ controllerId: ctrl.id, sensorId: sensor.id, config: merged }];
+        focusedTargetId = ctrl.id;
+      } else {
+        const pair = firstControlledPair();
+        if (pair) {
+          wiredTargets = [
+            { controllerId: pair.controller.id, sensorId: pair.sensor.id, config: merged },
+          ];
+          focusedTargetId = pair.controller.id;
+        } else {
+          wiredTargets = [];
+          focusedTargetId = null;
+        }
+      }
+    }
+
+    // "defaults" link snaps to whatever the focused target loaded.
+    const baseline = focusedTarget?.config ?? { ...DEFAULT_CONFIG, ...(parsed.config ?? {}) };
+    scenarioBaseline = { ...baseline };
     activePresetId = 'custom';
+
     for (const k of Object.keys(counters)) delete counters[k];
     for (const [k, v] of Object.entries(parsed.counters ?? {})) counters[k] = v;
     nextId = parsed.nextId ?? 100;
@@ -600,20 +701,40 @@
   }
 
   function onNodeClick({ node }: { node: Node }) {
-    if (running) return; // Lock physics target while sim is running
+    if (running) return; // Lock topology of physics targets while sim is running
     if (nodeKind(node) !== 'controller') return;
-    // Click-to-toggle: clicking the currently-targeted controller un-targets.
-    // Picking a different controller switches the target.
-    if (selectedControllerId === node.id) {
-      selectedControllerId = null;
+    const sensor = findConnectedSensor(node.id);
+    if (!sensor) return; // can't wire physics without a sensor
+
+    const existing = wiredTargets.find((t) => t.controllerId === node.id);
+    if (existing) {
+      if (focusedTargetId === node.id) {
+        // Click focused → unwire it
+        wiredTargets = wiredTargets.filter((t) => t.controllerId !== node.id);
+        focusedTargetId = wiredTargets[0]?.controllerId ?? null;
+      } else {
+        // Click already-wired but not focused → just focus
+        focusedTargetId = node.id;
+      }
     } else {
-      selectedControllerId = node.id;
+      // New wiring — copy the focused target's config (or DEFAULT_CONFIG) as the starting point.
+      const startConfig: SingleZoneConfig = focusedTarget
+        ? { ...focusedTarget.config }
+        : { ...DEFAULT_CONFIG };
+      wiredTargets = [
+        ...wiredTargets,
+        { controllerId: node.id, sensorId: sensor.id, config: startConfig },
+      ];
+      focusedTargetId = node.id;
     }
   }
 
+  /** Remove the focused target. Used by the sidebar ✕ button. */
   function clearPhysicsTarget() {
     if (running) return;
-    selectedControllerId = null;
+    if (!focusedTargetId) return;
+    wiredTargets = wiredTargets.filter((t) => t.controllerId !== focusedTargetId);
+    focusedTargetId = wiredTargets[0]?.controllerId ?? null;
   }
 
   // Auto-cleanup
@@ -650,39 +771,41 @@
 
       <div class="palette-foot">
         <div class="physics-info">
-          {#if physicsTarget}
+          {#if physicsTarget && focusedTarget}
             <div class="phys-row">
               <span class="phys-icon">⚡</span>
               <div class="phys-text">
-                <span class="phys-label">Physics target</span>
+                <span class="phys-label"
+                  >Physics target{wiredTargets.length > 1
+                    ? ` ${wiredTargets.findIndex((t) => t.controllerId === focusedTargetId) + 1}/${wiredTargets.length}`
+                    : ''}</span
+                >
                 <span class="phys-pair"
                   >{physicsTarget.controllerLabel} ↔ {physicsTarget.sensorLabel}</span
                 >
               </div>
-              {#if selectedControllerId}
-                <button
-                  type="button"
-                  class="phys-clear"
-                  onclick={clearPhysicsTarget}
-                  disabled={running}
-                  title="Untarget (re-enable auto-pick)"
-                  aria-label="Clear physics target"
-                >
-                  ✕
-                </button>
-              {/if}
+              <button
+                type="button"
+                class="phys-clear"
+                onclick={clearPhysicsTarget}
+                disabled={running}
+                title="Remove this physics target"
+                aria-label="Remove physics target"
+              >
+                ✕
+              </button>
             </div>
             <p class="phys-hint">
-              {selectedControllerId
-                ? 'Click the same controller again, or ✕, to untarget. Click a different controller to switch.'
-                : 'Auto-picked. Click any controller to override.'}
+              {wiredTargets.length > 1
+                ? 'Click any wired controller to focus it. Click an unwired one to add. Click the focused one to remove.'
+                : 'Click another controller (wired to a sensor) to add a second target. Click this one again to remove.'}
             </p>
           {:else}
             <div class="phys-row">
               <span class="phys-icon idle">⚡</span>
               <div class="phys-text">
                 <span class="phys-label">No physics target</span>
-                <span class="phys-pair">Wire a sensor to a controller</span>
+                <span class="phys-pair">Click a controller wired to a sensor</span>
               </div>
             </div>
           {/if}
@@ -720,25 +843,39 @@
         <Background />
         <Controls position="bottom-right" />
 
-        {#if running && system && samples.length > 0 && runningTarget}
+        {#if running && focusedTarget && (runningSamples.get(focusedTarget.controllerId)?.length ?? 0) > 0}
           <Panel position="top-left">
             <div class="chart-panel">
               <div class="chart-head">
-                <span class="chart-title">Zone response — {runningTarget.controllerLabel}</span>
+                <span class="chart-title"
+                  >Zone response — {physicsTarget?.controllerLabel ?? ''}{wiredTargets.length > 1
+                    ? ` (${wiredTargets.findIndex((t) => t.controllerId === focusedTargetId) + 1}/${wiredTargets.length})`
+                    : ''}</span
+                >
                 <span class="chart-sub"
-                  >{config.dt}s/tick · τ={(config.tau / 60).toFixed(0)}min</span
+                  >{focusedTarget.config.dt}s/tick · τ={(focusedTarget.config.tau / 60).toFixed(
+                    0,
+                  )}min</span
                 >
               </div>
-              <MiniChart {samples} setpoint={config.setpoint} oat={config.outdoorAir} />
+              <MiniChart
+                samples={runningSamples.get(focusedTarget.controllerId) ?? []}
+                setpoint={focusedTarget.config.setpoint}
+                oat={focusedTarget.config.outdoorAir}
+              />
             </div>
           </Panel>
         {/if}
 
-        {#if physicsTarget}
+        {#if focusedTarget && physicsTarget}
           <Panel position="bottom-left">
             <div class="tune-panel">
               <div class="tune-head">
-                <span class="tune-title">Tune — {physicsTarget.controllerLabel}</span>
+                <span class="tune-title"
+                  >Tune — {physicsTarget.controllerLabel}{wiredTargets.length > 1
+                    ? ` (${wiredTargets.findIndex((t) => t.controllerId === focusedTargetId) + 1}/${wiredTargets.length})`
+                    : ''}</span
+                >
                 <button
                   type="button"
                   class="reset-cfg"
@@ -771,12 +908,12 @@
               <div class="slider-row">
                 <label for="sp-slider">
                   <span class="lbl">Setpoint</span>
-                  <span class="val">{config.setpoint.toFixed(1)} °F</span>
+                  <span class="val">{focusedTarget.config.setpoint.toFixed(1)} °F</span>
                 </label>
                 <input
                   id="sp-slider"
                   type="range"
-                  bind:value={config.setpoint}
+                  bind:value={focusedTarget.config.setpoint}
                   min={65}
                   max={80}
                   step={0.5}
@@ -785,12 +922,12 @@
               <div class="slider-row">
                 <label for="oat-slider">
                   <span class="lbl">OAT</span>
-                  <span class="val">{config.outdoorAir.toFixed(0)} °F</span>
+                  <span class="val">{focusedTarget.config.outdoorAir.toFixed(0)} °F</span>
                 </label>
                 <input
                   id="oat-slider"
                   type="range"
-                  bind:value={config.outdoorAir}
+                  bind:value={focusedTarget.config.outdoorAir}
                   min={60}
                   max={105}
                   step={1}
@@ -799,12 +936,12 @@
               <div class="slider-row">
                 <label for="kp-slider">
                   <span class="lbl">Kp <em>(prop. gain)</em></span>
-                  <span class="val">{config.Kp.toFixed(2)}</span>
+                  <span class="val">{focusedTarget.config.Kp.toFixed(2)}</span>
                 </label>
                 <input
                   id="kp-slider"
                   type="range"
-                  bind:value={config.Kp}
+                  bind:value={focusedTarget.config.Kp}
                   min={0.05}
                   max={1.5}
                   step={0.05}
@@ -814,12 +951,12 @@
                 <div class="slider-row">
                   <label for="tau-slider">
                     <span class="lbl">τ <em>(zone mass)</em></span>
-                    <span class="val">{(config.tau / 60).toFixed(0)} min</span>
+                    <span class="val">{(focusedTarget.config.tau / 60).toFixed(0)} min</span>
                   </label>
                   <input
                     id="tau-slider"
                     type="range"
-                    bind:value={config.tau}
+                    bind:value={focusedTarget.config.tau}
                     min={60}
                     max={1800}
                     step={60}
@@ -828,12 +965,12 @@
                 <div class="slider-row">
                   <label for="ki-slider">
                     <span class="lbl">Ki <em>(integral)</em></span>
-                    <span class="val">{config.Ki.toFixed(4)}</span>
+                    <span class="val">{focusedTarget.config.Ki.toFixed(4)}</span>
                   </label>
                   <input
                     id="ki-slider"
                     type="range"
-                    bind:value={config.Ki}
+                    bind:value={focusedTarget.config.Ki}
                     min={0}
                     max={0.01}
                     step={0.0005}
@@ -842,12 +979,14 @@
                 <div class="slider-row">
                   <label for="cool-slider">
                     <span class="lbl">Cool max</span>
-                    <span class="val">{(config.coolingMax * 60).toFixed(1)} °F/min</span>
+                    <span class="val"
+                      >{(focusedTarget.config.coolingMax * 60).toFixed(1)} °F/min</span
+                    >
                   </label>
                   <input
                     id="cool-slider"
                     type="range"
-                    bind:value={config.coolingMax}
+                    bind:value={focusedTarget.config.coolingMax}
                     min={0}
                     max={0.1}
                     step={0.005}
