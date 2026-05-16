@@ -165,6 +165,51 @@
         data: { kind: item.kind, label: nextName(item.kind) },
       },
     ];
+
+    // Auto-wire: connect the new node to its nearest sensible parent if there is
+    // one within range. Saves the most common "drop sensor → drag wire" motion.
+    //   Sensor / Safety → nearest Controller (within 220 px)
+    //   Controller       → nearest Supervisor or larger Controller (within 260 px)
+    //   Supervisor       → no auto-wire (root of the tree)
+    const AUTO_WIRE_RADIUS_BY_KIND: Partial<Record<Kind, { kinds: Kind[]; max: number }>> = {
+      sensor: { kinds: ['controller'], max: 220 },
+      safety: { kinds: ['controller'], max: 220 },
+      controller: { kinds: ['supervisor', 'controller'], max: 260 },
+    };
+    const rule = AUTO_WIRE_RADIUS_BY_KIND[item.kind];
+    if (rule) {
+      const parent = nearestParentWithin(position, rule.kinds, rule.max, id);
+      if (parent) {
+        edges = [
+          ...edges,
+          { id: `e-auto-${parent.id}-${id}`, source: parent.id, target: id },
+        ];
+      }
+    }
+  }
+
+  /** Closest node of one of `kinds`, within `maxDist` px, that isn't `selfId`. */
+  function nearestParentWithin(
+    pos: { x: number; y: number },
+    kinds: Kind[],
+    maxDist: number,
+    selfId: string,
+  ): Node | null {
+    let best: Node | null = null;
+    let bestDist = Infinity;
+    for (const n of nodes) {
+      if (n.id === selfId) continue;
+      const k = nodeKind(n);
+      if (!k || !kinds.includes(k)) continue;
+      const dx = (n.position?.x ?? 0) - pos.x;
+      const dy = (n.position?.y ?? 0) - pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < bestDist && dist <= maxDist) {
+        best = n;
+        bestDist = dist;
+      }
+    }
+    return best;
   }
 
   // ============ Selection & physics targets ============
