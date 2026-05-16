@@ -16,7 +16,8 @@
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "deploy": "pnpm --filter @bas/ui build && netlify deploy --prod --site=602708bc-b819-4afd-9cad-f275d19f9106 --dir=packages/ui/dist"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

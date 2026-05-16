@@ -4,13 +4,13 @@
 
 This is a living document. Dates are intentionally absent — the project ships when it ships.
 
-## Phase 0: Foundation (in progress)
+## Phase 0: Foundation (✅ complete, 2026-05-16)
 
-Repo scaffold, build pipeline, ingest plugin interface, Brick Schema integration, empty topology canvas.
+Repo scaffold, build pipeline, ingest plugin interface, Brick Schema integration, topology tree, deploy.
 
-**Deliverable**: the site loads, you can drag a `.dbexport` onto it and see the topology tree (no simulation yet).
+**Deliverable shipped**: live at [bas-sandbox.netlify.app](https://bas-sandbox.netlify.app). Drag a `.dbexport` onto the page; the parser runs entirely in-browser and renders a clickable `Engine → Trunk → Equipment → Points` tree with icons, counts, and expand/collapse. Verified against a real 7 MB DACC archive: 17 engines, 12,261 objects, 24,505 brick triples, 2-second parse.
 
-**Borrows**: [dbexport-viewer](https://github.com/jmsboswell67-alt/dbexport-viewer) parser, Brick Schema TypeScript bindings.
+**Borrowed**: [@velovault/dbexport-parser](https://github.com/velovault-llc/dbexport-parser) (extracted from dbexport-viewer for this project), n3 RDF store.
 
 ## Phase 1: Static validator
 

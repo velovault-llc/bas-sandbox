@@ -2,7 +2,7 @@
 
 **A vendor-neutral simulator for building automation systems. Drag-and-drop topology, real BACnet behavior, thermal response — try the edit before you ship it to the live engine.**
 
-> ⚠️ Status: pre-release, Phase 1 in active development. Not yet usable. See [ROADMAP.md](ROADMAP.md).
+> Status: Phase 0 complete — **try it live at [bas-sandbox.netlify.app](https://bas-sandbox.netlify.app)**. Drag a `.dbexport` onto the page; the parser runs entirely in your browser and renders the topology tree. Phase 1 (static validator) in active development.
 >
 > Maintained by [VELOVAULT LLC](https://velovaultllc.com) — an SBA-certified SDVOSB & VOSB.
 
