@@ -27,6 +27,73 @@
 
 import type { Edge, Node } from '@xyflow/svelte';
 import type { TopologyNode } from '@bas/core';
+import {
+  decodeValue,
+  type MetasysObject,
+  type ParsedArchive,
+} from '@velovault/dbexport-parser';
+
+// Property IDs from the JCI Launcher dictionary that carry network /
+// device-identity metadata worth surfacing on a canvas node.
+const PROP_IDS = {
+  MODEL_NAME: '70',
+  HOST_NAME: '750',
+  IP_ADDRESS: '1135',
+  IP_ROUTER: '1137',
+  ETH_MAC: '1134',
+  MAC_ADDRESS: '2858',
+  N2_NET_ADDRESS: '806',
+  N2_POINT_ADDRESS: '808',
+  BACNET_INSTANCE: '32589',
+  DESCRIPTION: '28',
+} as const;
+
+export type DeviceMeta = {
+  ip?: string;
+  mac?: string;
+  hostName?: string;
+  bacnetInstance?: string;
+  n2Address?: string;
+  model?: string;
+};
+
+function decodeProp(obj: MetasysObject, propId: string): string | null {
+  const raw = obj.properties[propId];
+  if (!raw) return null;
+  const decoded = decodeValue(raw);
+  return decoded && decoded !== '(empty)' ? decoded.trim() : null;
+}
+
+/** Pull the most-useful subset of network / identity properties off a device. */
+function extractMeta(obj: MetasysObject): DeviceMeta {
+  return {
+    ip: decodeProp(obj, PROP_IDS.IP_ADDRESS) ?? undefined,
+    mac:
+      decodeProp(obj, PROP_IDS.MAC_ADDRESS) ??
+      decodeProp(obj, PROP_IDS.ETH_MAC) ??
+      undefined,
+    hostName: decodeProp(obj, PROP_IDS.HOST_NAME) ?? undefined,
+    bacnetInstance: decodeProp(obj, PROP_IDS.BACNET_INSTANCE) ?? undefined,
+    n2Address: decodeProp(obj, PROP_IDS.N2_NET_ADDRESS) ?? undefined,
+    model: decodeProp(obj, PROP_IDS.MODEL_NAME) ?? undefined,
+  };
+}
+
+function compactSubtitle(meta: DeviceMeta, isEngine: boolean): string | undefined {
+  const parts: string[] = [];
+  if (isEngine) {
+    if (meta.ip) parts.push(meta.ip);
+    else if (meta.hostName) parts.push(meta.hostName);
+    if (meta.bacnetInstance) parts.push(`inst ${meta.bacnetInstance}`);
+  } else {
+    // Controller: prefer MAC (MS/TP) or N2 address, then instance, then IP fallback.
+    if (meta.mac) parts.push(`mac ${meta.mac}`);
+    else if (meta.n2Address) parts.push(`n2 ${meta.n2Address}`);
+    if (meta.bacnetInstance) parts.push(`inst ${meta.bacnetInstance}`);
+    if (parts.length === 0 && meta.ip) parts.push(meta.ip);
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
 
 export type ImportedWireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
 
@@ -69,12 +136,38 @@ function isAdx(label: string): boolean {
   return /\b(ADX|ADS)\b|-ADX-|-ADS-/i.test(label);
 }
 
-export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResult {
+export function topologyToCanvas(
+  topology: readonly TopologyNode[],
+  archive?: ParsedArchive,
+): ImportResult {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   let nextNumeric = 1;
   let totalControllers = 0;
   const skipped: string[] = [];
+
+  // ref → MetasysObject lookup so we can enrich nodes with network metadata
+  // (IP / MAC / device instance / model name).
+  const objByRef = new Map<string, MetasysObject>();
+  if (archive) {
+    for (const dev of archive.devices) {
+      for (const obj of dev.objects) {
+        if (obj.ref) objByRef.set(obj.ref, obj);
+      }
+    }
+  }
+
+  function metaForTopologyNode(t: TopologyNode, isEngine: boolean): {
+    meta?: DeviceMeta;
+    subtitle?: string;
+  } {
+    if (!t.ref) return {};
+    const obj = objByRef.get(t.ref);
+    if (!obj) return {};
+    const meta = extractMeta(obj);
+    const subtitle = compactSubtitle(meta, isEngine);
+    return { meta, subtitle };
+  }
 
   const adxes: TopologyNode[] = [];
   const engines: TopologyNode[] = [];
@@ -94,6 +187,7 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
   const adxIds: string[] = [];
   for (let i = 0; i < adxes.length; i++) {
     const id = `imp-${nextNumeric++}`;
+    const { meta, subtitle } = metaForTopologyNode(adxes[i], true);
     nodes.push({
       id,
       type: 'bas',
@@ -101,7 +195,7 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
         x: adxX + (i - (adxes.length - 1) / 2) * 220,
         y: ADX_Y,
       },
-      data: { kind: 'supervisor', label: adxes[i].label, note: 'ADX' },
+      data: { kind: 'supervisor', label: adxes[i].label, note: 'ADX', subtitle, meta },
     });
     adxIds.push(id);
   }
@@ -119,6 +213,7 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
     totalControllers += controllers.length;
 
     const engineId = `imp-${nextNumeric++}`;
+    const engineMetaInfo = metaForTopologyNode(engine, true);
     nodes.push({
       id: engineId,
       type: 'bas',
@@ -128,6 +223,8 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
         label: engine.label,
         childCount: controllers.length,
         collapsed: true,
+        subtitle: engineMetaInfo.subtitle,
+        meta: engineMetaInfo.meta,
       },
     });
 
@@ -152,6 +249,7 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
       const cCol = j % CONTROLLERS_PER_ROW;
       const cX = engineX + (cCol - (CONTROLLERS_PER_ROW - 1) / 2) * CONTROLLER_COL_GAP;
       const cY = engineY + CONTROLLER_Y_OFFSET + cRow * CONTROLLER_ROW_GAP;
+      const ctrlMetaInfo = metaForTopologyNode(ctrl, false);
       nodes.push({
         id: ctrlId,
         type: 'bas',
@@ -161,6 +259,8 @@ export function topologyToCanvas(topology: readonly TopologyNode[]): ImportResul
           kind: 'controller',
           label: ctrl.label.slice(0, 32),
           importedFromEngine: engineId,
+          subtitle: ctrlMetaInfo.subtitle,
+          meta: ctrlMetaInfo.meta,
         },
       });
       edges.push({

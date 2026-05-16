@@ -80,6 +80,9 @@ importers:
       '@bas/ingest-dbexport':
         specifier: workspace:*
         version: link:../ingest-dbexport
+      '@velovault/dbexport-parser':
+        specifier: github:velovault-llc/dbexport-parser
+        version: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/c1df23278c2aeee0900e8abac426b0214ee8f542
       '@xyflow/svelte':
         specifier: ^1.5.2
         version: 1.5.2(svelte@5.55.7)
@@ -621,7 +624,7 @@ packages:
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@velovault/dbexport-parser@https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/c1df23278c2aeee0900e8abac426b0214ee8f542':
-    resolution: {gitHosted: true, integrity: sha512-Qiaq/z8dALx2hlvaEt+4DhVyTgHL8pOXLlbBhEsvrJ/Z+zsAhrVQQqnLqjrtiE/NlRosyw17PKQS7hPFecjkzA==, tarball: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/c1df23278c2aeee0900e8abac426b0214ee8f542}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/c1df23278c2aeee0900e8abac426b0214ee8f542}
     version: 0.1.0
     engines: {node: '>=22'}
 

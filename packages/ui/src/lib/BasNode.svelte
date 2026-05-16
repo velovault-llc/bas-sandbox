@@ -19,6 +19,9 @@
     collapsed?: boolean;
     /** Set on imported controllers to point at the engine they belong to. */
     importedFromEngine?: string;
+    /** Network / identity metadata pulled off the parsed .dbexport. */
+    subtitle?: string;
+    meta?: Record<string, string | undefined>;
   };
 
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
@@ -107,6 +110,9 @@
     />
   {:else}
     <div class="label" title="Double-click to rename">{data.label}</div>
+  {#if data.subtitle}
+    <div class="subtitle" title="From the parsed .dbexport">{data.subtitle}</div>
+  {/if}
   {/if}
   {#if data.runtime}
     <div class="runtime">{data.runtime.value}</div>
@@ -209,6 +215,16 @@
       monospace;
     font-size: 0.9rem;
     color: CanvasText;
+  }
+
+  .subtitle {
+    margin-top: 0.15rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, var(--accent) 80%, CanvasText);
+    opacity: 0.85;
   }
 
   .label-edit {

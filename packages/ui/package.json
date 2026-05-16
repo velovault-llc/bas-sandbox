@@ -14,6 +14,7 @@
     "@bas/core": "workspace:*",
     "@bas/ingest-brick": "workspace:*",
     "@bas/ingest-dbexport": "workspace:*",
+    "@velovault/dbexport-parser": "github:velovault-llc/dbexport-parser",
     "@xyflow/svelte": "^1.5.2",
     "svelte": "^5.0.0"
   },
