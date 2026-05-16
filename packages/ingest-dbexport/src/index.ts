@@ -11,11 +11,20 @@ import {
   type HierarchyNode,
   type ParsedArchive,
 } from '@velovault/dbexport-parser';
+import { dbexportValidators } from './validators.js';
+
+export {
+  refIntegrityValidator,
+  suppressedAlarmsValidator,
+  duplicateDescriptionsValidator,
+  dbexportValidators,
+} from './validators.js';
 
 export const dbexportPlugin: IngestPlugin = {
   id: 'metasys-dbexport',
   displayName: 'Metasys .dbexport',
   accepts: ['.dbexport', '.zip'],
+  validators: dbexportValidators,
 
   async canHandle(file: File): Promise<boolean> {
     const name = file.name.toLowerCase();
@@ -51,6 +60,7 @@ export const dbexportPlugin: IngestPlugin = {
         engines,
       },
       topology,
+      vendor: archive,
     };
   },
 };

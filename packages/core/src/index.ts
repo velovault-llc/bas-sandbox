@@ -7,6 +7,8 @@ export type IngestPlugin = {
   readonly id: string;
   readonly displayName: string;
   readonly accepts: readonly string[];
+  /** Validators that operate on the plugin-specific `vendor` data in the ingest result. */
+  readonly validators?: readonly Validator[];
   canHandle(file: File): Promise<boolean>;
   ingest(file: File): Promise<IngestResult>;
 };
@@ -50,4 +52,33 @@ export type IngestResult = {
     engines?: readonly EngineSummary[];
   };
   topology?: readonly TopologyNode[];
+  /** Plugin-specific raw data made available to validators. Opaque to the UI. */
+  vendor?: unknown;
+};
+
+export type Severity = 'error' | 'warning' | 'info';
+
+export type ValidationFinding = {
+  readonly ruleId: string;
+  readonly ruleName: string;
+  readonly severity: Severity;
+  readonly title: string;
+  readonly description?: string;
+  /** Subject (usually a ref or URI) the finding pertains to. */
+  readonly subject?: string;
+  readonly meta?: Readonly<Record<string, unknown>>;
+};
+
+export type ValidationCategory = 'integrity' | 'config' | 'safety' | 'design';
+
+export type ValidationContext = {
+  readonly graph: import('./brick.js').BrickGraph;
+  readonly vendor: unknown;
+};
+
+export type Validator = {
+  readonly id: string;
+  readonly displayName: string;
+  readonly category: ValidationCategory;
+  validate(ctx: ValidationContext): readonly ValidationFinding[];
 };

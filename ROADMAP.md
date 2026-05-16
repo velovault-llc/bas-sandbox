@@ -12,22 +12,27 @@ Repo scaffold, build pipeline, ingest plugin interface, Brick Schema integration
 
 **Borrowed**: [@velovault/dbexport-parser](https://github.com/velovault-llc/dbexport-parser) (extracted from dbexport-viewer for this project), n3 RDF store.
 
-## Phase 1: Static validator
+## Phase 1: Static validator (v0.5 shipped 2026-05-16, in progress)
 
 A "Validate" mode that runs structural lint rules across an imported archive. No physics, no protocol simulation, no UI builder — audit dressed up as a pre-flight check. Ships an immediate value prop for both personas.
 
-**Rules in v1**:
+**v0.5 shipped — 3 of 8 rules live, ported from dbexport-viewer's audit pipeline:**
+
+- ✅ **Ref integrity (easy mode)** — every ref-shaped string in a directly-parsed property XML resolves to a defined object. Verified on the DACC archive: 87 unresolved refs (the Base64Zip-decoded full pass — what dbexport-viewer reports as 5,641 — is a separate later improvement).
+- ✅ **Suppressed alarms** — Event Enable bit not "111". DACC: 640 findings, exact match with dbexport-viewer.
+- ✅ **Duplicate descriptions** — same description on multiple refs. DACC: 558 groups (222 cross-engine warnings, 336 within-engine info), exact match with dbexport-viewer.
+
+**Still to ship in Phase 1:**
 
 - Required-object check (engine root, NIC, security objects exist).
-- Ref integrity — every internal ref resolves to a defined object.
-- Graphics binding lint — every `<reference>` inside a `Base64Zip` graphic payload points to something defined.
-- Programming wire lint — every TSEGraph edge has a defined source and target port.
+- Graphics binding lint — every `<reference>` inside a `Base64Zip` graphic payload points to something defined. (Requires the Base64Zip decoder.)
+- Programming wire lint — every TSEGraph edge has a defined source and target port. (Requires TSEGraph parser.)
 - Setpoint sanity — heating SP < cooling SP, both in human ranges, deadband > 0.
 - Schedule sanity — at least one occupied period, default event well-formed.
 - Alarm config — notification class refs resolve, hysteresis present where required.
 - Class-specific — AI has units, AO has Relinquish Default, schedules have a weekly schedule.
 
-**Output**: pass / warning / error per rule, with offending refs and one-click "show in Browse mode" navigation.
+**Output**: pass / warning / error per rule, with offending refs. Grouped and color-coded in a panel below the topology tree. Runs automatically after ingest; ~336 ms on a 12k-object archive.
 
 **Persona surfaces**:
 

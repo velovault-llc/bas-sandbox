@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { VERSION, type IngestResult } from '@bas/core';
+  import { VERSION, type IngestResult, type ValidationFinding } from '@bas/core';
   import { dbexportPlugin } from '@bas/ingest-dbexport';
   import { brickTtlPlugin } from '@bas/ingest-brick';
   import TreeNode from './lib/TreeNode.svelte';
+  import FindingsPanel from './lib/FindingsPanel.svelte';
 
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
@@ -11,10 +12,15 @@
   let error = $state<string | null>(null);
   let result = $state<IngestResult | null>(null);
   let sourceFileName = $state<string | null>(null);
+  let findings = $state<ValidationFinding[]>([]);
+  let validateMs = $state<number | null>(null);
+  let validating = $state(false);
 
   async function handleFile(file: File) {
     error = null;
     result = null;
+    findings = [];
+    validateMs = null;
     sourceFileName = file.name;
     loading = true;
     try {
@@ -27,10 +33,28 @@
         );
       }
       result = await plugin.ingest(file);
+      loading = false;
+
+      // Run validators after ingest succeeds. Yield to the UI so the topology
+      // paints first, then validators run while user is already looking at the tree.
+      const validators = plugin.validators ?? [];
+      if (validators.length > 0) {
+        validating = true;
+        await new Promise((r) => setTimeout(r, 0));
+        const t0 = performance.now();
+        const all: ValidationFinding[] = [];
+        for (const v of validators) {
+          const items = v.validate({ graph: result.graph, vendor: result.vendor });
+          all.push(...items);
+        }
+        findings = all;
+        validateMs = Math.round(performance.now() - t0);
+        validating = false;
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
-    } finally {
       loading = false;
+      validating = false;
     }
   }
 
@@ -60,13 +84,15 @@
     result = null;
     error = null;
     sourceFileName = null;
+    findings = [];
+    validateMs = null;
   }
 </script>
 
 <main class:has-result={!!result}>
   <header>
     <h1>bas-sandbox</h1>
-    <span class="badge">Phase 0 · v{VERSION}</span>
+    <span class="badge">Phase 1 · v{VERSION}</span>
   </header>
 
   <p class="lede">
@@ -129,6 +155,16 @@
         </div>
       {/if}
 
+      <h3>
+        Validation
+        {#if validating}<span class="validating">running…</span>{/if}
+      </h3>
+      {#if validating && findings.length === 0}
+        <div class="empty">Running validators…</div>
+      {:else}
+        <FindingsPanel {findings} durationMs={validateMs} />
+      {/if}
+
       {#if result.warnings.length > 0}
         <h3>Warnings</h3>
         <ul class="warnings">
@@ -147,6 +183,9 @@
         <li>
           <strong>{plugin.displayName}</strong>
           <span class="accepts">accepts: {plugin.accepts.join(', ')}</span>
+          {#if plugin.validators && plugin.validators.length > 0}
+            <span class="validator-count">{plugin.validators.length} validators</span>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -247,6 +286,14 @@
     margin-top: 0.5rem;
   }
 
+  .empty {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+    font-size: 0.9rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+
   .result {
     margin-bottom: 2.5rem;
   }
@@ -307,14 +354,25 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: color-mix(in srgb, CanvasText 60%, transparent);
-    margin: 1.25rem 0 0.5rem 0;
+    margin: 1.5rem 0 0.5rem 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .validating {
+    font-size: 0.75rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    font-style: italic;
   }
 
   .topology {
     border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
     border-radius: 6px;
     padding: 0.5rem;
-    max-height: 70vh;
+    max-height: 60vh;
     overflow: auto;
   }
 
@@ -347,7 +405,8 @@
     font-size: 0.9rem;
   }
 
-  .accepts {
+  .accepts,
+  .validator-count {
     margin-left: 0.75rem;
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
