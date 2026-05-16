@@ -95,6 +95,110 @@
     return { ...e, style: styleForWire(kind, !!e.animated) };
   }
 
+  // ============ Demo defaults + localStorage persistence ============
+
+  const STORAGE_KEY = 'bas-sandbox:state-v1';
+
+  const DEMO_NODES: Node[] = [
+    {
+      id: 'demo-1',
+      type: 'bas',
+      position: { x: 280, y: 60 },
+      data: { kind: 'supervisor', label: 'NAE-1' },
+    },
+    {
+      id: 'demo-2',
+      type: 'bas',
+      position: { x: 280, y: 210 },
+      data: { kind: 'controller', label: 'FEC-1' },
+    },
+    {
+      id: 'demo-3',
+      type: 'bas',
+      position: { x: 130, y: 360 },
+      data: { kind: 'controller', label: 'VAV-1' },
+    },
+    {
+      id: 'demo-4',
+      type: 'bas',
+      position: { x: 130, y: 510 },
+      data: { kind: 'sensor', label: 'ZN-T-1' },
+    },
+    {
+      id: 'demo-5',
+      type: 'bas',
+      position: { x: 430, y: 360 },
+      data: { kind: 'safety', label: 'FZ-1' },
+    },
+  ];
+
+  const DEMO_EDGES_BASE: Edge[] = [
+    { id: 'e1-2', source: 'demo-1', target: 'demo-2', data: { wireKind: 'bacnet-ip' } },
+    { id: 'e2-3', source: 'demo-2', target: 'demo-3', data: { wireKind: 'mstp' } },
+    { id: 'e3-4', source: 'demo-3', target: 'demo-4', data: { wireKind: 'hardwired' } },
+    { id: 'e2-5', source: 'demo-2', target: 'demo-5', data: { wireKind: 'hardwired' } },
+  ];
+
+  type PersistedState = {
+    version: 1;
+    nodes: Node[];
+    edges: Edge[];
+    wiredTargets: WiredTarget[];
+    focusedTargetId: string | null;
+    counters: Record<string, number>;
+    nextId: number;
+    selectedWireKind: WireKind | 'auto';
+    activePresetId: string;
+    scenarioBaseline: SingleZoneConfig;
+  };
+
+  function defaultsBundle(): PersistedState {
+    return {
+      version: 1,
+      nodes: DEMO_NODES,
+      edges: DEMO_EDGES_BASE.map(withStyle),
+      wiredTargets: [
+        { controllerId: 'demo-3', sensorId: 'demo-4', config: { ...DEFAULT_CONFIG } },
+      ],
+      focusedTargetId: 'demo-3',
+      counters: { supervisor: 1, controller: 2, sensor: 1, safety: 1 },
+      nextId: 100,
+      selectedWireKind: 'auto',
+      activePresetId: 'default',
+      scenarioBaseline: { ...DEFAULT_CONFIG },
+    };
+  }
+
+  function restoreOrDefaults(): PersistedState {
+    if (typeof localStorage === 'undefined') return defaultsBundle();
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultsBundle();
+      const parsed = JSON.parse(raw) as Partial<PersistedState>;
+      if (parsed.version !== 1 || !parsed.nodes || !parsed.edges) return defaultsBundle();
+      return {
+        version: 1,
+        nodes: parsed.nodes,
+        edges: (parsed.edges ?? []).map(withStyle),
+        wiredTargets: (parsed.wiredTargets ?? []).map((t) => ({
+          controllerId: t.controllerId,
+          sensorId: t.sensorId,
+          config: { ...DEFAULT_CONFIG, ...t.config },
+        })),
+        focusedTargetId: parsed.focusedTargetId ?? null,
+        counters: { ...{ supervisor: 0, controller: 0, sensor: 0, safety: 0 }, ...parsed.counters },
+        nextId: parsed.nextId ?? 100,
+        selectedWireKind: parsed.selectedWireKind ?? 'auto',
+        activePresetId: parsed.activePresetId ?? 'default',
+        scenarioBaseline: { ...DEFAULT_CONFIG, ...(parsed.scenarioBaseline ?? {}) },
+      };
+    } catch {
+      return defaultsBundle();
+    }
+  }
+
+  const _initialState = restoreOrDefaults();
+
   type PaletteItem = {
     kind: Kind;
     label: string;
@@ -136,56 +240,11 @@
     },
   ];
 
-  let nodes = $state.raw<Node[]>([
-    {
-      id: 'demo-1',
-      type: 'bas',
-      position: { x: 280, y: 60 },
-      data: { kind: 'supervisor', label: 'NAE-1' },
-    },
-    {
-      id: 'demo-2',
-      type: 'bas',
-      position: { x: 280, y: 210 },
-      data: { kind: 'controller', label: 'FEC-1' },
-    },
-    {
-      id: 'demo-3',
-      type: 'bas',
-      position: { x: 130, y: 360 },
-      data: { kind: 'controller', label: 'VAV-1' },
-    },
-    {
-      id: 'demo-4',
-      type: 'bas',
-      position: { x: 130, y: 510 },
-      data: { kind: 'sensor', label: 'ZN-T-1' },
-    },
-    {
-      id: 'demo-5',
-      type: 'bas',
-      position: { x: 430, y: 360 },
-      data: { kind: 'safety', label: 'FZ-1' },
-    },
-  ]);
-
-  let edges = $state.raw<Edge[]>(
-    [
-      { id: 'e1-2', source: 'demo-1', target: 'demo-2', data: { wireKind: 'bacnet-ip' } },
-      { id: 'e2-3', source: 'demo-2', target: 'demo-3', data: { wireKind: 'mstp' } },
-      { id: 'e3-4', source: 'demo-3', target: 'demo-4', data: { wireKind: 'hardwired' } },
-      { id: 'e2-5', source: 'demo-2', target: 'demo-5', data: { wireKind: 'hardwired' } },
-    ].map(withStyle),
-  );
+  let nodes = $state.raw<Node[]>(_initialState.nodes);
+  let edges = $state.raw<Edge[]>(_initialState.edges);
 
   // Per-kind counter so default names auto-increment ("VAV-1", "VAV-2", ...).
-  // Pre-seeded to match the demo topology placed above.
-  const counters: Record<string, number> = {
-    supervisor: 1,
-    controller: 2,
-    sensor: 1,
-    safety: 1,
-  };
+  const counters: Record<string, number> = { ..._initialState.counters };
 
   function nextName(kind: Kind): string {
     const item = PALETTE.find((p) => p.kind === kind);
@@ -195,7 +254,7 @@
     return `${stem}-${counters[kind]}`;
   }
 
-  let nextId = 100;
+  let nextId = _initialState.nextId;
 
   function onPaletteDragStart(event: DragEvent, kind: string) {
     if (!event.dataTransfer) return;
@@ -300,16 +359,10 @@
     parentLabel?: string;
   };
 
-  // Multi-target state. Pre-seeded with the demo VAV-1 ↔ ZN-T-1 pair so the
-  // first-time experience still has something to Run.
-  let wiredTargets = $state<WiredTarget[]>([
-    {
-      controllerId: 'demo-3',
-      sensorId: 'demo-4',
-      config: { ...DEFAULT_CONFIG },
-    },
-  ]);
-  let focusedTargetId = $state<string | null>('demo-3');
+  // Multi-target state. Restored from localStorage when present, else the demo
+  // VAV-1 ↔ ZN-T-1 pair so the first-time experience has something to Run.
+  let wiredTargets = $state<WiredTarget[]>(_initialState.wiredTargets);
+  let focusedTargetId = $state<string | null>(_initialState.focusedTargetId);
 
   const focusedTarget = $derived.by(() => {
     if (!focusedTargetId) return null;
@@ -429,8 +482,8 @@
     },
   ];
 
-  let scenarioBaseline = $state<SingleZoneConfig>({ ...DEFAULT_CONFIG });
-  let activePresetId = $state<string>('default');
+  let scenarioBaseline = $state<SingleZoneConfig>(_initialState.scenarioBaseline);
+  let activePresetId = $state<string>(_initialState.activePresetId);
 
   function applyPreset(preset: Preset) {
     if (!focusedTarget) return;
@@ -865,7 +918,7 @@
    * being connected; otherwise force this specific trunk kind on every new
    * wire until the user picks a different one (Packet-Tracer-style).
    */
-  let selectedWireKind = $state<WireKind | 'auto'>('auto');
+  let selectedWireKind = $state<WireKind | 'auto'>(_initialState.selectedWireKind);
 
   /** New wires drawn between handles use the currently-pinned trunk kind. */
   function onConnect(connection: Connection) {
@@ -1118,6 +1171,104 @@
       if (intervalId) clearInterval(intervalId);
     };
   });
+
+  // ============ localStorage auto-persist ============
+
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    // Track the state we want to persist. (Reads create the dependencies.)
+    const _deps: unknown[] = [
+      nodes,
+      edges,
+      wiredTargets,
+      focusedTargetId,
+      nextId,
+      selectedWireKind,
+      activePresetId,
+      scenarioBaseline,
+      counters,
+    ];
+    void _deps;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      if (typeof localStorage === 'undefined') return;
+      try {
+        const cleanNodes = nodes.map((n) => {
+          const data = n.data as Record<string, unknown>;
+          const { runtime: _runtime, ...rest } = data;
+          return { ...n, data: rest };
+        });
+        const state: PersistedState = {
+          version: 1,
+          nodes: cleanNodes,
+          edges: edges.map((e) => ({ ...e, animated: false, selected: false })),
+          wiredTargets,
+          focusedTargetId,
+          counters: { ...counters },
+          nextId,
+          selectedWireKind,
+          activePresetId,
+          scenarioBaseline,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch {
+        // Out of quota or denied — ignore; user's work is just not persistent this session.
+      }
+    }, 300);
+  });
+
+  function resetToDemo() {
+    if (!confirm('Reset canvas to the demo topology? Your current work will be lost.')) return;
+    stop();
+    tick = 0;
+    runningSamples = new Map();
+    const d = defaultsBundle();
+    nodes = d.nodes;
+    edges = d.edges;
+    wiredTargets = d.wiredTargets;
+    focusedTargetId = d.focusedTargetId;
+    for (const k of Object.keys(counters)) delete counters[k];
+    Object.assign(counters, d.counters);
+    nextId = d.nextId;
+    selectedWireKind = d.selectedWireKind;
+    activePresetId = d.activePresetId;
+    scenarioBaseline = d.scenarioBaseline;
+  }
+
+  // ============ Trunk summaries (subnet view) ============
+
+  type TrunkSummary = {
+    parentId: string;
+    parentLabel: string;
+    parentKind: Kind;
+    /** wireKind → list of child node ids on that trunk */
+    byKind: Map<WireKind, string[]>;
+  };
+
+  const trunkSummaries = $derived.by((): TrunkSummary[] => {
+    const map = new Map<string, TrunkSummary>();
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    for (const e of edges) {
+      const wk = (e.data?.wireKind as WireKind) ?? undefined;
+      if (!wk) continue;
+      const parent = nodeById.get(e.source);
+      if (!parent) continue;
+      let summary = map.get(parent.id);
+      if (!summary) {
+        summary = {
+          parentId: parent.id,
+          parentLabel: nodeLabel(parent),
+          parentKind: nodeKind(parent) ?? 'controller',
+          byKind: new Map(),
+        };
+        map.set(parent.id, summary);
+      }
+      const arr = summary.byKind.get(wk) ?? [];
+      arr.push(e.target);
+      summary.byKind.set(wk, arr);
+    }
+    return Array.from(map.values()).sort((a, b) => a.parentLabel.localeCompare(b.parentLabel));
+  });
 </script>
 
 <div class="build">
@@ -1235,7 +1386,34 @@
         {#if loadMessage}
           <p class="load-message {loadMessage.kind}">{loadMessage.text}</p>
         {/if}
-        <button type="button" class="clear" onclick={clearAll}>Clear canvas</button>
+        {#if trunkSummaries.length > 0}
+          <div class="trunks-section">
+            <h3>Trunks</h3>
+            <ul class="trunks-list">
+              {#each trunkSummaries as t (t.parentId)}
+                <li class="trunk-group">
+                  <div class="trunk-parent">
+                    <span class="trunk-parent-icon kind-{t.parentKind}">●</span>
+                    <span class="trunk-parent-label">{t.parentLabel}</span>
+                  </div>
+                  {#each [...t.byKind] as [wk, ids] (wk)}
+                    {@const info = WIRE_KIND_BY_ID.get(wk)}
+                    <div class="trunk-line" style:--c={info?.color ?? '#888'}>
+                      <span class="trunk-swatch"></span>
+                      <span class="trunk-label">{info?.label ?? wk}</span>
+                      <span class="trunk-count">{ids.length}</span>
+                    </div>
+                  {/each}
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+
+        <div class="canvas-buttons">
+          <button type="button" class="clear" onclick={clearAll}>Clear</button>
+          <button type="button" class="clear" onclick={resetToDemo} title="Restore the default demo topology">Reset to demo</button>
+        </div>
 
         <div class="topology-checks">
           <button
@@ -1876,6 +2054,107 @@
     color: color-mix(in srgb, CanvasText 50%, transparent);
     margin: 0;
     font-variant-numeric: tabular-nums;
+  }
+
+  .trunks-section {
+    margin-top: 0.5rem;
+  }
+
+  .trunks-section h3 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    margin: 0 0 0.35rem 0;
+  }
+
+  .trunks-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    max-height: 14rem;
+    overflow-y: auto;
+  }
+
+  .trunk-group {
+    border: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+    border-radius: 4px;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .trunk-parent {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.74rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .trunk-parent-icon {
+    font-size: 0.55rem;
+  }
+
+  .trunk-parent-icon.kind-supervisor {
+    color: #4a9eff;
+  }
+  .trunk-parent-icon.kind-controller {
+    color: #9c8cff;
+  }
+  .trunk-parent-icon.kind-sensor {
+    color: #f39c12;
+  }
+  .trunk-parent-icon.kind-safety {
+    color: #e74c3c;
+  }
+
+  .trunk-parent-label {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    color: CanvasText;
+  }
+
+  .trunk-line {
+    --c: #888;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.15rem 0 0.15rem 1rem;
+    font-size: 0.7rem;
+  }
+
+  .trunk-swatch {
+    width: 1rem;
+    height: 0.15rem;
+    background: var(--c);
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .trunk-label {
+    flex: 1;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+
+  .trunk-count {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-variant-numeric: tabular-nums;
+    padding: 0.02rem 0.4rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--c) 20%, transparent);
+    color: var(--c);
+    font-size: 0.66rem;
+  }
+
+  .canvas-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
   }
 
   .topology-checks {
