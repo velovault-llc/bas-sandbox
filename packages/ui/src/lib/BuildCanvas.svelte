@@ -103,9 +103,30 @@
     return `stroke: ${color}; stroke-width: ${width}px; opacity: ${animated ? 1 : 0.7};`;
   }
 
+  /** A broken trunk renders red + dashed + never animated. */
+  function styleForBrokenWire(): string {
+    return 'stroke: #e74c3c; stroke-width: 2px; stroke-dasharray: 6 4; opacity: 0.95;';
+  }
+
   function withStyle(e: Edge): Edge {
     const kind: WireKind = (e.data?.wireKind as WireKind) ?? 'mstp';
+    const broken = (e.data?.comm as string | undefined) === 'broken';
+    if (broken) {
+      // Force animation off — a broken trunk doesn't carry traffic.
+      return { ...e, animated: false, style: styleForBrokenWire() };
+    }
     return { ...e, style: styleForWire(kind, !!e.animated) };
+  }
+
+  function setEdgeBroken(edgeId: string, broken: boolean): void {
+    edges = edges.map((e) =>
+      e.id === edgeId
+        ? withStyle({
+            ...e,
+            data: { ...(e.data ?? {}), comm: broken ? 'broken' : 'normal' },
+          })
+        : e,
+    );
   }
 
   // ============ Demo defaults + localStorage persistence ============
@@ -501,9 +522,15 @@
     const sampleByCtrl = new Map<string, Sample>();
     const samples = runningSamples;
     const systems = runningSystems;
+    // Recompute offline status each tick. If a target's controller OR sensor
+    // can't reach a supervisor, the system reads as offline → senseZone()
+    // returns the last good value, so the trace flatlines until the wire
+    // is restored.
+    const offline = offlineNodes;
     for (const target of runningSnapshot) {
       const sys = systems.get(target.controllerId);
       if (!sys) continue;
+      sys.offline = offline.has(target.controllerId) || offline.has(target.sensorId);
       const sample = sys.step();
       sampleByCtrl.set(target.controllerId, sample);
       let hist = samples.get(target.controllerId) ?? [];
@@ -976,6 +1003,57 @@
     const sels = edges.filter((e) => e.selected);
     return sels.length === 1 ? sels[0] : null;
   });
+
+  /**
+   * Set of node ids that are "offline" — unreachable from any supervisor over
+   * the *healthy* portion of the graph. A broken trunk severs everything past
+   * it. If there are no supervisors on the canvas, nothing goes offline
+   * (free-floating equipment behaves as if standalone, which is fine for a
+   * sandbox where users may build bottom-up).
+   */
+  const offlineNodes = $derived.by((): Set<string> => {
+    // Roots = every supervisor on the canvas (ADX + every engine). They are
+    // the source of authority; reachability radiates outward from them.
+    const supervisors = nodes.filter((n) => nodeKind(n) === 'supervisor');
+    if (supervisors.length === 0) return new Set();
+
+    // Build an adjacency list across non-broken edges only.
+    const adj = new Map<string, string[]>();
+    for (const e of edges) {
+      if ((e.data?.comm as string | undefined) === 'broken') continue;
+      if (!adj.has(e.source)) adj.set(e.source, []);
+      if (!adj.has(e.target)) adj.set(e.target, []);
+      adj.get(e.source)!.push(e.target);
+      adj.get(e.target)!.push(e.source);
+    }
+
+    const reached = new Set<string>();
+    const queue: string[] = [];
+    for (const s of supervisors) {
+      reached.add(s.id);
+      queue.push(s.id);
+    }
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const neighbors = adj.get(id);
+      if (!neighbors) continue;
+      for (const n of neighbors) {
+        if (!reached.has(n)) {
+          reached.add(n);
+          queue.push(n);
+        }
+      }
+    }
+
+    const offline = new Set<string>();
+    for (const n of nodes) {
+      // Supervisors themselves never count as "offline" — they're the root.
+      if (nodeKind(n) === 'supervisor') continue;
+      if (!reached.has(n.id)) offline.add(n.id);
+    }
+    return offline;
+  });
+  setContext('basOfflineIds', () => offlineNodes);
 
   /** Single-selection node — drives the sensor inspector. */
   const selectedNode = $derived.by(() => {
@@ -1607,9 +1685,10 @@
         {#if selectedEdge}
           {@const currentKind = (selectedEdge.data?.wireKind as WireKind) ?? 'mstp'}
           {@const baud = selectedEdge.data?.baud as number | undefined}
+          {@const isBroken = (selectedEdge.data?.comm as string | undefined) === 'broken'}
           <Panel position="top-center">
             <div class="wire-panel">
-              <span class="wire-title">Trunk type</span>
+              <span class="wire-title">Trunk</span>
               <div class="wire-chips">
                 {#each WIRE_KINDS as wk (wk.kind)}
                   <button
@@ -1618,6 +1697,7 @@
                     class:active={currentKind === wk.kind}
                     style:--c={wk.color}
                     title={wk.description}
+                    disabled={isBroken}
                     onclick={() => setEdgeKind(selectedEdge.id, wk.kind)}
                   >
                     {wk.label}
@@ -1629,6 +1709,17 @@
                   {baud >= 1000 ? `${(baud / 1000).toFixed(baud % 1000 === 0 ? 0 : 1)}k` : baud} baud
                 </span>
               {/if}
+              <button
+                type="button"
+                class="wire-break"
+                class:broken={isBroken}
+                title={isBroken
+                  ? 'Restore this trunk — devices behind it come back online.'
+                  : 'Simulate a wire break / comm fail. Devices past this point go offline; their last good values freeze.'}
+                onclick={() => setEdgeBroken(selectedEdge.id, !isBroken)}
+              >
+                {isBroken ? '⟲ Restore trunk' : '✂ Break trunk'}
+              </button>
             </div>
           </Panel>
         {/if}
@@ -2603,6 +2694,39 @@
     color: color-mix(in srgb, CanvasText 85%, transparent);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  .wire-break {
+    border: 1px solid color-mix(in srgb, #e74c3c 55%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .wire-break:hover {
+    background: color-mix(in srgb, #e74c3c 12%, transparent);
+    color: #e74c3c;
+  }
+
+  .wire-break.broken {
+    background: color-mix(in srgb, #2ecc71 18%, transparent);
+    border-color: #2ecc71;
+    color: #2ecc71;
+  }
+
+  .wire-break.broken:hover {
+    background: color-mix(in srgb, #2ecc71 28%, transparent);
+  }
+
+  .wire-chip:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .sensor-panel {

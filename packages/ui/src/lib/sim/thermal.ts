@@ -95,6 +95,10 @@ export class SingleZoneSystem {
     driftBias: 0,
     lastReading: 72,
   };
+  /** Comm/trunk failure — sensor reading freezes at last good value, distinct
+   *  from a sensor fault (which the device itself owns). Set by the canvas
+   *  when reachability through the wires breaks. */
+  offline = false;
 
   constructor(readonly config: SingleZoneConfig = DEFAULT_CONFIG) {
     this.T_zone = config.initialZone;
@@ -113,6 +117,10 @@ export class SingleZoneSystem {
    *  drift → true zone + accumulated bias
    */
   private senseZone(): number {
+    // Comm fault wins over sensor faults — if we can't talk to the device,
+    // the reading freezes at whatever we last heard, regardless of what's
+    // happening on the device side.
+    if (this.offline) return this.sensor.lastReading;
     switch (this.sensor.fault) {
       case 'open':
         return 250;

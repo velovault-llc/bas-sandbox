@@ -45,6 +45,10 @@
   const getWiredIds = getContext<() => Set<string>>('basWiredIds');
   const physicsWired = $derived(getWiredIds ? getWiredIds().has(id) : false);
 
+  // Set of node ids that are unreachable from any supervisor (broken trunk).
+  const getOfflineIds = getContext<() => Set<string>>('basOfflineIds');
+  const isOffline = $derived(getOfflineIds ? getOfflineIds().has(id) : false);
+
   // Inline-rename plumbing. BuildCanvas tracks which node id is being renamed
   // and provides commit/cancel handlers via context.
   const getRenamingId = getContext<() => string | null>('basRenamingNodeId');
@@ -99,6 +103,7 @@
   class:is-tripped={data.runtime?.status === 'tripped'}
   class:is-wired={physicsWired}
   class:has-fault={!!data.fault && data.fault !== 'normal'}
+  class:is-offline={isOffline}
 >
   <Handle type="target" position={Position.Top} />
 
@@ -108,7 +113,9 @@
       {KIND_LABEL[data.kind]}
       {#if data.note}<em class="note-tag">{data.note}</em>{/if}
     </span>
-    {#if data.fault && data.fault !== 'normal'}
+    {#if isOffline}
+      <span class="offline-badge" title="Unreachable — broken trunk upstream">⌀ OFFLINE</span>
+    {:else if data.fault && data.fault !== 'normal'}
       <span class="fault-badge" title="Sensor fault: {FAULT_LABEL[data.fault].text}">
         {FAULT_LABEL[data.fault].glyph}
         {FAULT_LABEL[data.fault].text}
@@ -196,6 +203,16 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, #e74c3c 30%, transparent);
   }
 
+  /* Unreachable nodes (broken trunk severs them from any supervisor) go
+     muted + dashed gray. Distinct from a sensor fault (which is red). */
+  .bas-node.is-offline {
+    border-style: dashed;
+    border-color: color-mix(in srgb, CanvasText 40%, transparent);
+    opacity: 0.55;
+    /* Override fault/wired/runtime glow rings so the offline state reads cleanly. */
+    box-shadow: none;
+  }
+
   .fault-badge {
     margin-left: auto;
     font-size: 0.62rem;
@@ -203,6 +220,18 @@
     border-radius: 3px;
     background: color-mix(in srgb, #e74c3c 22%, transparent);
     color: #e74c3c;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .offline-badge {
+    margin-left: auto;
+    font-size: 0.62rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background: color-mix(in srgb, CanvasText 14%, transparent);
+    color: color-mix(in srgb, CanvasText 75%, transparent);
     font-weight: 600;
     letter-spacing: 0.04em;
     white-space: nowrap;
