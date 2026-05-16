@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { setContext } from 'svelte';
   import {
     Background,
     Controls,
@@ -75,19 +76,19 @@
     {
       id: 'demo-3',
       type: 'bas',
-      position: { x: 70, y: 360 },
+      position: { x: 130, y: 360 },
       data: { kind: 'controller', label: 'VAV-1' },
     },
     {
       id: 'demo-4',
       type: 'bas',
-      position: { x: 290, y: 360 },
+      position: { x: 130, y: 510 },
       data: { kind: 'sensor', label: 'ZN-T-1' },
     },
     {
       id: 'demo-5',
       type: 'bas',
-      position: { x: 510, y: 360 },
+      position: { x: 430, y: 360 },
       data: { kind: 'safety', label: 'FZ-1' },
     },
   ]);
@@ -95,7 +96,7 @@
   let edges = $state.raw<Edge[]>([
     { id: 'e1-2', source: 'demo-1', target: 'demo-2' },
     { id: 'e2-3', source: 'demo-2', target: 'demo-3' },
-    { id: 'e2-4', source: 'demo-2', target: 'demo-4' },
+    { id: 'e3-4', source: 'demo-3', target: 'demo-4' },
     { id: 'e2-5', source: 'demo-2', target: 'demo-5' },
   ]);
 
@@ -155,24 +156,101 @@
     ];
   }
 
+  // ============ Selection & physics target ============
+
+  let selectedControllerId = $state<string | null>(null);
+
+  function nodeKind(n: Node): Kind | undefined {
+    return (n.data as { kind?: Kind }).kind;
+  }
+
+  function nodeLabel(n: Node): string {
+    return (n.data as { label?: string }).label ?? '';
+  }
+
+  /** Find a sensor directly wired to the given controller (either direction). */
+  function findConnectedSensor(controllerId: string): Node | null {
+    for (const e of edges) {
+      const otherId =
+        e.source === controllerId ? e.target : e.target === controllerId ? e.source : null;
+      if (!otherId) continue;
+      const other = nodes.find((n) => n.id === otherId);
+      if (other && nodeKind(other) === 'sensor') return other;
+    }
+    return null;
+  }
+
+  /** First controller that has a sensor wired to it. Used as a fallback. */
+  function firstControlledPair(): { controller: Node; sensor: Node } | null {
+    for (const n of nodes) {
+      if (nodeKind(n) !== 'controller') continue;
+      const s = findConnectedSensor(n.id);
+      if (s) return { controller: n, sensor: s };
+    }
+    return null;
+  }
+
+  type PhysicsTarget = {
+    controllerId: string;
+    controllerLabel: string;
+    sensorId: string;
+    sensorLabel: string;
+    /** Optional parent controller (one hop upstream) — surfaces SP / OAT info. */
+    parentId?: string;
+    parentLabel?: string;
+  };
+
+  /** Find a controller wired *upstream* (edge.target === thisId). */
+  function findParentController(controllerId: string): Node | null {
+    for (const e of edges) {
+      if (e.target !== controllerId) continue;
+      const src = nodes.find((n) => n.id === e.source);
+      if (src && nodeKind(src) === 'controller') return src;
+    }
+    return null;
+  }
+
+  const physicsTarget = $derived.by((): PhysicsTarget | null => {
+    let controller: Node | undefined;
+    let sensor: Node | null = null;
+
+    if (selectedControllerId) {
+      controller = nodes.find((n) => n.id === selectedControllerId);
+      if (!controller || nodeKind(controller) !== 'controller') controller = undefined;
+      if (controller) sensor = findConnectedSensor(controller.id);
+    }
+    if (!controller || !sensor) {
+      const fallback = firstControlledPair();
+      if (!fallback) return null;
+      controller = fallback.controller;
+      sensor = fallback.sensor;
+    }
+
+    const parent = findParentController(controller.id);
+    return {
+      controllerId: controller.id,
+      controllerLabel: nodeLabel(controller),
+      sensorId: sensor.id,
+      sensorLabel: nodeLabel(sensor),
+      parentId: parent?.id,
+      parentLabel: parent ? nodeLabel(parent) : undefined,
+    };
+  });
+
+  // Expose the set of physics-wired node ids to BasNode via context so it can
+  // render a ⚡ indicator without us mutating per-node data.
+  const wiredIds = $derived.by((): Set<string> => {
+    if (!physicsTarget) return new Set();
+    return new Set([physicsTarget.controllerId, physicsTarget.sensorId]);
+  });
+  setContext('basWiredIds', () => wiredIds);
+
   // ============ Sim loop ============
 
   let running = $state(false);
   let tick = $state(0);
   let intervalId: ReturnType<typeof setInterval> | null = null;
   const TICK_MS = 1000;
-
-  // Sim A: a single-zone thermal system drives the demo VAV-1 / ZN-T-1 /
-  // FEC-1 trio. The rest of the topology still gets synthetic readings —
-  // only the "controlled system" pairs are physics-driven.
-  //
-  // CONTROLLED_VAV       = controller node whose actuator is the PI output
-  // CONTROLLED_SENSOR    = sensor node whose value is the simulated zone temp
-  // CONTROLLED_PARENT_FE = controller node that "supervises" the controlled
-  //                        system and shows setpoint + OAT info
-  const CONTROLLED_VAV = 'VAV-1';
-  const CONTROLLED_SENSOR = 'ZN-T-1';
-  const CONTROLLED_PARENT_FE = 'FEC-1';
 
   let system = $state<SingleZoneSystem | null>(null);
   let samples = $state.raw<Sample[]>([]);
@@ -200,29 +278,32 @@
     return { value: '✓ OK', status: 'idle' };
   }
 
+  // Snapshot of physics target captured at sim-start so changing selection
+  // mid-run doesn't yank the chart out from under the user.
+  let runningTarget = $state<PhysicsTarget | null>(null);
+
   function tickOnce() {
     tick++;
     const sample = system ? system.step() : null;
     if (sample) {
-      samples = system!.history.slice(); // copy for reactivity
+      samples = system!.history.slice();
     }
 
+    const tgt = runningTarget;
     nodes = nodes.map((n) => {
       const data = n.data as { kind: Kind; label: string; runtime?: unknown };
       let value: string;
       let status: 'idle' | 'polling' | 'responded' | 'tripped' = 'responded';
 
-      // Physics-driven nodes
-      if (sample && data.label === CONTROLLED_VAV) {
+      if (sample && tgt && n.id === tgt.controllerId) {
         value = `Out ${Math.round(sample.actuator * 100)}% (PI)`;
         status = 'polling';
-      } else if (sample && data.label === CONTROLLED_SENSOR) {
+      } else if (sample && tgt && n.id === tgt.sensorId) {
         value = `${sample.T_zone.toFixed(1)} °F`;
-      } else if (sample && data.label === CONTROLLED_PARENT_FE) {
+      } else if (sample && tgt && tgt.parentId && n.id === tgt.parentId) {
         value = `SP ${sample.setpoint.toFixed(0)}°F · OAT ${sample.T_OA.toFixed(0)}°F`;
         status = 'polling';
       } else {
-        // Synthetic
         switch (data.kind) {
           case 'supervisor':
             value = `uptime t=${tick}s`;
@@ -252,12 +333,12 @@
   function start() {
     if (running) return;
     running = true;
-    // Only spin up the physics system if the controlled VAV is present.
-    const hasControlledTrio = nodes.some(
-      (n) => (n.data as { label?: string }).label === CONTROLLED_VAV,
-    );
-    if (hasControlledTrio) {
+    runningTarget = physicsTarget;
+    if (runningTarget) {
       system = new SingleZoneSystem();
+      samples = [];
+    } else {
+      system = null;
       samples = [];
     }
     edges = edges.map((e) => ({ ...e, animated: true }));
@@ -267,6 +348,7 @@
 
   function stop() {
     running = false;
+    runningTarget = null;
     if (intervalId) clearInterval(intervalId);
     intervalId = null;
     edges = edges.map((e) => ({ ...e, animated: false }));
@@ -290,9 +372,17 @@
     tick = 0;
     system = null;
     samples = [];
+    selectedControllerId = null;
     nodes = [];
     edges = [];
     for (const k of Object.keys(counters)) counters[k] = 0;
+  }
+
+  function onNodeClick({ node }: { node: Node }) {
+    if (running) return; // Lock physics target while sim is running
+    if (nodeKind(node) === 'controller') {
+      selectedControllerId = node.id;
+    }
   }
 
   // Auto-cleanup
@@ -328,6 +418,28 @@
       </ul>
 
       <div class="palette-foot">
+        <div class="physics-info">
+          {#if physicsTarget}
+            <div class="phys-row">
+              <span class="phys-icon">⚡</span>
+              <div class="phys-text">
+                <span class="phys-label">Physics target</span>
+                <span class="phys-pair"
+                  >{physicsTarget.controllerLabel} ↔ {physicsTarget.sensorLabel}</span
+                >
+              </div>
+            </div>
+            <p class="phys-hint">Click another controller (wired to a sensor) to switch.</p>
+          {:else}
+            <div class="phys-row">
+              <span class="phys-icon idle">⚡</span>
+              <div class="phys-text">
+                <span class="phys-label">No physics target</span>
+                <span class="phys-pair">Wire a sensor to a controller</span>
+              </div>
+            </div>
+          {/if}
+        </div>
         <button type="button" class="clear" onclick={clearAll}>Clear canvas</button>
         <p class="meta">{nodes.length} nodes · {edges.length} wires</p>
       </div>
@@ -340,16 +452,16 @@
       ondrop={onCanvasDrop}
       ondragover={onCanvasDragOver}
     >
-      <SvelteFlow bind:nodes bind:edges {nodeTypes} fitView>
+      <SvelteFlow bind:nodes bind:edges {nodeTypes} fitView onnodeclick={onNodeClick}>
         <Background />
         <Controls />
         <MiniMap zoomable pannable />
 
-        {#if running && system && samples.length > 0}
+        {#if running && system && samples.length > 0 && runningTarget}
           <Panel position="top-left">
             <div class="chart-panel">
               <div class="chart-head">
-                <span class="chart-title">Zone response — {CONTROLLED_VAV}</span>
+                <span class="chart-title">Zone response — {runningTarget.controllerLabel}</span>
                 <span class="chart-sub">{DEFAULT_CONFIG.dt}s/tick · τ={DEFAULT_CONFIG.tau}s</span>
               </div>
               <MiniChart
@@ -489,7 +601,58 @@
     padding-top: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.5rem;
+  }
+
+  .physics-info {
+    padding: 0.5rem 0.55rem;
+    border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+    background: color-mix(in srgb, #f59e0b 6%, Canvas);
+    border-radius: 5px;
+  }
+
+  .phys-row {
+    display: flex;
+    gap: 0.45rem;
+    align-items: flex-start;
+  }
+
+  .phys-icon {
+    font-size: 1rem;
+    color: #f59e0b;
+    line-height: 1.2;
+  }
+
+  .phys-icon.idle {
+    color: color-mix(in srgb, CanvasText 30%, transparent);
+  }
+
+  .phys-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+
+  .phys-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+  }
+
+  .phys-pair {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.78rem;
+    color: CanvasText;
+  }
+
+  .phys-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    line-height: 1.3;
   }
 
   .clear {

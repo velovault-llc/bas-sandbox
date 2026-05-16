@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getContext } from 'svelte';
   import { Handle, Position, type NodeProps } from '@xyflow/svelte';
 
   type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety';
@@ -16,7 +17,11 @@
 
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
   // and validate via the discriminated `kind` union on data.
-  let { data }: NodeProps & { data: BasNodeData } = $props();
+  let { id, data }: NodeProps & { data: BasNodeData } = $props();
+
+  // Set of node ids that are wired to the physics sim (from BuildCanvas context).
+  const getWiredIds = getContext<() => Set<string>>('basWiredIds');
+  const physicsWired = $derived(getWiredIds ? getWiredIds().has(id) : false);
 
   const ICONS: Record<BasNodeKind, string> = {
     supervisor: '◉',
@@ -37,12 +42,16 @@
   class="bas-node kind-{data.kind}"
   class:has-runtime={!!data.runtime}
   class:is-tripped={data.runtime?.status === 'tripped'}
+  class:is-wired={physicsWired}
 >
   <Handle type="target" position={Position.Top} />
 
   <div class="header">
     <span class="icon">{ICONS[data.kind]}</span>
     <span class="kind">{KIND_LABEL[data.kind]}</span>
+    {#if physicsWired}
+      <span class="wired" title="Physics wired">⚡</span>
+    {/if}
   </div>
   <div class="label">{data.label}</div>
   {#if data.runtime}
@@ -72,6 +81,11 @@
 
   .bas-node.has-runtime {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  .bas-node.is-wired {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #f59e0b 45%, transparent);
   }
 
   .bas-node.is-tripped {
@@ -110,6 +124,13 @@
     letter-spacing: 0.04em;
     color: var(--accent);
     margin-bottom: 0.15rem;
+  }
+
+  .wired {
+    margin-left: auto;
+    color: #f59e0b;
+    font-size: 0.85rem;
+    line-height: 1;
   }
 
   .icon {
