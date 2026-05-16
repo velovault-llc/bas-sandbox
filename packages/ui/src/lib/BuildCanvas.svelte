@@ -14,7 +14,7 @@
 
   const nodeTypes = { bas: BasNode };
 
-  type Kind = 'supervisor' | 'field-controller' | 'unitary-controller' | 'sensor';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety';
 
   type PaletteItem = {
     kind: Kind;
@@ -27,33 +27,32 @@
   const PALETTE: PaletteItem[] = [
     {
       kind: 'supervisor',
-      label: 'Supervisor',
+      label: 'Engine / Supervisor',
       defaultName: 'NAE-1',
       icon: '◉',
       description:
-        'Network Automation Engine (NAE/NCE/SNE). Hosts the site database and routes traffic.',
+        'Engine / supervisor (NAE/NCE/SNE). Top of the network — holds the site database and routes traffic.',
     },
     {
-      kind: 'field-controller',
-      label: 'Field Controller',
+      kind: 'controller',
+      label: 'Controller',
       defaultName: 'FEC-1',
       icon: '◈',
-      description:
-        'Field Equipment Controller (FEC/FAC). Sits on a field bus, runs equipment logic.',
-    },
-    {
-      kind: 'unitary-controller',
-      label: 'Unitary Controller',
-      defaultName: 'VAV-1',
-      icon: '▢',
-      description: 'Zone-level controller (VMA/VAV/UNT). Drives one piece of unitary equipment.',
+      description: 'Field or zone controller (FEC/FAC/VMA/VAV). Runs equipment logic, downstream of a supervisor.',
     },
     {
       kind: 'sensor',
       label: 'Sensor',
       defaultName: 'ZN-T-1',
       icon: '◇',
-      description: 'Hard-wired sensor (zone temp, supply temp, pressure, flow, etc.).',
+      description: 'Zone temp, supply temp, pressure, flow, etc. Hardwired input to a controller.',
+    },
+    {
+      kind: 'safety',
+      label: 'Safety',
+      defaultName: 'FZ-1',
+      icon: '⚠',
+      description: 'Freezestat, high-static cutout, smoke detector, etc. Hardwired safety device.',
     },
   ];
 
@@ -61,32 +60,32 @@
     {
       id: 'demo-1',
       type: 'bas',
-      position: { x: 240, y: 60 },
+      position: { x: 280, y: 60 },
       data: { kind: 'supervisor', label: 'NAE-1' },
     },
     {
       id: 'demo-2',
       type: 'bas',
-      position: { x: 240, y: 200 },
-      data: { kind: 'field-controller', label: 'FEC-1' },
+      position: { x: 280, y: 210 },
+      data: { kind: 'controller', label: 'FEC-1' },
     },
     {
       id: 'demo-3',
       type: 'bas',
-      position: { x: 60, y: 340 },
-      data: { kind: 'unitary-controller', label: 'VAV-1' },
+      position: { x: 70, y: 360 },
+      data: { kind: 'controller', label: 'VAV-1' },
     },
     {
       id: 'demo-4',
       type: 'bas',
-      position: { x: 280, y: 340 },
-      data: { kind: 'unitary-controller', label: 'VAV-2' },
+      position: { x: 290, y: 360 },
+      data: { kind: 'sensor', label: 'ZN-T-1' },
     },
     {
       id: 'demo-5',
       type: 'bas',
-      position: { x: 500, y: 340 },
-      data: { kind: 'sensor', label: 'ZN-T-1' },
+      position: { x: 510, y: 360 },
+      data: { kind: 'safety', label: 'FZ-1' },
     },
   ]);
 
@@ -98,11 +97,12 @@
   ]);
 
   // Per-kind counter so default names auto-increment ("VAV-1", "VAV-2", ...).
+  // Pre-seeded to match the demo topology placed above.
   const counters: Record<string, number> = {
     supervisor: 1,
-    'field-controller': 1,
-    'unitary-controller': 2,
+    controller: 2,
     sensor: 1,
+    safety: 1,
   };
 
   function nextName(kind: Kind): string {
@@ -167,8 +167,21 @@
     return `${(0.2 + Math.random() * 1.8).toFixed(2)} in WC`;
   }
 
-  function damperReading(): string {
-    return `Damper ${Math.floor(Math.random() * 100)}%`;
+  function controllerReading(): string {
+    const damper = Math.floor(Math.random() * 100);
+    return `Out ${damper}%`;
+  }
+
+  function sensorValue(label: string): string {
+    // Crude heuristic: labels containing P / "Press" / "PS" hint at pressure
+    if (/(^|[-_ ])(p|ps|press)([-_ ]|$)/i.test(label)) return pressureReading();
+    return tempReading();
+  }
+
+  function safetyValue(label: string): { value: string; status: 'idle' | 'tripped' } {
+    // 96% OK, 4% TRIPPED — adds occasional drama in the demo
+    if (Math.random() < 0.04) return { value: `⚠ ${label} TRIPPED`, status: 'tripped' };
+    return { value: '✓ OK', status: 'idle' };
   }
 
   function tickOnce() {
@@ -176,26 +189,31 @@
     nodes = nodes.map((n) => {
       const data = n.data as { kind: Kind; label: string; runtime?: unknown };
       let value: string;
+      let status: 'idle' | 'polling' | 'responded' | 'tripped' = 'responded';
       switch (data.kind) {
         case 'supervisor':
           value = `uptime t=${tick}s`;
+          status = 'idle';
           break;
-        case 'field-controller':
-          value = `polling ${Math.floor(Math.random() * 8) + 1} points`;
-          break;
-        case 'unitary-controller':
-          value = damperReading();
+        case 'controller':
+          value = controllerReading();
+          status = 'polling';
           break;
         case 'sensor':
-          // Mix of sensor types for variety
-          value = data.label.includes('P') ? pressureReading() : tempReading();
+          value = sensorValue(data.label);
           break;
+        case 'safety': {
+          const s = safetyValue(data.label);
+          value = s.value;
+          status = s.status;
+          break;
+        }
         default:
           value = 'idle';
       }
       return {
         ...n,
-        data: { ...data, runtime: { value, status: 'responded' as const } },
+        data: { ...data, runtime: { value, status } },
       };
     });
   }
@@ -396,14 +414,14 @@
   .item.kind-supervisor {
     --accent: #4a9eff;
   }
-  .item.kind-field-controller {
+  .item.kind-controller {
     --accent: #9c8cff;
-  }
-  .item.kind-unitary-controller {
-    --accent: #2ecc71;
   }
   .item.kind-sensor {
     --accent: #f39c12;
+  }
+  .item.kind-safety {
+    --accent: #e74c3c;
   }
 
   .palette-foot {
@@ -440,7 +458,6 @@
     position: relative;
   }
 
-  /* xyflow renders fine in both light and dark; tweak the background */
   :global(.flow .svelte-flow__background) {
     background: Canvas;
   }

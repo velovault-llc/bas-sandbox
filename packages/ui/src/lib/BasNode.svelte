@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Handle, Position, type NodeProps } from '@xyflow/svelte';
 
-  type BasNodeKind = 'supervisor' | 'field-controller' | 'unitary-controller' | 'sensor';
+  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety';
 
   type BasNodeData = {
     label: string;
@@ -10,7 +10,7 @@
     /** Optional runtime state surfaced when the sim is running. */
     runtime?: {
       value: string;
-      status?: 'idle' | 'polling' | 'responded';
+      status?: 'idle' | 'polling' | 'responded' | 'tripped';
     };
   };
 
@@ -20,20 +20,24 @@
 
   const ICONS: Record<BasNodeKind, string> = {
     supervisor: '◉',
-    'field-controller': '◈',
-    'unitary-controller': '▢',
+    controller: '◈',
     sensor: '◇',
+    safety: '⚠',
   };
 
   const KIND_LABEL: Record<BasNodeKind, string> = {
     supervisor: 'Supervisor',
-    'field-controller': 'Field Controller',
-    'unitary-controller': 'Unitary Controller',
+    controller: 'Controller',
     sensor: 'Sensor',
+    safety: 'Safety',
   };
 </script>
 
-<div class="bas-node kind-{data.kind}" class:has-runtime={!!data.runtime}>
+<div
+  class="bas-node kind-{data.kind}"
+  class:has-runtime={!!data.runtime}
+  class:is-tripped={data.runtime?.status === 'tripped'}
+>
   <Handle type="target" position={Position.Top} />
 
   <div class="header">
@@ -70,17 +74,31 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
+  .bas-node.is-tripped {
+    box-shadow: 0 0 0 3px #e74c3c;
+    animation: pulse 0.8s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse {
+    from {
+      box-shadow: 0 0 0 3px #e74c3c;
+    }
+    to {
+      box-shadow: 0 0 0 6px color-mix(in srgb, #e74c3c 40%, transparent);
+    }
+  }
+
   .kind-supervisor {
     --accent: #4a9eff;
   }
-  .kind-field-controller {
+  .kind-controller {
     --accent: #9c8cff;
-  }
-  .kind-unitary-controller {
-    --accent: #2ecc71;
   }
   .kind-sensor {
     --accent: #f39c12;
+  }
+  .kind-safety {
+    --accent: #e74c3c;
   }
 
   .header {
