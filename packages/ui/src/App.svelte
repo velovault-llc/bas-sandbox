@@ -9,7 +9,7 @@
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
   type Mode = 'view' | 'build';
-  let mode = $state<Mode>('view');
+  let mode = $state<Mode>('build');
 
   let dragOver = $state(false);
   let loading = $state(false);
@@ -102,20 +102,20 @@
       <button
         type="button"
         role="tab"
-        aria-selected={mode === 'view'}
-        class:active={mode === 'view'}
-        onclick={() => (mode = 'view')}
-      >
-        View
-      </button>
-      <button
-        type="button"
-        role="tab"
         aria-selected={mode === 'build'}
         class:active={mode === 'build'}
         onclick={() => (mode = 'build')}
       >
         Build
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'view'}
+        class:active={mode === 'view'}
+        onclick={() => (mode = 'view')}
+      >
+        dbexport tool
       </button>
     </div>
   </header>
@@ -223,9 +223,9 @@
   {:else}
     <main class="build">
       <p class="lede">
-        Build mode (preview). Drag equipment from the left palette onto the canvas, then drag
-        between the handles to wire up a network topology. v0.1 — no simulation behavior yet; v0.2
-        will animate state across the wires.
+        Build a BAS network from scratch. Drag equipment from the palette onto the canvas, wire them
+        by dragging between handles, then hit <strong>Run</strong> to see synthetic state propagate across
+        the topology. The dbexport tool tab parses real Metasys archives.
       </p>
       <BuildCanvas />
     </main>

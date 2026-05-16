@@ -7,6 +7,11 @@
     label: string;
     kind: BasNodeKind;
     note?: string;
+    /** Optional runtime state surfaced when the sim is running. */
+    runtime?: {
+      value: string;
+      status?: 'idle' | 'polling' | 'responded';
+    };
   };
 
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
@@ -28,7 +33,7 @@
   };
 </script>
 
-<div class="bas-node kind-{data.kind}">
+<div class="bas-node kind-{data.kind}" class:has-runtime={!!data.runtime}>
   <Handle type="target" position={Position.Top} />
 
   <div class="header">
@@ -36,6 +41,9 @@
     <span class="kind">{KIND_LABEL[data.kind]}</span>
   </div>
   <div class="label">{data.label}</div>
+  {#if data.runtime}
+    <div class="runtime">{data.runtime.value}</div>
+  {/if}
   {#if data.note}
     <div class="note">{data.note}</div>
   {/if}
@@ -55,6 +63,11 @@
     font-size: 0.82rem;
     min-width: 10rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    transition: box-shadow 200ms ease;
+  }
+
+  .bas-node.has-runtime {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
   .kind-supervisor {
@@ -92,6 +105,19 @@
       monospace;
     font-size: 0.9rem;
     color: CanvasText;
+  }
+
+  .runtime {
+    margin-top: 0.25rem;
+    padding: 0.15rem 0.4rem;
+    background: color-mix(in srgb, var(--accent) 18%, Canvas);
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.78rem;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
   }
 
   .note {

@@ -3,6 +3,7 @@
     Background,
     Controls,
     MiniMap,
+    Panel,
     SvelteFlow,
     SvelteFlowProvider,
     type Edge,
@@ -13,8 +14,10 @@
 
   const nodeTypes = { bas: BasNode };
 
+  type Kind = 'supervisor' | 'field-controller' | 'unitary-controller' | 'sensor';
+
   type PaletteItem = {
-    kind: 'supervisor' | 'field-controller' | 'unitary-controller' | 'sensor';
+    kind: Kind;
     label: string;
     defaultName: string;
     icon: string;
@@ -70,14 +73,20 @@
     {
       id: 'demo-3',
       type: 'bas',
-      position: { x: 100, y: 340 },
+      position: { x: 60, y: 340 },
       data: { kind: 'unitary-controller', label: 'VAV-1' },
     },
     {
       id: 'demo-4',
       type: 'bas',
-      position: { x: 380, y: 340 },
+      position: { x: 280, y: 340 },
       data: { kind: 'unitary-controller', label: 'VAV-2' },
+    },
+    {
+      id: 'demo-5',
+      type: 'bas',
+      position: { x: 500, y: 340 },
+      data: { kind: 'sensor', label: 'ZN-T-1' },
     },
   ]);
 
@@ -85,18 +94,18 @@
     { id: 'e1-2', source: 'demo-1', target: 'demo-2' },
     { id: 'e2-3', source: 'demo-2', target: 'demo-3' },
     { id: 'e2-4', source: 'demo-2', target: 'demo-4' },
+    { id: 'e2-5', source: 'demo-2', target: 'demo-5' },
   ]);
 
   // Per-kind counter so default names auto-increment ("VAV-1", "VAV-2", ...).
-  // Pre-seeded to match the demo nodes placed in the initial `nodes` state.
   const counters: Record<string, number> = {
     supervisor: 1,
     'field-controller': 1,
     'unitary-controller': 2,
-    sensor: 0,
+    sensor: 1,
   };
 
-  function nextName(kind: PaletteItem['kind']): string {
+  function nextName(kind: Kind): string {
     const item = PALETTE.find((p) => p.kind === kind);
     if (!item) return kind;
     const stem = item.defaultName.replace(/-\d+$/, '');
@@ -119,13 +128,11 @@
 
   function onCanvasDrop(event: DragEvent) {
     event.preventDefault();
-    const kind = event.dataTransfer?.getData('application/bas-node-kind');
+    const kind = event.dataTransfer?.getData('application/bas-node-kind') as Kind | undefined;
     if (!kind) return;
     const item = PALETTE.find((p) => p.kind === kind);
     if (!item) return;
 
-    // Position relative to the flow container; close enough for v0.1 without
-    // accounting for current pan/zoom. The Controls panel lets users re-pan.
     const target = event.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const position = {
@@ -145,12 +152,94 @@
     ];
   }
 
+  // ============ Sim loop ============
+
+  let running = $state(false);
+  let tick = $state(0);
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+  const TICK_MS = 1000;
+
+  function tempReading(): string {
+    return `${(65 + Math.random() * 15).toFixed(1)} °F`;
+  }
+
+  function pressureReading(): string {
+    return `${(0.2 + Math.random() * 1.8).toFixed(2)} in WC`;
+  }
+
+  function damperReading(): string {
+    return `Damper ${Math.floor(Math.random() * 100)}%`;
+  }
+
+  function tickOnce() {
+    tick++;
+    nodes = nodes.map((n) => {
+      const data = n.data as { kind: Kind; label: string; runtime?: unknown };
+      let value: string;
+      switch (data.kind) {
+        case 'supervisor':
+          value = `uptime t=${tick}s`;
+          break;
+        case 'field-controller':
+          value = `polling ${Math.floor(Math.random() * 8) + 1} points`;
+          break;
+        case 'unitary-controller':
+          value = damperReading();
+          break;
+        case 'sensor':
+          // Mix of sensor types for variety
+          value = data.label.includes('P') ? pressureReading() : tempReading();
+          break;
+        default:
+          value = 'idle';
+      }
+      return {
+        ...n,
+        data: { ...data, runtime: { value, status: 'responded' as const } },
+      };
+    });
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    edges = edges.map((e) => ({ ...e, animated: true }));
+    tickOnce();
+    intervalId = setInterval(tickOnce, TICK_MS);
+  }
+
+  function stop() {
+    running = false;
+    if (intervalId) clearInterval(intervalId);
+    intervalId = null;
+    edges = edges.map((e) => ({ ...e, animated: false }));
+  }
+
+  function resetSim() {
+    stop();
+    tick = 0;
+    nodes = nodes.map((n) => {
+      const data = n.data as Record<string, unknown>;
+      const { runtime: _runtime, ...rest } = data;
+      return { ...n, data: rest };
+    });
+  }
+
   function clearAll() {
     if (!confirm('Clear all nodes and connections?')) return;
+    stop();
+    tick = 0;
     nodes = [];
     edges = [];
     for (const k of Object.keys(counters)) counters[k] = 0;
   }
+
+  // Auto-cleanup
+  $effect(() => {
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  });
 </script>
 
 <div class="build">
@@ -194,6 +283,26 @@
         <Background />
         <Controls />
         <MiniMap zoomable pannable />
+        <Panel position="top-right">
+          <div class="sim-panel">
+            {#if !running}
+              <button type="button" class="run" onclick={start} disabled={nodes.length === 0}>
+                ▶ Run
+              </button>
+            {:else}
+              <button type="button" class="stop" onclick={stop}> ■ Stop </button>
+            {/if}
+            <button
+              type="button"
+              class="reset-sim"
+              onclick={resetSim}
+              disabled={tick === 0 && !running}
+            >
+              Reset
+            </button>
+            <span class="tick">t = {tick}s</span>
+          </div>
+        </Panel>
       </SvelteFlow>
     </div>
   </SvelteFlowProvider>
@@ -331,8 +440,64 @@
     position: relative;
   }
 
-  /* xyflow renders fine in both light and dark; tweak the background dots */
+  /* xyflow renders fine in both light and dark; tweak the background */
   :global(.flow .svelte-flow__background) {
     background: Canvas;
+  }
+
+  .sim-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: color-mix(in srgb, Canvas 90%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+
+  .sim-panel button {
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    background: Canvas;
+    color: CanvasText;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sim-panel button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .sim-panel button.run {
+    border-color: #2ecc71;
+    color: #2ecc71;
+  }
+
+  .sim-panel button.run:hover:not(:disabled) {
+    background: color-mix(in srgb, #2ecc71 12%, Canvas);
+  }
+
+  .sim-panel button.stop {
+    border-color: #e74c3c;
+    color: #e74c3c;
+  }
+
+  .sim-panel button.stop:hover:not(:disabled) {
+    background: color-mix(in srgb, #e74c3c 12%, Canvas);
+  }
+
+  .sim-panel .tick {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    padding: 0 0.25rem;
   }
 </style>
