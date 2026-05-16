@@ -857,6 +857,47 @@
     edges = addEdge(withStyle(newEdge), edges);
   }
 
+  /**
+   * When nodes get deleted, any wired physics target that referenced them
+   * loses its meaning — drop it and unfocus if it was the focus.
+   */
+  function onNodesDelete(deleted: Node[]) {
+    const deletedIds = new Set(deleted.map((n) => n.id));
+    const survivors = wiredTargets.filter(
+      (t) => !deletedIds.has(t.controllerId) && !deletedIds.has(t.sensorId),
+    );
+    if (survivors.length !== wiredTargets.length) {
+      wiredTargets = survivors;
+      if (focusedTargetId && deletedIds.has(focusedTargetId)) {
+        focusedTargetId = wiredTargets[0]?.controllerId ?? null;
+      }
+      syncRunningState();
+    }
+  }
+
+  /**
+   * When edges get deleted, any wired target whose controller-sensor edge
+   * just got removed isn't a valid pair anymore — drop the target.
+   */
+  function onEdgesDelete(deleted: Edge[]) {
+    const deletedIds = new Set(deleted.map((e) => e.id));
+    const survivingEdges = edges.filter((e) => !deletedIds.has(e.id));
+    const survivors = wiredTargets.filter((t) => {
+      return survivingEdges.some(
+        (e) =>
+          (e.source === t.controllerId && e.target === t.sensorId) ||
+          (e.source === t.sensorId && e.target === t.controllerId),
+      );
+    });
+    if (survivors.length !== wiredTargets.length) {
+      wiredTargets = survivors;
+      if (focusedTargetId && !survivors.find((t) => t.controllerId === focusedTargetId)) {
+        focusedTargetId = wiredTargets[0]?.controllerId ?? null;
+      }
+      syncRunningState();
+    }
+  }
+
   function setEdgeKind(edgeId: string, kind: WireKind) {
     edges = edges.map((e) =>
       e.id === edgeId
@@ -920,7 +961,10 @@
     <aside class="palette">
       <div class="palette-head">
         <h3>Equipment</h3>
-        <p class="hint">Drag onto canvas. Wire by dragging between handles.</p>
+        <p class="hint">
+          Drag onto canvas. Wire by dragging between handles. Press
+          <kbd>Delete</kbd> / <kbd>Backspace</kbd> to remove selected nodes or wires.
+        </p>
       </div>
       <ul class="items">
         {#each PALETTE as item (item.kind)}
@@ -1046,6 +1090,10 @@
         fitView
         onnodeclick={onNodeClick}
         onconnect={onConnect}
+        ondelete={({ nodes: dn, edges: de }) => {
+          if (dn.length > 0) onNodesDelete(dn);
+          if (de.length > 0) onEdgesDelete(de);
+        }}
       >
         <Background />
 
@@ -1308,6 +1356,17 @@
     color: color-mix(in srgb, CanvasText 55%, transparent);
     margin: 0 0 0.75rem 0;
     line-height: 1.35;
+  }
+
+  .hint kbd {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
   }
 
   .items {
