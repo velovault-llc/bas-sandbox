@@ -125,7 +125,11 @@
 <style>
   .bas-node {
     --accent: #888;
-    background: color-mix(in srgb, var(--accent) 8%, Canvas);
+    /* Solid Canvas first so wires routing behind the node are fully covered,
+       then a thin accent overlay for the kind tint. */
+    background:
+      linear-gradient(color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 10%, transparent)),
+      Canvas;
     border: 1.5px solid var(--accent);
     border-radius: 6px;
     padding: 0.45rem 0.7rem;
@@ -135,6 +139,9 @@
     min-width: 10rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
     transition: box-shadow 200ms ease;
+    /* Lift nodes above the edge layer so wires never appear to cross through. */
+    position: relative;
+    z-index: 2;
   }
 
   .bas-node.has-runtime {

@@ -48,10 +48,10 @@ const ENGINE_ROW_Y_START = 200;
 const ENGINE_GRID_COLS = 4;
 const ENGINE_BLOCK_WIDTH = 360;
 const ENGINE_ROW_HEIGHT = 240;
-const CONTROLLER_Y_OFFSET = 120;
-const CONTROLLER_ROW_GAP = 60;
-const CONTROLLER_COL_GAP = 160;
-const CONTROLLERS_PER_ROW = 2;
+const CONTROLLER_Y_OFFSET = 140;
+const CONTROLLER_ROW_GAP = 95;
+const CONTROLLER_COL_GAP = 200;
+const CONTROLLERS_PER_ROW = 3;
 
 function shouldSkip(label: string): boolean {
   if (/^SCT$/i.test(label)) return true;
