@@ -2349,6 +2349,19 @@
     background: Canvas;
   }
 
+  /* Lift node wrappers above the edge SVG layer so wires never visually
+     cross through node bodies. xyflow defaults all unselected nodes to
+     z-index: 0, which is the same as the edges layer — meaning DOM order
+     decides, and edges happen to win for SVG paths inside the bounding
+     box of an HTML node. Bumping every node node-side fixes that
+     globally without needing to set zIndex on each Node object. */
+  :global(.flow .svelte-flow__node) {
+    z-index: 10;
+  }
+  :global(.flow .svelte-flow__edges) {
+    z-index: 0;
+  }
+
   .sim-panel {
     display: flex;
     align-items: center;
