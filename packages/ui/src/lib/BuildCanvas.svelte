@@ -3,7 +3,6 @@
   import {
     Background,
     Controls,
-    MiniMap,
     Panel,
     SvelteFlow,
     SvelteFlowProvider,
@@ -353,6 +352,41 @@
     });
   }
 
+  /**
+   * Walk upstream from the controller, then add the controller↔sensor edge.
+   * The polling path is what should animate during a run — supervisor sends
+   * a request, it traverses the trunk down to the controller, the controller
+   * reads its sensor. Other wires (safety branches, sibling controllers)
+   * stay quiet.
+   */
+  function pollingPathEdgeIds(target: PhysicsTarget): Set<string> {
+    const out = new Set<string>();
+
+    // controller ↔ sensor
+    for (const e of edges) {
+      if (
+        (e.source === target.controllerId && e.target === target.sensorId) ||
+        (e.source === target.sensorId && e.target === target.controllerId)
+      ) {
+        out.add(e.id);
+        break;
+      }
+    }
+
+    // Walk upstream from controller toward the root supervisor.
+    let current = target.controllerId;
+    const visited = new Set<string>([current]);
+    for (let i = 0; i < 16; i++) {
+      const up = edges.find((e) => e.target === current && !visited.has(e.source));
+      if (!up) break;
+      out.add(up.id);
+      current = up.source;
+      visited.add(current);
+    }
+
+    return out;
+  }
+
   function start() {
     if (running) return;
     running = true;
@@ -360,11 +394,17 @@
     if (runningTarget) {
       system = new SingleZoneSystem(config);
       samples = [];
+      // Animate only the wires on the polling path: supervisor → ... → controller → sensor.
+      // Off-path wires (safety branches, sibling controllers) stay quiet.
+      const pathIds = pollingPathEdgeIds(runningTarget);
+      edges = edges.map((e) => ({ ...e, animated: pathIds.has(e.id) }));
     } else {
       system = null;
       samples = [];
+      // No physics target → no real traffic — animate all wires lightly so
+      // the canvas isn't completely static while the synthetic ticker runs.
+      edges = edges.map((e) => ({ ...e, animated: true }));
     }
-    edges = edges.map((e) => ({ ...e, animated: true }));
     tickOnce();
     intervalId = setInterval(tickOnce, TICK_MS);
   }
@@ -506,9 +546,19 @@
 
   function onNodeClick({ node }: { node: Node }) {
     if (running) return; // Lock physics target while sim is running
-    if (nodeKind(node) === 'controller') {
+    if (nodeKind(node) !== 'controller') return;
+    // Click-to-toggle: clicking the currently-targeted controller un-targets.
+    // Picking a different controller switches the target.
+    if (selectedControllerId === node.id) {
+      selectedControllerId = null;
+    } else {
       selectedControllerId = node.id;
     }
+  }
+
+  function clearPhysicsTarget() {
+    if (running) return;
+    selectedControllerId = null;
   }
 
   // Auto-cleanup
@@ -554,8 +604,24 @@
                   >{physicsTarget.controllerLabel} ↔ {physicsTarget.sensorLabel}</span
                 >
               </div>
+              {#if selectedControllerId}
+                <button
+                  type="button"
+                  class="phys-clear"
+                  onclick={clearPhysicsTarget}
+                  disabled={running}
+                  title="Untarget (re-enable auto-pick)"
+                  aria-label="Clear physics target"
+                >
+                  ✕
+                </button>
+              {/if}
             </div>
-            <p class="phys-hint">Click another controller (wired to a sensor) to switch.</p>
+            <p class="phys-hint">
+              {selectedControllerId
+                ? 'Click the same controller again, or ✕, to untarget. Click a different controller to switch.'
+                : 'Auto-picked. Click any controller to override.'}
+            </p>
           {:else}
             <div class="phys-row">
               <span class="phys-icon idle">⚡</span>
@@ -597,8 +663,7 @@
     >
       <SvelteFlow bind:nodes bind:edges {nodeTypes} fitView onnodeclick={onNodeClick}>
         <Background />
-        <Controls />
-        <MiniMap zoomable pannable />
+        <Controls position="bottom-right" />
 
         {#if running && system && samples.length > 0 && runningTarget}
           <Panel position="top-left">
@@ -862,6 +927,30 @@
     display: flex;
     gap: 0.45rem;
     align-items: flex-start;
+  }
+
+  .phys-clear {
+    margin-left: auto;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    cursor: pointer;
+    align-self: center;
+  }
+
+  .phys-clear:hover:not(:disabled) {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
+  }
+
+  .phys-clear:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .phys-icon {
