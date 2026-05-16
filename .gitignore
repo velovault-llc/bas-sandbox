@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# JS / TS toolchain
+node_modules/
+dist/
+build/
+.svelte-kit/
+.vite/
+*.tsbuildinfo
+
+# Rust / WASM
+target/
+pkg/
+*.rs.bk
+Cargo.lock
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
