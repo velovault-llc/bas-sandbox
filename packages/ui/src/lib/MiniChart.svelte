@@ -100,6 +100,19 @@
     SP {primary.setpoint.toFixed(0)}°F
   </text>
 
+  <!-- Ghost setpoint lines (faint dashed, per-target color) so multi-zone
+       viewers can see each zone's SP, not just the focused one's. -->
+  {#each ghosts as g (g.label + '-sp')}
+    <line
+      x1={PAD_X}
+      y1={yFor(g.setpoint)}
+      x2={W - PAD_X}
+      y2={yFor(g.setpoint)}
+      class="ghost-setpoint"
+      stroke={g.color}
+    />
+  {/each}
+
   <!-- Ghost zone curves (muted, no markers) -->
   {#each ghostPaths as g (g.label)}
     <path d={g.d} class="ghost-zone" stroke={g.color} />
@@ -194,6 +207,12 @@
     stroke-width: 1.25;
     stroke-linejoin: round;
     opacity: 0.55;
+  }
+
+  .ghost-setpoint {
+    stroke-width: 0.8;
+    stroke-dasharray: 2 3;
+    opacity: 0.45;
   }
 
   .actuator {
