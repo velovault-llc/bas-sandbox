@@ -1088,37 +1088,54 @@
 
   let showFindings = $state(false);
 
-  /**
-   * Toggle visibility of all controllers imported under a given engine. Used
-   * by clicks on imported engine nodes that carry data.childCount > 0.
-   */
-  function toggleSupervisorExpand(supervisorId: string) {
-    const childIds = new Set<string>();
-    for (const n of nodes) {
-      if ((n.data as Record<string, unknown>)?.importedFromEngine === supervisorId) {
-        childIds.add(n.id);
-      }
-    }
-    if (childIds.size === 0) return;
+  /** Currently-expanded imported engine, if any. At most one at a time. */
+  let focusedEngineId = $state<string | null>(null);
 
-    // Probe a child to know the current collapsed state; flip for all.
-    const probe = nodes.find((n) => childIds.has(n.id));
-    const newHidden = !probe?.hidden;
+  /**
+   * Engine-focus mode for imported topologies.
+   * - Default (focusedEngineId === null): all imported engines visible,
+   *   no imported controllers visible. ADX + user-added nodes always visible.
+   * - Focused on engine X: only X (among imported engines) is visible, and
+   *   only X's imported controllers are visible. Other imported engines and
+   *   their controllers are hidden so the focused engine's children have
+   *   the canvas to themselves.
+   */
+  function applyEngineFocus() {
+    const focused = focusedEngineId;
+    const hiddenNodeIds = new Set<string>();
 
     nodes = nodes.map((n) => {
-      if (childIds.has(n.id)) return { ...n, hidden: newHidden };
-      if (n.id === supervisorId) {
-        const data = n.data as Record<string, unknown>;
-        return { ...n, data: { ...data, collapsed: newHidden } };
+      const data = n.data as Record<string, unknown> | undefined;
+      const isImportedEngine = data?.childCount !== undefined;
+      const importedFrom = data?.importedFromEngine as string | undefined;
+
+      let hidden = false;
+      if (focused) {
+        if (isImportedEngine) hidden = n.id !== focused;
+        else if (importedFrom !== undefined) hidden = importedFrom !== focused;
+      } else {
+        if (importedFrom !== undefined) hidden = true;
       }
-      return n;
+
+      if (hidden) hiddenNodeIds.add(n.id);
+
+      // Update collapsed flag on imported engines for the chevron.
+      if (isImportedEngine) {
+        const collapsed = focused !== n.id;
+        return { ...n, hidden, data: { ...data, collapsed } };
+      }
+      return { ...n, hidden };
     });
+
     edges = edges.map((e) => {
-      if (childIds.has(e.source) || childIds.has(e.target)) {
-        return { ...e, hidden: newHidden };
-      }
-      return e;
+      const hidden = hiddenNodeIds.has(e.source) || hiddenNodeIds.has(e.target);
+      return { ...e, hidden };
     });
+  }
+
+  function toggleSupervisorExpand(supervisorId: string) {
+    focusedEngineId = focusedEngineId === supervisorId ? null : supervisorId;
+    applyEngineFocus();
   }
 
   function onNodeClick({ node }: { node: Node }) {
@@ -1192,6 +1209,7 @@
     edges = pending.edges.map(withStyle);
     wiredTargets = [];
     focusedTargetId = null;
+    focusedEngineId = null;
     // Reset name counters so future palette drops don't collide with imp-*
     // ids. nextId picks up safely past the highest imp- id.
     for (const k of Object.keys(counters)) counters[k] = 0;
@@ -1201,6 +1219,8 @@
       if (m) maxImp = Math.max(maxImp, parseInt(m[1], 10) + 1);
     }
     nextId = maxImp;
+    // Apply the default focus state (all engines visible, controllers hidden).
+    applyEngineFocus();
   });
 
   // ============ localStorage auto-persist ============
