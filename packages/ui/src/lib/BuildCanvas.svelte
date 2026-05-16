@@ -20,7 +20,12 @@
     type SingleZoneConfig,
     type SensorFault,
   } from './sim/thermal';
-  import { SENSOR_TEMPLATES, DEFAULT_SENSOR_SIGNAL, type SensorSignal } from './sim/sensorModels';
+  import {
+    SENSOR_TEMPLATES,
+    SENSOR_TEMPLATE_BY_ID,
+    DEFAULT_SENSOR_SIGNAL,
+    type SensorSignal,
+  } from './sim/sensorModels';
   import { importStore } from './canvasStore.svelte';
 
   const nodeTypes = { bas: BasNode };
@@ -597,6 +602,8 @@
         highAlarm?: number;
         lowAlarm?: number;
         staleSec?: number;
+        signal?: SensorSignal;
+        ageSinceLastPollSec?: number;
       };
 
       // 1) Bump stale-age counter on offline nodes; clear when they come back.
@@ -605,6 +612,19 @@
         staleNext = (data.staleSec ?? 0) + 1;
       } else if (data.staleSec !== undefined) {
         staleNext = undefined;
+      }
+
+      // 1b) Poll-cadence age — only meaningful for online wired sensors.
+      // Different signal types have different supervisor poll rates: a Pt1000
+      // RTD typically polls every 5s, a 4-20mA loop every 10s. Showing the
+      // tick-modulo-cadence makes the polling rhythm visible on the canvas.
+      let ageNext = data.ageSinceLastPollSec;
+      if (data.kind === 'sensor' && !offline.has(n.id) && wiredIds.has(n.id)) {
+        const tpl = data.signal ? SENSOR_TEMPLATE_BY_ID.get(data.signal) : undefined;
+        const pollSec = tpl?.pollSec ?? 5;
+        ageNext = tick % pollSec;
+      } else if (data.ageSinceLastPollSec !== undefined) {
+        ageNext = undefined;
       }
 
       // 2) Evaluate controller alarms against the live sample (if any).
@@ -619,6 +639,12 @@
           } else {
             alarmNext = 'normal';
           }
+          // Detect transitions for the alarm log.
+          const prev = prevAlarmByController.get(n.id) ?? 'normal';
+          if (prev !== alarmNext) {
+            logAlarmTransition(n.id, data.label, prev, alarmNext, sample.T_zone);
+            prevAlarmByController.set(n.id, alarmNext);
+          }
         }
       }
 
@@ -630,6 +656,7 @@
             ...data,
             runtime: physVal,
             staleSec: staleNext,
+            ageSinceLastPollSec: ageNext,
             ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
           },
         };
@@ -663,6 +690,7 @@
           ...data,
           runtime: { value, status },
           staleSec: staleNext,
+          ageSinceLastPollSec: ageNext,
           ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
         },
       };
@@ -720,6 +748,12 @@
       const sensor = nodes.find((n) => n.id === t.sensorId);
       const persistedFault = (sensor?.data as { fault?: SensorFault } | undefined)?.fault;
       if (persistedFault && persistedFault !== 'normal') sys.setFault(persistedFault);
+      // Restore manual override the same way — operator command persists
+      // across sim stop/start.
+      const ctrl = nodes.find((n) => n.id === t.controllerId);
+      const persistedOverride = (ctrl?.data as { manualOverride?: number } | undefined)
+        ?.manualOverride;
+      if (typeof persistedOverride === 'number') sys.manualOverride = persistedOverride;
       systems.set(t.controllerId, sys);
       samples.set(t.controllerId, []);
     }
@@ -950,6 +984,10 @@
         const sensor = nodes.find((n) => n.id === t.sensorId);
         const persistedFault = (sensor?.data as { fault?: SensorFault } | undefined)?.fault;
         if (persistedFault && persistedFault !== 'normal') sys.setFault(persistedFault);
+        const ctrl = nodes.find((n) => n.id === t.controllerId);
+        const persistedOverride = (ctrl?.data as { manualOverride?: number } | undefined)
+          ?.manualOverride;
+        if (typeof persistedOverride === 'number') sys.manualOverride = persistedOverride;
         systems.set(t.controllerId, sys);
         samples.set(t.controllerId, []);
       }
@@ -1127,6 +1165,79 @@
     return selectedNode;
   });
 
+  /** Rolling log of alarm transitions — each entry captures a fire or clear
+   *  event so the user can scroll back through what happened. */
+  type AlarmLogEntry = {
+    id: number;
+    tick: number;
+    controllerId: string;
+    controllerLabel: string;
+    kind: 'high' | 'low';
+    action: 'fire' | 'clear';
+    zoneTemp: number;
+  };
+  let alarmLog = $state.raw<AlarmLogEntry[]>([]);
+  let nextAlarmLogId = 0;
+  /** Previous-tick alarm state per controller — used to detect transitions. */
+  const prevAlarmByController = new Map<string, 'normal' | 'high' | 'low'>();
+  const ALARM_LOG_MAX = 50;
+
+  function logAlarmTransition(
+    controllerId: string,
+    label: string,
+    prev: 'normal' | 'high' | 'low',
+    next: 'normal' | 'high' | 'low',
+    zoneTemp: number,
+  ): void {
+    if (prev === next) return;
+    // Fire: anything → high/low. Clear: high/low → normal.
+    if (next !== 'normal') {
+      alarmLog = [
+        {
+          id: nextAlarmLogId++,
+          tick,
+          controllerId,
+          controllerLabel: label,
+          kind: next,
+          action: 'fire' as const,
+          zoneTemp,
+        },
+        ...alarmLog,
+      ].slice(0, ALARM_LOG_MAX);
+    } else if (prev !== 'normal') {
+      alarmLog = [
+        {
+          id: nextAlarmLogId++,
+          tick,
+          controllerId,
+          controllerLabel: label,
+          kind: prev,
+          action: 'clear' as const,
+          zoneTemp,
+        },
+        ...alarmLog,
+      ].slice(0, ALARM_LOG_MAX);
+    }
+  }
+
+  /** Live counts for the status bar — meant to read like a NOC summary. */
+  const liveCounts = $derived.by(() => {
+    let online = 0;
+    let offline = 0;
+    let faults = 0;
+    let alarms = 0;
+    for (const n of nodes) {
+      const k = nodeKind(n);
+      if (k === 'supervisor') continue;
+      if (offlineNodes.has(n.id)) offline++;
+      else online++;
+      const d = n.data as { fault?: SensorFault; alarm?: 'normal' | 'high' | 'low' } | undefined;
+      if (k === 'sensor' && d?.fault && d.fault !== 'normal') faults++;
+      if (k === 'controller' && d?.alarm && d.alarm !== 'normal') alarms++;
+    }
+    return { online, offline, faults, alarms };
+  });
+
   /** Update a sensor's signal template. UI-only change today — the template
    *  feeds the subtitle and (future) poll-cadence sim, but the thermal model
    *  treats every sensor as a generic zone-temp source. */
@@ -1146,6 +1257,46 @@
         ? { ...n, data: { ...(n.data as Record<string, unknown>), [key]: value } }
         : n,
     );
+  }
+
+  /** Engage / release manual override on the actuator. Engaging captures the
+   *  current PI output as the starting override value so the actuator doesn't
+   *  jump on engage. Releasing clears the override and PI takes back over. */
+  function toggleOverride(controllerId: string, on: boolean): void {
+    const sys = runningSystems.get(controllerId);
+    if (on) {
+      const initial = sys ? sys.actuator : 0;
+      nodes = nodes.map((n) =>
+        n.id === controllerId
+          ? {
+              ...n,
+              data: { ...(n.data as Record<string, unknown>), manualOverride: initial },
+            }
+          : n,
+      );
+      if (sys) sys.manualOverride = initial;
+    } else {
+      nodes = nodes.map((n) => {
+        if (n.id !== controllerId) return n;
+        const { manualOverride: _drop, ...rest } = n.data as Record<string, unknown>;
+        return { ...n, data: rest };
+      });
+      if (sys) sys.manualOverride = null;
+    }
+  }
+
+  function setOverrideValue(controllerId: string, value: number): void {
+    const clamped = Math.max(0, Math.min(1, value));
+    nodes = nodes.map((n) =>
+      n.id === controllerId
+        ? {
+            ...n,
+            data: { ...(n.data as Record<string, unknown>), manualOverride: clamped },
+          }
+        : n,
+    );
+    const sys = runningSystems.get(controllerId);
+    if (sys) sys.manualOverride = clamped;
   }
 
   /** Inject a fault on the sensor. Updates the node's data so it persists into
@@ -1859,11 +2010,12 @@
 
         {#if selectedController}
           {@const ctrlData = selectedController.data as
-            | { highAlarm?: number; lowAlarm?: number }
+            | { highAlarm?: number; lowAlarm?: number; manualOverride?: number }
             | undefined}
+          {@const overrideOn = typeof ctrlData?.manualOverride === 'number'}
           <Panel position="top-center">
             <div class="ctrl-panel">
-              <span class="ctrl-title">Alarm thresholds — {nodeLabel(selectedController)}</span>
+              <span class="ctrl-title">Controller — {nodeLabel(selectedController)}</span>
               <label class="ctrl-field">
                 <span>High</span>
                 <input
@@ -1888,6 +2040,34 @@
                 />
                 <span class="ctrl-unit">°F</span>
               </label>
+              <span class="ctrl-divider"></span>
+              <button
+                type="button"
+                class="override-toggle"
+                class:active={overrideOn}
+                title={overrideOn
+                  ? 'Release the manual override — PI control resumes.'
+                  : 'Override the actuator output (bypass PI). Like a tech commanding a damper for balancing or troubleshooting.'}
+                onclick={() => toggleOverride(selectedController.id, !overrideOn)}
+              >
+                {overrideOn ? '◉ Override ON' : '○ Override'}
+              </button>
+              {#if overrideOn}
+                <label class="ctrl-field">
+                  <span>Out</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((ctrlData?.manualOverride ?? 0) * 100)}
+                    oninput={(e) =>
+                      setOverrideValue(selectedController.id, Number(e.currentTarget.value) / 100)}
+                  />
+                  <span class="ctrl-unit">{Math.round((ctrlData?.manualOverride ?? 0) * 100)}%</span
+                  >
+                </label>
+              {/if}
             </div>
           </Panel>
         {/if}
@@ -2071,6 +2251,42 @@
           </Panel>
         {/if}
 
+        {#if alarmLog.length > 0}
+          <Panel position="bottom-right">
+            <div class="alarm-log">
+              <div class="alarm-log-head">
+                <span class="alarm-log-title">Alarm log ({alarmLog.length})</span>
+                <button
+                  type="button"
+                  class="alarm-log-clear"
+                  title="Clear the alarm history"
+                  onclick={() => (alarmLog = [])}
+                >
+                  Clear
+                </button>
+              </div>
+              <ul class="alarm-log-list">
+                {#each alarmLog.slice(0, 8) as entry (entry.id)}
+                  <li
+                    class="alarm-log-row alarm-{entry.kind}"
+                    class:cleared={entry.action === 'clear'}
+                  >
+                    <span class="alarm-log-tick">t={entry.tick}s</span>
+                    <span class="alarm-log-action">
+                      {entry.action === 'fire' ? (entry.kind === 'high' ? '▲' : '▼') : '✓'}
+                    </span>
+                    <span class="alarm-log-label">{entry.controllerLabel}</span>
+                    <span class="alarm-log-temp">{entry.zoneTemp.toFixed(1)}°F</span>
+                  </li>
+                {/each}
+              </ul>
+              {#if alarmLog.length > 8}
+                <span class="alarm-log-more">+{alarmLog.length - 8} older entries</span>
+              {/if}
+            </div>
+          </Panel>
+        {/if}
+
         <Panel position="top-right">
           <div class="sim-panel">
             {#if !running}
@@ -2089,6 +2305,27 @@
               Reset
             </button>
             <span class="tick">t = {tick}s</span>
+            {#if nodes.length > 0}
+              <span class="status-divider"></span>
+              <span class="status-pill ok" title="Reachable from a supervisor"
+                >● {liveCounts.online}</span
+              >
+              {#if liveCounts.offline > 0}
+                <span class="status-pill offline" title="Unreachable (broken trunk)"
+                  >⌀ {liveCounts.offline}</span
+                >
+              {/if}
+              {#if liveCounts.faults > 0}
+                <span class="status-pill fault" title="Sensors with active fault injection"
+                  >⚠ {liveCounts.faults}</span
+                >
+              {/if}
+              {#if liveCounts.alarms > 0}
+                <span class="status-pill alarm" title="Controllers in alarm state"
+                  >▲ {liveCounts.alarms}</span
+                >
+              {/if}
+            {/if}
           </div>
         </Panel>
       </SvelteFlow>
@@ -2740,6 +2977,189 @@
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, CanvasText 70%, transparent);
     padding: 0 0.25rem;
+  }
+
+  .status-divider {
+    width: 1px;
+    height: 1.2rem;
+    background: color-mix(in srgb, CanvasText 18%, transparent);
+    margin: 0 0.15rem;
+  }
+
+  .status-pill {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0.1rem 0.45rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .status-pill.ok {
+    color: #2ecc71;
+    background: color-mix(in srgb, #2ecc71 14%, transparent);
+    border-color: color-mix(in srgb, #2ecc71 35%, transparent);
+  }
+
+  .status-pill.offline {
+    color: color-mix(in srgb, CanvasText 80%, transparent);
+    background: color-mix(in srgb, CanvasText 14%, transparent);
+    border-color: color-mix(in srgb, CanvasText 35%, transparent);
+  }
+
+  .status-pill.fault {
+    color: #e74c3c;
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    border-color: color-mix(in srgb, #e74c3c 40%, transparent);
+  }
+
+  .status-pill.alarm {
+    color: #e74c3c;
+    background: color-mix(in srgb, #e74c3c 22%, transparent);
+    border-color: #e74c3c;
+    animation: alarm-flash-pill 1.2s ease-in-out infinite alternate;
+  }
+
+  @keyframes alarm-flash-pill {
+    from {
+      opacity: 0.7;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .alarm-log {
+    width: 280px;
+    padding: 0.45rem 0.55rem 0.4rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+  }
+
+  .alarm-log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.3rem;
+  }
+
+  .alarm-log-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+
+  .alarm-log-clear {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.65rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .alarm-log-clear:hover {
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+    color: CanvasText;
+  }
+
+  .alarm-log-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .alarm-log-row {
+    display: grid;
+    grid-template-columns: 3rem 1rem 1fr auto;
+    align-items: center;
+    gap: 0.35rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .alarm-log-row.alarm-high:not(.cleared) {
+    color: #e74c3c;
+    background: color-mix(in srgb, #e74c3c 12%, transparent);
+  }
+
+  .alarm-log-row.alarm-low:not(.cleared) {
+    color: #4a9eff;
+    background: color-mix(in srgb, #4a9eff 12%, transparent);
+  }
+
+  .alarm-log-row.cleared {
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    background: color-mix(in srgb, #2ecc71 8%, transparent);
+  }
+
+  .alarm-log-tick {
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+  }
+
+  .alarm-log-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .alarm-log-more {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.6rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    text-align: center;
+    font-style: italic;
+  }
+
+  .ctrl-divider {
+    width: 1px;
+    height: 1.2rem;
+    background: color-mix(in srgb, CanvasText 18%, transparent);
+  }
+
+  .override-toggle {
+    border: 1px solid color-mix(in srgb, #f39c12 55%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #f39c12 90%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .override-toggle:hover {
+    background: color-mix(in srgb, #f39c12 12%, transparent);
+  }
+
+  .override-toggle.active {
+    background: color-mix(in srgb, #f39c12 22%, transparent);
+    color: #f39c12;
+    border-color: #f39c12;
+  }
+
+  .ctrl-field input[type='range'] {
+    width: 8rem;
+    accent-color: #f39c12;
   }
 
   .chart-panel {

@@ -99,6 +99,10 @@ export class SingleZoneSystem {
    *  from a sensor fault (which the device itself owns). Set by the canvas
    *  when reachability through the wires breaks. */
   offline = false;
+  /** When set (0..1), the actuator is held at this value and the PI loop is
+   *  bypassed. Mirrors a tech "commanding" a point in the BAS for testing or
+   *  balancing. null = PI controls normally. */
+  manualOverride: number | null = null;
 
   constructor(readonly config: SingleZoneConfig = DEFAULT_CONFIG) {
     this.T_zone = config.initialZone;
@@ -167,19 +171,26 @@ export class SingleZoneSystem {
 
     // 3) PI with anti-windup, fed the *sensed* zone temp — this is the
     //    whole point of the sensor layer: the controller chases what the
-    //    sensor says, not what the room actually is.
+    //    sensor says, not what the room actually is. Manual override
+    //    short-circuits this — the actuator is held at the commanded value
+    //    and the PI integral freezes so it doesn't wind up while the loop
+    //    is open.
     const sensed = this.senseZone();
     this.sensor.lastReading = sensed;
-    const error = sensed - setpoint;
-    const candidate = Kp * error + Ki * this.integral;
-    const next = Math.max(0, Math.min(1, candidate));
-    // Only integrate when not pushing further into a saturated direction.
-    const saturatedHigh = next >= 1 && error > 0;
-    const saturatedLow = next <= 0 && error < 0;
-    if (!saturatedHigh && !saturatedLow) {
-      this.integral += error * dt;
+    if (this.manualOverride !== null) {
+      this.actuator = Math.max(0, Math.min(1, this.manualOverride));
+    } else {
+      const error = sensed - setpoint;
+      const candidate = Kp * error + Ki * this.integral;
+      const next = Math.max(0, Math.min(1, candidate));
+      // Only integrate when not pushing further into a saturated direction.
+      const saturatedHigh = next >= 1 && error > 0;
+      const saturatedLow = next <= 0 && error < 0;
+      if (!saturatedHigh && !saturatedLow) {
+        this.integral += error * dt;
+      }
+      this.actuator = next;
     }
-    this.actuator = next;
 
     // 4) Record
     this.tick++;

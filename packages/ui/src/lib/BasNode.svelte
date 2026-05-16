@@ -37,6 +37,11 @@
     lowAlarm?: number;
     /** Controller-only: current alarm state (set by BuildCanvas each tick). */
     alarm?: 'normal' | 'high' | 'low';
+    /** Controller-only: manual override value (0..1) bypassing PI loop. */
+    manualOverride?: number;
+    /** Sensor-only: seconds since the last supervisor poll. Set each tick by
+     *  BuildCanvas, equals tick % pollSec of the chosen signal template. */
+    ageSinceLastPollSec?: number;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -146,6 +151,15 @@
         {FAULT_LABEL[data.fault].glyph}
         {FAULT_LABEL[data.fault].text}
       </span>
+    {:else if typeof data.manualOverride === 'number'}
+      <span
+        class="override-badge"
+        title="Actuator manually commanded — PI loop bypassed at {Math.round(
+          data.manualOverride * 100,
+        )}%"
+      >
+        ◉ OVRD {Math.round(data.manualOverride * 100)}%
+      </span>
     {:else if physicsWired}
       <span class="wired" title="Physics wired">⚡</span>
     {/if}
@@ -177,6 +191,10 @@
       {#if isOffline && typeof data.staleSec === 'number' && data.staleSec > 0}
         <span class="stale-age" title="Wall-seconds since last good reading"
           >stale {data.staleSec}s</span
+        >
+      {:else if data.kind === 'sensor' && typeof data.ageSinceLastPollSec === 'number'}
+        <span class="poll-age" title="Wall-seconds since last poll on this signal type"
+          >polled {data.ageSinceLastPollSec}s ago</span
         >
       {/if}
     </div>
@@ -280,10 +298,30 @@
     white-space: nowrap;
   }
 
+  .override-badge {
+    margin-left: auto;
+    font-size: 0.62rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background: color-mix(in srgb, #f39c12 22%, transparent);
+    color: #f39c12;
+    border: 1px solid color-mix(in srgb, #f39c12 55%, transparent);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
   .stale-age {
     margin-left: 0.4rem;
     font-size: 0.65rem;
     color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .poll-age {
+    margin-left: 0.4rem;
+    font-size: 0.62rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
     font-variant-numeric: tabular-nums;
   }
 
