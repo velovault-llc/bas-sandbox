@@ -24,6 +24,17 @@
     /** Network / identity metadata pulled off the parsed .dbexport. */
     subtitle?: string;
     meta?: Record<string, string | undefined>;
+    /** Sensor-only: current fault mode. Drives node tinting + a small badge. */
+    fault?: 'normal' | 'open' | 'short' | 'stuck' | 'drift';
+  };
+
+  /** Human label + glyph for each fault, used on the node badge. */
+  const FAULT_LABEL: Record<NonNullable<BasNodeData['fault']>, { glyph: string; text: string }> = {
+    normal: { glyph: '', text: '' },
+    open: { glyph: '⊘', text: 'OPEN' },
+    short: { glyph: '⊗', text: 'SHORT' },
+    stuck: { glyph: '⏸', text: 'STUCK' },
+    drift: { glyph: '~', text: 'DRIFT' },
   };
 
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
@@ -87,6 +98,7 @@
   class:has-runtime={!!data.runtime}
   class:is-tripped={data.runtime?.status === 'tripped'}
   class:is-wired={physicsWired}
+  class:has-fault={!!data.fault && data.fault !== 'normal'}
 >
   <Handle type="target" position={Position.Top} />
 
@@ -96,7 +108,12 @@
       {KIND_LABEL[data.kind]}
       {#if data.note}<em class="note-tag">{data.note}</em>{/if}
     </span>
-    {#if physicsWired}
+    {#if data.fault && data.fault !== 'normal'}
+      <span class="fault-badge" title="Sensor fault: {FAULT_LABEL[data.fault].text}">
+        {FAULT_LABEL[data.fault].glyph}
+        {FAULT_LABEL[data.fault].text}
+      </span>
+    {:else if physicsWired}
       <span class="wired" title="Physics wired">⚡</span>
     {/if}
   </div>
@@ -170,6 +187,25 @@
   .bas-node.is-tripped {
     box-shadow: 0 0 0 3px #e74c3c;
     animation: pulse 0.8s ease-in-out infinite alternate;
+  }
+
+  /* Sensor with an active fault gets a dashed red ring to read as "untrusted." */
+  .bas-node.has-fault {
+    border-style: dashed;
+    border-color: #e74c3c;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #e74c3c 30%, transparent);
+  }
+
+  .fault-badge {
+    margin-left: auto;
+    font-size: 0.62rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background: color-mix(in srgb, #e74c3c 22%, transparent);
+    color: #e74c3c;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
   }
 
   @keyframes pulse {

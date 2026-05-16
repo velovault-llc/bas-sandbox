@@ -18,6 +18,7 @@
     DEFAULT_CONFIG,
     type Sample,
     type SingleZoneConfig,
+    type SensorFault,
   } from './sim/thermal';
   import { importStore } from './canvasStore.svelte';
 
@@ -28,6 +29,17 @@
   // ============ Wire kinds (trunk types) ============
 
   type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
+
+  /** Tooltip copy for the sensor-fault chips. Mirrors what a tech would
+   *  diagnose in the field — wire break, shorted lead, frozen comm, etc. */
+  const FAULT_TIPS: Record<SensorFault, string> = {
+    normal: 'Sensor reading tracks zone temp normally.',
+    open: 'Wire break / open circuit — sensor reads full-scale high (250°F).',
+    short: 'Shorted leads — sensor reads full-scale low (-40°F).',
+    stuck:
+      'Sensor frozen at its last good value. Controller thinks zone is steady; reality drifts.',
+    drift: 'Slow bias creep (~1°F per 10 sim-minutes). Controller chases a phantom reading.',
+  };
 
   const WIRE_KINDS: ReadonlyArray<{
     kind: WireKind;
@@ -516,8 +528,12 @@
         value: `Out ${Math.round(sample.actuator * 100)}% (PI)`,
         status: 'polling',
       });
+      // Sensor node displays what the SENSOR reports — not the true zone.
+      // Under fault this can diverge from T_zone (stuck reading, drift bias,
+      // open/short to rail values). That's the whole point: the controller
+      // and the sensor reading agree; reality goes its own way.
       physicsValueByNode.set(target.sensorId, {
-        value: `${sample.T_zone.toFixed(1)} °F`,
+        value: `${sample.T_sensed.toFixed(1)} °F`,
         status: 'responded',
       });
     }
@@ -617,7 +633,13 @@
     const systems = new Map<string, SingleZoneSystem>();
     const samples = new Map<string, Sample[]>();
     for (const t of runningSnapshot) {
-      systems.set(t.controllerId, new SingleZoneSystem(t.config));
+      const sys = new SingleZoneSystem(t.config);
+      // Restore any persisted sensor fault so the run picks up where the
+      // user left it (e.g. they injected a fault, stopped, hit Run again).
+      const sensor = nodes.find((n) => n.id === t.sensorId);
+      const persistedFault = (sensor?.data as { fault?: SensorFault } | undefined)?.fault;
+      if (persistedFault && persistedFault !== 'normal') sys.setFault(persistedFault);
+      systems.set(t.controllerId, sys);
       samples.set(t.controllerId, []);
     }
     runningSystems = systems;
@@ -843,7 +865,11 @@
     // Additions
     for (const t of wiredTargets) {
       if (!current.has(t.controllerId)) {
-        systems.set(t.controllerId, new SingleZoneSystem(t.config));
+        const sys = new SingleZoneSystem(t.config);
+        const sensor = nodes.find((n) => n.id === t.sensorId);
+        const persistedFault = (sensor?.data as { fault?: SensorFault } | undefined)?.fault;
+        if (persistedFault && persistedFault !== 'normal') sys.setFault(persistedFault);
+        systems.set(t.controllerId, sys);
         samples.set(t.controllerId, []);
       }
     }
@@ -950,6 +976,33 @@
     const sels = edges.filter((e) => e.selected);
     return sels.length === 1 ? sels[0] : null;
   });
+
+  /** Single-selection node — drives the sensor inspector. */
+  const selectedNode = $derived.by(() => {
+    const sels = nodes.filter((n) => n.selected);
+    return sels.length === 1 ? sels[0] : null;
+  });
+
+  const selectedSensor = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'sensor') return null;
+    return selectedNode;
+  });
+
+  /** Inject a fault on the sensor. Updates the node's data so it persists into
+   *  localStorage / scenario save, AND mutates the running thermal sim (if any)
+   *  so the change is visible on the next tick. */
+  function setSensorFault(sensorId: string, fault: SensorFault): void {
+    nodes = nodes.map((n) =>
+      n.id === sensorId ? { ...n, data: { ...(n.data as Record<string, unknown>), fault } } : n,
+    );
+    // Find the wired target this sensor belongs to and push the fault into
+    // its live SingleZoneSystem so the trace reacts immediately.
+    const target = wiredTargets.find((t) => t.sensorId === sensorId);
+    if (!target) return;
+    const sys = runningSystems.get(target.controllerId);
+    if (sys) sys.setFault(fault);
+  }
 
   // ============ Topology validation (live, build-mode checks) ============
 
@@ -1575,6 +1628,36 @@
                 <span class="wire-baud" title="Baud rate pulled from the trunk's JCI property 426">
                   {baud >= 1000 ? `${(baud / 1000).toFixed(baud % 1000 === 0 ? 0 : 1)}k` : baud} baud
                 </span>
+              {/if}
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedSensor}
+          {@const currentFault = ((selectedSensor.data as { fault?: SensorFault } | undefined)
+            ?.fault ?? 'normal') as SensorFault}
+          {@const wiredHere = wiredTargets.some((t) => t.sensorId === selectedSensor.id)}
+          <Panel position="top-center">
+            <div class="sensor-panel">
+              <span class="sensor-title">Sensor fault — {nodeLabel(selectedSensor)}</span>
+              <div class="fault-chips">
+                {#each ['normal', 'open', 'short', 'stuck', 'drift'] as f (f)}
+                  <button
+                    type="button"
+                    class="fault-chip"
+                    class:active={currentFault === f}
+                    class:danger={f !== 'normal'}
+                    title={FAULT_TIPS[f as SensorFault]}
+                    onclick={() => setSensorFault(selectedSensor.id, f as SensorFault)}
+                  >
+                    {f}
+                  </button>
+                {/each}
+              </div>
+              {#if !wiredHere}
+                <span class="sensor-warn"
+                  >Not wired to a controller — fault won't affect any sim yet.</span
+                >
               {/if}
             </div>
           </Panel>
@@ -2520,6 +2603,77 @@
     color: color-mix(in srgb, CanvasText 85%, transparent);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  .sensor-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    flex-wrap: wrap;
+    max-width: 540px;
+  }
+
+  .sensor-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+
+  .fault-chips {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .fault-chip {
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+    text-transform: lowercase;
+  }
+
+  .fault-chip:hover {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
+  }
+
+  .fault-chip.danger {
+    border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+  }
+
+  .fault-chip.danger:hover {
+    background: color-mix(in srgb, #e74c3c 12%, transparent);
+  }
+
+  .fault-chip.active {
+    background: color-mix(in srgb, #e74c3c 22%, transparent);
+    border-color: #e74c3c;
+    color: #e74c3c;
+  }
+
+  .fault-chip.active:not(.danger) {
+    background: color-mix(in srgb, #2ecc71 22%, transparent);
+    border-color: #2ecc71;
+    color: #2ecc71;
+  }
+
+  .sensor-warn {
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    font-style: italic;
   }
 
   .tune-panel {

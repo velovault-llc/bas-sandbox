@@ -17,14 +17,36 @@
 export interface Sample {
   /** Tick number (1-indexed). */
   readonly t: number;
-  /** Zone temperature, °F. */
+  /** True zone temperature, °F (what the room actually is). */
   readonly T_zone: number;
+  /** What the sensor reports to the controller, °F. Diverges from T_zone
+   *  under fault. Equals T_zone when sensor is healthy. */
+  readonly T_sensed: number;
   /** Outdoor air temperature, °F. */
   readonly T_OA: number;
   /** Setpoint, °F. */
   readonly setpoint: number;
   /** Actuator output, 0..1. */
   readonly actuator: number;
+}
+
+/**
+ * Sensor fault modes — what a BAS tech actually sees in the field.
+ *  - `open`: wire break / out-of-range high (RTD reads ~250°F max)
+ *  - `short`: wire short / out-of-range low (~-40°F)
+ *  - `stuck`: sensor frozen at last good value (firmware lockup or comm fail)
+ *  - `drift`: slow bias creep — ~1°F per 10 simulated minutes
+ */
+export type SensorFault = 'normal' | 'open' | 'short' | 'stuck' | 'drift';
+
+export interface SensorState {
+  fault: SensorFault;
+  /** Frozen reading active under `stuck` (°F). Captured on entering stuck. */
+  stuckValue: number;
+  /** Accumulated bias from `drift` (°F). Reset on returning to normal. */
+  driftBias: number;
+  /** Last reading the controller actually saw — drives ghost-on-canvas display. */
+  lastReading: number;
 }
 
 export interface SingleZoneConfig {
@@ -66,11 +88,59 @@ export class SingleZoneSystem {
   integral: number;
   history: Sample[] = [];
   tick = 0;
+  /** Sensor model the controller reads through. Mutated by setFault(). */
+  sensor: SensorState = {
+    fault: 'normal',
+    stuckValue: 72,
+    driftBias: 0,
+    lastReading: 72,
+  };
 
   constructor(readonly config: SingleZoneConfig = DEFAULT_CONFIG) {
     this.T_zone = config.initialZone;
     this.actuator = 0;
     this.integral = 0;
+    this.sensor.stuckValue = config.initialZone;
+    this.sensor.lastReading = config.initialZone;
+  }
+
+  /**
+   * Compute what the sensor reports right now from the true zone temp.
+   * Fault modes mirror what a JCI Reliability property surfaces:
+   *  open → 250°F (RTD/thermistor full-scale high)
+   *  short → -40°F (full-scale low)
+   *  stuck → the value captured when the fault was injected
+   *  drift → true zone + accumulated bias
+   */
+  private senseZone(): number {
+    switch (this.sensor.fault) {
+      case 'open':
+        return 250;
+      case 'short':
+        return -40;
+      case 'stuck':
+        return this.sensor.stuckValue;
+      case 'drift':
+        return this.T_zone + this.sensor.driftBias;
+      case 'normal':
+      default:
+        return this.T_zone;
+    }
+  }
+
+  /** Update fault mode mid-run. Captures the current reading when entering stuck. */
+  setFault(fault: SensorFault): void {
+    if (fault === this.sensor.fault) return;
+    if (fault === 'stuck') {
+      // Freeze at whatever the controller last saw (so the freeze is visible
+      // relative to where the trace is, not a jump).
+      this.sensor.stuckValue = this.sensor.lastReading;
+    }
+    if (fault === 'normal') {
+      // Clear accumulated drift bias so "fix the sensor" gives a clean slate.
+      this.sensor.driftBias = 0;
+    }
+    this.sensor.fault = fault;
   }
 
   step(): Sample {
@@ -81,8 +151,18 @@ export class SingleZoneSystem {
     const cooling = -this.actuator * coolingMax;
     this.T_zone += dt * (drift + cooling);
 
-    // 2) PI with anti-windup
-    const error = this.T_zone - setpoint;
+    // 2) Accumulate drift bias *before* sensing (so this tick already reflects it).
+    //    Tuned so drift fault adds ~1°F per 10 sim-minutes (~600 sim-seconds).
+    if (this.sensor.fault === 'drift') {
+      this.sensor.driftBias += dt / 600;
+    }
+
+    // 3) PI with anti-windup, fed the *sensed* zone temp — this is the
+    //    whole point of the sensor layer: the controller chases what the
+    //    sensor says, not what the room actually is.
+    const sensed = this.senseZone();
+    this.sensor.lastReading = sensed;
+    const error = sensed - setpoint;
     const candidate = Kp * error + Ki * this.integral;
     const next = Math.max(0, Math.min(1, candidate));
     // Only integrate when not pushing further into a saturated direction.
@@ -93,11 +173,12 @@ export class SingleZoneSystem {
     }
     this.actuator = next;
 
-    // 3) Record
+    // 4) Record
     this.tick++;
     const sample: Sample = {
       t: this.tick,
       T_zone: this.T_zone,
+      T_sensed: sensed,
       T_OA: outdoorAir,
       setpoint,
       actuator: this.actuator,
@@ -113,6 +194,9 @@ export class SingleZoneSystem {
     this.T_zone = this.config.initialZone;
     this.actuator = 0;
     this.integral = 0;
+    this.sensor.driftBias = 0;
+    this.sensor.stuckValue = this.config.initialZone;
+    this.sensor.lastReading = this.config.initialZone;
     this.history = [];
     this.tick = 0;
   }
