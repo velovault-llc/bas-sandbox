@@ -13,7 +13,12 @@
   import '@xyflow/svelte/dist/style.css';
   import BasNode from './BasNode.svelte';
   import MiniChart from './MiniChart.svelte';
-  import { SingleZoneSystem, DEFAULT_CONFIG, type Sample } from './sim/thermal';
+  import {
+    SingleZoneSystem,
+    DEFAULT_CONFIG,
+    type Sample,
+    type SingleZoneConfig,
+  } from './sim/thermal';
 
   const nodeTypes = { bas: BasNode };
 
@@ -255,6 +260,16 @@
   let system = $state<SingleZoneSystem | null>(null);
   let samples = $state.raw<Sample[]>([]);
 
+  // Tunable physics config. The system reads these by reference on every
+  // step, so mid-run slider tweaks land on the very next tick — drag the
+  // setpoint while running and you watch the controller chase it.
+  let config = $state<SingleZoneConfig>({ ...DEFAULT_CONFIG });
+  let showAdvanced = $state(false);
+
+  function resetConfig() {
+    config = { ...DEFAULT_CONFIG };
+  }
+
   function tempReading(): string {
     return `${(65 + Math.random() * 15).toFixed(1)} °F`;
   }
@@ -335,7 +350,7 @@
     running = true;
     runningTarget = physicsTarget;
     if (runningTarget) {
-      system = new SingleZoneSystem();
+      system = new SingleZoneSystem(config);
       samples = [];
     } else {
       system = null;
@@ -462,13 +477,117 @@
             <div class="chart-panel">
               <div class="chart-head">
                 <span class="chart-title">Zone response — {runningTarget.controllerLabel}</span>
-                <span class="chart-sub">{DEFAULT_CONFIG.dt}s/tick · τ={DEFAULT_CONFIG.tau}s</span>
+                <span class="chart-sub"
+                  >{config.dt}s/tick · τ={(config.tau / 60).toFixed(0)}min</span
+                >
               </div>
-              <MiniChart
-                {samples}
-                setpoint={DEFAULT_CONFIG.setpoint}
-                oat={DEFAULT_CONFIG.outdoorAir}
-              />
+              <MiniChart {samples} setpoint={config.setpoint} oat={config.outdoorAir} />
+            </div>
+          </Panel>
+        {/if}
+
+        {#if physicsTarget}
+          <Panel position="bottom-left">
+            <div class="tune-panel">
+              <div class="tune-head">
+                <span class="tune-title">Tune — {physicsTarget.controllerLabel}</span>
+                <button type="button" class="reset-cfg" onclick={resetConfig}>defaults</button>
+              </div>
+              <div class="slider-row">
+                <label for="sp-slider">
+                  <span class="lbl">Setpoint</span>
+                  <span class="val">{config.setpoint.toFixed(1)} °F</span>
+                </label>
+                <input
+                  id="sp-slider"
+                  type="range"
+                  bind:value={config.setpoint}
+                  min={65}
+                  max={80}
+                  step={0.5}
+                />
+              </div>
+              <div class="slider-row">
+                <label for="oat-slider">
+                  <span class="lbl">OAT</span>
+                  <span class="val">{config.outdoorAir.toFixed(0)} °F</span>
+                </label>
+                <input
+                  id="oat-slider"
+                  type="range"
+                  bind:value={config.outdoorAir}
+                  min={60}
+                  max={105}
+                  step={1}
+                />
+              </div>
+              <div class="slider-row">
+                <label for="kp-slider">
+                  <span class="lbl">Kp <em>(prop. gain)</em></span>
+                  <span class="val">{config.Kp.toFixed(2)}</span>
+                </label>
+                <input
+                  id="kp-slider"
+                  type="range"
+                  bind:value={config.Kp}
+                  min={0.05}
+                  max={1.5}
+                  step={0.05}
+                />
+              </div>
+              {#if showAdvanced}
+                <div class="slider-row">
+                  <label for="tau-slider">
+                    <span class="lbl">τ <em>(zone mass)</em></span>
+                    <span class="val">{(config.tau / 60).toFixed(0)} min</span>
+                  </label>
+                  <input
+                    id="tau-slider"
+                    type="range"
+                    bind:value={config.tau}
+                    min={60}
+                    max={1800}
+                    step={60}
+                  />
+                </div>
+                <div class="slider-row">
+                  <label for="ki-slider">
+                    <span class="lbl">Ki <em>(integral)</em></span>
+                    <span class="val">{config.Ki.toFixed(4)}</span>
+                  </label>
+                  <input
+                    id="ki-slider"
+                    type="range"
+                    bind:value={config.Ki}
+                    min={0}
+                    max={0.01}
+                    step={0.0005}
+                  />
+                </div>
+                <div class="slider-row">
+                  <label for="cool-slider">
+                    <span class="lbl">Cool max</span>
+                    <span class="val">{(config.coolingMax * 60).toFixed(1)} °F/min</span>
+                  </label>
+                  <input
+                    id="cool-slider"
+                    type="range"
+                    bind:value={config.coolingMax}
+                    min={0}
+                    max={0.1}
+                    step={0.005}
+                  />
+                </div>
+              {/if}
+              <button
+                type="button"
+                class="advanced-toggle"
+                onclick={() => (showAdvanced = !showAdvanced)}
+              >
+                {showAdvanced
+                  ? '− Hide advanced (τ, Ki, cooling)'
+                  : '+ Show advanced (τ, Ki, cooling)'}
+              </button>
             </div>
           </Panel>
         {/if}
@@ -770,5 +889,102 @@
       monospace;
     font-size: 0.68rem;
     color: color-mix(in srgb, CanvasText 50%, transparent);
+  }
+
+  .tune-panel {
+    width: 240px;
+    padding: 0.55rem 0.7rem 0.45rem;
+    background: color-mix(in srgb, Canvas 90%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+  }
+
+  .tune-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.4rem;
+    gap: 0.5rem;
+  }
+
+  .tune-title {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reset-cfg {
+    border: none;
+    background: none;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font: inherit;
+    font-size: 0.68rem;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+  }
+
+  .reset-cfg:hover {
+    color: CanvasText;
+  }
+
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0.4rem;
+  }
+
+  .slider-row label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.72rem;
+    gap: 0.5rem;
+  }
+
+  .slider-row .lbl {
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+
+  .slider-row .lbl em {
+    font-style: normal;
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 45%, transparent);
+    margin-left: 0.15rem;
+  }
+
+  .slider-row .val {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-variant-numeric: tabular-nums;
+    color: CanvasText;
+  }
+
+  .slider-row input[type='range'] {
+    width: 100%;
+    margin-top: 0.15rem;
+    accent-color: #f59e0b;
+  }
+
+  .advanced-toggle {
+    border: none;
+    background: none;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 0.2rem 0;
+    text-align: left;
+    width: 100%;
+  }
+
+  .advanced-toggle:hover {
+    color: CanvasText;
   }
 </style>
