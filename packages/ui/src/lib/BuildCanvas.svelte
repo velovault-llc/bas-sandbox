@@ -281,11 +281,32 @@
     const item = PALETTE.find((p) => p.kind === kind);
     if (!item) return;
 
+    // Convert the drop's screen-space coordinates into xyflow's internal flow
+    // coordinates. The previous version used the canvas DOM rect directly,
+    // which silently broke once the user panned or zoomed — nodes landed
+    // "where the cursor would have been if the canvas hadn't moved" instead
+    // of where the cursor actually is. xyflow stores its current pan/zoom as
+    // a CSS transform on `.svelte-flow__viewport`; we read it back to do the
+    // inverse mapping.
     const target = event.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
+    const viewport = target.querySelector('.svelte-flow__viewport') as HTMLElement | null;
+    let tx = 0;
+    let ty = 0;
+    let zoom = 1;
+    if (viewport) {
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
+      tx = matrix.e;
+      ty = matrix.f;
+      zoom = matrix.a || 1;
+    }
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    // Subtract ~half the typical node size so the cursor lands near the
+    // node's center rather than its top-left corner.
     const position = {
-      x: event.clientX - rect.left - 80,
-      y: event.clientY - rect.top - 25,
+      x: (screenX - tx) / zoom - 80,
+      y: (screenY - ty) / zoom - 25,
     };
 
     const id = `n${nextId++}`;
@@ -1963,7 +1984,7 @@
           {@const currentFault = (sensorData?.fault ?? 'normal') as SensorFault}
           {@const currentSignal = (sensorData?.signal ?? DEFAULT_SENSOR_SIGNAL) as SensorSignal}
           {@const wiredHere = wiredTargets.some((t) => t.sensorId === selectedSensor.id)}
-          <Panel position="top-center">
+          <Panel position="bottom-center">
             <div class="sensor-panel">
               <span class="sensor-title">Sensor — {nodeLabel(selectedSensor)}</span>
               <div class="sensor-row">
@@ -2013,7 +2034,7 @@
             | { highAlarm?: number; lowAlarm?: number; manualOverride?: number }
             | undefined}
           {@const overrideOn = typeof ctrlData?.manualOverride === 'number'}
-          <Panel position="top-center">
+          <Panel position="bottom-center">
             <div class="ctrl-panel">
               <span class="ctrl-title">Controller — {nodeLabel(selectedController)}</span>
               <label class="ctrl-field">
