@@ -106,7 +106,6 @@
     if (summary.adxCount > 0) parts.push(`${summary.adxCount} ADX`);
     parts.push(`${summary.engineCount} engines`);
     parts.push(`${summary.controllerCount} controllers`);
-    if (summary.truncated > 0) parts.push(`${summary.truncated} controllers truncated`);
     if (summary.skipped.length > 0) parts.push(`skipped: ${summary.skipped.join(', ')}`);
     console.info(`Imported from ${sourceFileName}: ${parts.join(' · ')}`);
     mode = 'build';
