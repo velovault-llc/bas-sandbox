@@ -100,46 +100,6 @@
 
   const STORAGE_KEY = 'bas-sandbox:state-v1';
 
-  const DEMO_NODES: Node[] = [
-    {
-      id: 'demo-1',
-      type: 'bas',
-      position: { x: 280, y: 60 },
-      data: { kind: 'supervisor', label: 'NAE-1' },
-    },
-    {
-      id: 'demo-2',
-      type: 'bas',
-      position: { x: 280, y: 210 },
-      data: { kind: 'controller', label: 'FEC-1' },
-    },
-    {
-      id: 'demo-3',
-      type: 'bas',
-      position: { x: 130, y: 360 },
-      data: { kind: 'controller', label: 'VAV-1' },
-    },
-    {
-      id: 'demo-4',
-      type: 'bas',
-      position: { x: 130, y: 510 },
-      data: { kind: 'sensor', label: 'ZN-T-1' },
-    },
-    {
-      id: 'demo-5',
-      type: 'bas',
-      position: { x: 430, y: 360 },
-      data: { kind: 'safety', label: 'FZ-1' },
-    },
-  ];
-
-  const DEMO_EDGES_BASE: Edge[] = [
-    { id: 'e1-2', source: 'demo-1', target: 'demo-2', data: { wireKind: 'bacnet-ip' } },
-    { id: 'e2-3', source: 'demo-2', target: 'demo-3', data: { wireKind: 'mstp' } },
-    { id: 'e3-4', source: 'demo-3', target: 'demo-4', data: { wireKind: 'hardwired' } },
-    { id: 'e2-5', source: 'demo-2', target: 'demo-5', data: { wireKind: 'hardwired' } },
-  ];
-
   type PersistedState = {
     version: 1;
     nodes: Node[];
@@ -153,16 +113,15 @@
     scenarioBaseline: SingleZoneConfig;
   };
 
+  /** Empty canvas — user drops their own equipment. */
   function defaultsBundle(): PersistedState {
     return {
       version: 1,
-      nodes: DEMO_NODES,
-      edges: DEMO_EDGES_BASE.map(withStyle),
-      wiredTargets: [
-        { controllerId: 'demo-3', sensorId: 'demo-4', config: { ...DEFAULT_CONFIG } },
-      ],
-      focusedTargetId: 'demo-3',
-      counters: { supervisor: 1, controller: 2, sensor: 1, safety: 1 },
+      nodes: [],
+      edges: [],
+      wiredTargets: [],
+      focusedTargetId: null,
+      counters: { supervisor: 0, controller: 0, sensor: 0, safety: 0 },
       nextId: 100,
       selectedWireKind: 'auto',
       activePresetId: 'default',
@@ -1247,8 +1206,8 @@
     }, 300);
   });
 
-  function resetToDemo() {
-    if (!confirm('Reset canvas to the demo topology? Your current work will be lost.')) return;
+  function resetCanvas() {
+    if (!confirm('Reset to an empty canvas? Your current work will be lost.')) return;
     stop();
     tick = 0;
     runningSamples = new Map();
@@ -1442,7 +1401,7 @@
 
         <div class="canvas-buttons">
           <button type="button" class="clear" onclick={clearAll}>Clear</button>
-          <button type="button" class="clear" onclick={resetToDemo} title="Restore the default demo topology">Reset to demo</button>
+          <button type="button" class="clear" onclick={resetCanvas} title="Wipe everything (including localStorage) to a fresh empty canvas">Reset</button>
         </div>
 
         <div class="topology-checks">
