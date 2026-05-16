@@ -15,6 +15,8 @@
     };
     /** Set on imported engine nodes — number of controllers we imported under them. */
     childCount?: number;
+    /** Total objects (points + equipment) in the imported engine's subtree. */
+    objectCount?: number;
     /** True when imported children are hidden. Flipped by clicking the supervisor. */
     collapsed?: boolean;
     /** Set on imported controllers to point at the engine they belong to. */
@@ -110,9 +112,9 @@
     />
   {:else}
     <div class="label" title="Double-click to rename">{data.label}</div>
-  {#if data.subtitle}
-    <div class="subtitle" title="From the parsed .dbexport">{data.subtitle}</div>
-  {/if}
+    {#if data.subtitle}
+      <div class="subtitle" title="From the parsed .dbexport">{data.subtitle}</div>
+    {/if}
   {/if}
   {#if data.runtime}
     <div class="runtime">{data.runtime.value}</div>
@@ -122,6 +124,9 @@
       {data.collapsed ? '▶' : '▼'}
       {data.childCount}
       {data.childCount === 1 ? 'controller' : 'controllers'}
+      {#if data.objectCount && data.objectCount > 0}
+        <span class="pt-count">· {data.objectCount.toLocaleString()} pts</span>
+      {/if}
     </div>
   {/if}
 
@@ -134,7 +139,10 @@
     /* Solid Canvas first so wires routing behind the node are fully covered,
        then a thin accent overlay for the kind tint. */
     background:
-      linear-gradient(color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 10%, transparent)),
+      linear-gradient(
+        color-mix(in srgb, var(--accent) 10%, transparent),
+        color-mix(in srgb, var(--accent) 10%, transparent)
+      ),
       Canvas;
     border: 1.5px solid var(--accent);
     border-radius: 6px;
@@ -281,6 +289,11 @@
     cursor: pointer;
     user-select: none;
     text-align: center;
+  }
+
+  .pt-count {
+    opacity: 0.75;
+    margin-left: 0.15rem;
   }
 
   /* xyflow handles render with their own classes; tweak a bit for visibility */

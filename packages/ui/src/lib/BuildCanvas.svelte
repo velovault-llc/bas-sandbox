@@ -942,9 +942,7 @@
 
   function setEdgeKind(edgeId: string, kind: WireKind) {
     edges = edges.map((e) =>
-      e.id === edgeId
-        ? withStyle({ ...e, data: { ...(e.data ?? {}), wireKind: kind } })
-        : e,
+      e.id === edgeId ? withStyle({ ...e, data: { ...(e.data ?? {}), wireKind: kind } }) : e,
     );
   }
 
@@ -963,7 +961,9 @@
   };
 
   /** MS/TP and N2 device-count limits we surface as warnings/errors. */
-  const TRUNK_LIMITS: Partial<Record<WireKind, { recommended: number; max: number; label: string }>> = {
+  const TRUNK_LIMITS: Partial<
+    Record<WireKind, { recommended: number; max: number; label: string }>
+  > = {
     mstp: { recommended: 30, max: 127, label: 'MS/TP' },
     n2: { recommended: 50, max: 100, label: 'N2' },
   };
@@ -1030,7 +1030,8 @@
       if (!wk || wk === 'hardwired') continue;
       const sk = nodeKind(nodeById.get(e.source)!);
       const tk = nodeKind(nodeById.get(e.target)!);
-      const leafKind = sk === 'sensor' || sk === 'safety' ? sk : tk === 'sensor' || tk === 'safety' ? tk : null;
+      const leafKind =
+        sk === 'sensor' || sk === 'safety' ? sk : tk === 'sensor' || tk === 'safety' ? tk : null;
       if (leafKind) {
         findings.push({
           level: 'warning',
@@ -1463,7 +1464,12 @@
 
         <div class="canvas-buttons">
           <button type="button" class="clear" onclick={clearAll}>Clear</button>
-          <button type="button" class="clear" onclick={resetCanvas} title="Wipe everything (including localStorage) to a fresh empty canvas">Reset</button>
+          <button
+            type="button"
+            class="clear"
+            onclick={resetCanvas}
+            title="Wipe everything (including localStorage) to a fresh empty canvas">Reset</button
+          >
         </div>
 
         <div class="topology-checks">
@@ -1547,6 +1553,7 @@
 
         {#if selectedEdge}
           {@const currentKind = (selectedEdge.data?.wireKind as WireKind) ?? 'mstp'}
+          {@const baud = selectedEdge.data?.baud as number | undefined}
           <Panel position="top-center">
             <div class="wire-panel">
               <span class="wire-title">Trunk type</span>
@@ -1564,6 +1571,11 @@
                   </button>
                 {/each}
               </div>
+              {#if baud}
+                <span class="wire-baud" title="Baud rate pulled from the trunk's JCI property 426">
+                  {baud >= 1000 ? `${(baud / 1000).toFixed(baud % 1000 === 0 ? 0 : 1)}k` : baud} baud
+                </span>
+              {/if}
             </div>
           </Panel>
         {/if}
@@ -2495,6 +2507,19 @@
     border-color: var(--c);
     background: color-mix(in srgb, var(--c) 22%, transparent);
     color: var(--c);
+  }
+
+  .wire-baud {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: color-mix(in srgb, CanvasText 85%, transparent);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .tune-panel {

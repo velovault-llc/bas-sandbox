@@ -94,10 +94,11 @@
 
   function openInBuild() {
     if (!result || !result.topology) return;
-    const { nodes: importedNodes, edges: importedEdges, summary } = topologyToCanvas(
-      result.topology,
-      result.vendor as Parameters<typeof topologyToCanvas>[1],
-    );
+    const {
+      nodes: importedNodes,
+      edges: importedEdges,
+      summary,
+    } = topologyToCanvas(result.topology, result.vendor as Parameters<typeof topologyToCanvas>[1]);
     importStore.pending = {
       nodes: importedNodes,
       edges: importedEdges,

@@ -27,11 +27,7 @@
 
 import type { Edge, Node } from '@xyflow/svelte';
 import type { TopologyNode } from '@bas/core';
-import {
-  decodeValue,
-  type MetasysObject,
-  type ParsedArchive,
-} from '@velovault/dbexport-parser';
+import { decodeValue, type MetasysObject, type ParsedArchive } from '@velovault/dbexport-parser';
 
 // Property IDs from the JCI Launcher dictionary that carry network /
 // device-identity metadata worth surfacing on a canvas node.
@@ -46,7 +42,44 @@ const PROP_IDS = {
   N2_POINT_ADDRESS: '808',
   BACNET_INSTANCE: '32589',
   DESCRIPTION: '28',
+  /** JCI custom property on a FieldBus / trunk object. enum set 1856.
+   * 1=9600, 2=19200, 3=38400, 4=57600, 5=76800, 6=115200. */
+  BAUD_RATE: '426',
 } as const;
+
+/** BACnet baud-rate code → bits per second. */
+const BAUD_LOOKUP: Record<string, number> = {
+  '1': 9600,
+  '2': 19200,
+  '3': 38400,
+  '4': 57600,
+  '5': 76800,
+  '6': 115200,
+};
+
+function extractBaud(obj: MetasysObject): number | null {
+  const raw = obj.properties[PROP_IDS.BAUD_RATE];
+  if (!raw) return null;
+  const decoded = decodeValue(raw);
+  // decodeValue renders enums as "enum[1856]=3" — grab the trailing code.
+  const match = /=(\d+)/.exec(decoded);
+  if (!match) return null;
+  return BAUD_LOOKUP[match[1]] ?? null;
+}
+
+/** Default baud rate when the trunk object doesn't carry one explicitly. */
+function defaultBaudFor(kind: ImportedWireKind): number | null {
+  switch (kind) {
+    case 'mstp':
+      return 38400; // JCI FC bus default
+    case 'n2':
+      return 9600; // N2 is fixed at 9600
+    case 'lon':
+      return 78000; // FT-10 (free-topology) bit-rate is 78 kbps
+    default:
+      return null; // bacnet-ip / hardwired have no serial baud
+  }
+}
 
 export type DeviceMeta = {
   ip?: string;
@@ -68,10 +101,7 @@ function decodeProp(obj: MetasysObject, propId: string): string | null {
 function extractMeta(obj: MetasysObject): DeviceMeta {
   return {
     ip: decodeProp(obj, PROP_IDS.IP_ADDRESS) ?? undefined,
-    mac:
-      decodeProp(obj, PROP_IDS.MAC_ADDRESS) ??
-      decodeProp(obj, PROP_IDS.ETH_MAC) ??
-      undefined,
+    mac: decodeProp(obj, PROP_IDS.MAC_ADDRESS) ?? decodeProp(obj, PROP_IDS.ETH_MAC) ?? undefined,
     hostName: decodeProp(obj, PROP_IDS.HOST_NAME) ?? undefined,
     bacnetInstance: decodeProp(obj, PROP_IDS.BACNET_INSTANCE) ?? undefined,
     n2Address: decodeProp(obj, PROP_IDS.N2_NET_ADDRESS) ?? undefined,
@@ -157,7 +187,10 @@ export function topologyToCanvas(
     }
   }
 
-  function metaForTopologyNode(t: TopologyNode, isEngine: boolean): {
+  function metaForTopologyNode(
+    t: TopologyNode,
+    isEngine: boolean,
+  ): {
     meta?: DeviceMeta;
     subtitle?: string;
   } {
@@ -208,8 +241,12 @@ export function topologyToCanvas(
     const engineY = ENGINE_ROW_Y_START + row * ENGINE_ROW_HEIGHT;
 
     // Walk for controllers FIRST so we know childCount before placing the engine.
-    const controllers: { node: TopologyNode; trunkKind: ImportedWireKind }[] = [];
-    walkEquipment(engine, 'bacnet-ip', controllers);
+    const controllers: {
+      node: TopologyNode;
+      trunkKind: ImportedWireKind;
+      baud: number | null;
+    }[] = [];
+    walkEquipment(engine, 'bacnet-ip', null, controllers, objByRef);
     totalControllers += controllers.length;
 
     const engineId = `imp-${nextNumeric++}`;
@@ -222,6 +259,11 @@ export function topologyToCanvas(
         kind: 'supervisor',
         label: engine.label,
         childCount: controllers.length,
+        // Total objects in this engine's subtree (points + equipment + the
+        // engine itself). Displayed alongside the controller pill so a
+        // collapsed engine still tells you "how much equipment / how many
+        // points sit underneath it" at a glance.
+        objectCount: engine.objectCount,
         collapsed: true,
         subtitle: engineMetaInfo.subtitle,
         meta: engineMetaInfo.meta,
@@ -243,7 +285,7 @@ export function topologyToCanvas(
 
     // Place every controller (no cap), hidden by default.
     for (let j = 0; j < controllers.length; j++) {
-      const { node: ctrl, trunkKind } = controllers[j];
+      const { node: ctrl, trunkKind, baud } = controllers[j];
       const ctrlId = `imp-${nextNumeric++}`;
       const cRow = Math.floor(j / CONTROLLERS_PER_ROW);
       const cCol = j % CONTROLLERS_PER_ROW;
@@ -263,12 +305,13 @@ export function topologyToCanvas(
           meta: ctrlMetaInfo.meta,
         },
       });
+      const resolvedBaud = baud ?? defaultBaudFor(trunkKind);
       edges.push({
         id: `imp-e-${engineId}-${ctrlId}`,
         source: engineId,
         target: ctrlId,
         hidden: true,
-        data: { wireKind: trunkKind },
+        data: { wireKind: trunkKind, baud: resolvedBaud ?? undefined },
       });
     }
   }
@@ -288,18 +331,31 @@ export function topologyToCanvas(
 function walkEquipment(
   node: TopologyNode,
   inheritedTrunk: ImportedWireKind,
-  out: { node: TopologyNode; trunkKind: ImportedWireKind }[],
+  inheritedBaud: number | null,
+  out: { node: TopologyNode; trunkKind: ImportedWireKind; baud: number | null }[],
+  objByRef: Map<string, MetasysObject>,
 ): void {
   for (const child of node.children) {
     const childTrunk = trunkKindForCategory(child.kind) ?? inheritedTrunk;
+    // If the child IS a trunk (fieldbus / n2trunk / etc.), pull its baud rate
+    // off the underlying MetasysObject. That baud then flows down to every
+    // equipment node hanging off the trunk.
+    let childBaud = inheritedBaud;
+    if (trunkKindForCategory(child.kind) !== null && child.ref) {
+      const trunkObj = objByRef.get(child.ref);
+      if (trunkObj) {
+        const extracted = extractBaud(trunkObj);
+        if (extracted !== null) childBaud = extracted;
+      }
+    }
 
     if (isEquipmentLike(child.kind)) {
-      out.push({ node: child, trunkKind: childTrunk });
+      out.push({ node: child, trunkKind: childTrunk, baud: childBaud });
       continue;
     }
     if (isLeafKind(child.kind)) continue;
     if (shouldSkip(child.label)) continue;
-    walkEquipment(child, childTrunk, out);
+    walkEquipment(child, childTrunk, childBaud, out, objByRef);
   }
 }
 
