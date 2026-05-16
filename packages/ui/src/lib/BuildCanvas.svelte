@@ -831,11 +831,21 @@
     edges = edges.map((e) => withStyle({ ...e, animated: pathIds.has(e.id) }));
   }
 
-  /** New wires drawn between handles get a sensible default trunk kind. */
+  /**
+   * Wire-palette selection: 'auto' = pick a sensible kind based on what's
+   * being connected; otherwise force this specific trunk kind on every new
+   * wire until the user picks a different one (Packet-Tracer-style).
+   */
+  let selectedWireKind = $state<WireKind | 'auto'>('auto');
+
+  /** New wires drawn between handles use the currently-pinned trunk kind. */
   function onConnect(connection: Connection) {
     const src = nodes.find((n) => n.id === connection.source);
     const tgt = nodes.find((n) => n.id === connection.target);
-    const kind = defaultWireKind(nodeKind(src!), nodeKind(tgt!));
+    const kind: WireKind =
+      selectedWireKind === 'auto'
+        ? defaultWireKind(nodeKind(src!), nodeKind(tgt!))
+        : selectedWireKind;
     const newEdge: Edge = {
       id: `e-${connection.source}-${connection.target}-${Date.now()}`,
       source: connection.source!,
@@ -928,6 +938,37 @@
           </li>
         {/each}
       </ul>
+
+      <div class="wires-section">
+        <h3>Wires</h3>
+        <p class="hint">Pick a trunk type, then drag between handles.</p>
+        <div class="wire-palette">
+          <button
+            type="button"
+            class="wire-row"
+            class:active={selectedWireKind === 'auto'}
+            title="Pick the trunk kind automatically based on what's being connected."
+            onclick={() => (selectedWireKind = 'auto')}
+          >
+            <span class="wire-swatch auto"></span>
+            <span class="wire-row-label">Auto</span>
+            <span class="wire-row-sub">smart-pick</span>
+          </button>
+          {#each WIRE_KINDS as wk (wk.kind)}
+            <button
+              type="button"
+              class="wire-row"
+              class:active={selectedWireKind === wk.kind}
+              style:--c={wk.color}
+              title={wk.description}
+              onclick={() => (selectedWireKind = wk.kind)}
+            >
+              <span class="wire-swatch" style:background={wk.color}></span>
+              <span class="wire-row-label">{wk.label}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
 
       <div class="palette-foot">
         <div class="physics-info">
@@ -1331,6 +1372,83 @@
   }
   .item.kind-safety {
     --accent: #e74c3c;
+  }
+
+  .wires-section {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+  }
+
+  .wires-section h3 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    margin: 0 0 0.35rem 0;
+  }
+
+  .wire-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .wire-row {
+    --c: #888;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.32rem 0.55rem;
+    background: transparent;
+    border: 1.5px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.78rem;
+    text-align: left;
+  }
+
+  .wire-row:hover {
+    background: color-mix(in srgb, var(--c) 8%, transparent);
+    color: CanvasText;
+  }
+
+  .wire-row.active {
+    border-color: var(--c);
+    background: color-mix(in srgb, var(--c) 12%, transparent);
+    color: CanvasText;
+  }
+
+  .wire-swatch {
+    width: 1.5rem;
+    height: 0.18rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .wire-swatch.auto {
+    background: linear-gradient(
+      90deg,
+      #4a9eff 0%,
+      #9c8cff 35%,
+      #fb923c 60%,
+      #2ecc71 85%,
+      #aaa 100%
+    );
+  }
+
+  .wire-row-label {
+    flex: 1;
+  }
+
+  .wire-row-sub {
+    font-size: 0.66rem;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
   }
 
   .palette-foot {
