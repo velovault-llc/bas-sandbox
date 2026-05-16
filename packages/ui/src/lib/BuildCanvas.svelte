@@ -10,7 +10,7 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import BasNode from './BasNode.svelte';
-  import MiniChart from './MiniChart.svelte';
+  import MiniChart, { type ChartSeries } from './MiniChart.svelte';
   import {
     SingleZoneSystem,
     DEFAULT_CONFIG,
@@ -269,6 +269,16 @@
     return set;
   });
   setContext('basWiredIds', () => wiredIds);
+
+  /** Colors for chart series. First entry is the focused (primary) color;
+   *  the rest cycle for ghosts. Picked to match the node-kind palette. */
+  const SERIES_COLORS = ['#f39c12', '#2ecc71', '#9c8cff', '#e74c3c', '#fb923c', '#4a9eff'];
+
+  function colorForTarget(id: string): string {
+    const idx = wiredTargets.findIndex((t) => t.controllerId === id);
+    if (idx < 0) return SERIES_COLORS[0];
+    return SERIES_COLORS[idx % SERIES_COLORS.length];
+  }
 
   // ============ Sim loop ============
 
@@ -842,13 +852,33 @@
         <Background />
 
         {#if running && focusedTarget && (runningSamples.get(focusedTarget.controllerId)?.length ?? 0) > 0}
+          {@const primarySeries = {
+            samples: runningSamples.get(focusedTarget.controllerId) ?? [],
+            label: physicsTarget?.controllerLabel ?? '?',
+            color: colorForTarget(focusedTarget.controllerId),
+            setpoint: focusedTarget.config.setpoint,
+            oat: focusedTarget.config.outdoorAir,
+          }}
+          {@const ghostSeries = wiredTargets
+            .filter((t) => t.controllerId !== focusedTarget.controllerId)
+            .map((t): ChartSeries => {
+              const ctrl = nodes.find((n) => n.id === t.controllerId);
+              return {
+                samples: runningSamples.get(t.controllerId) ?? [],
+                label: ctrl ? nodeLabel(ctrl) : '?',
+                color: colorForTarget(t.controllerId),
+                setpoint: t.config.setpoint,
+                oat: t.config.outdoorAir,
+              };
+            })
+            .filter((s) => s.samples.length > 0)}
           <Panel position="top-left">
             <div class="chart-panel">
               <div class="chart-head">
                 <span class="chart-title"
-                  >Zone response — {physicsTarget?.controllerLabel ?? ''}{wiredTargets.length > 1
-                    ? ` (${wiredTargets.findIndex((t) => t.controllerId === focusedTargetId) + 1}/${wiredTargets.length})`
-                    : ''}</span
+                  >Zone response{wiredTargets.length > 1
+                    ? ` — ${wiredTargets.length} zones`
+                    : ` — ${primarySeries.label}`}</span
                 >
                 <span class="chart-sub"
                   >{focusedTarget.config.dt}s/tick · τ={(focusedTarget.config.tau / 60).toFixed(
@@ -856,11 +886,7 @@
                   )}min</span
                 >
               </div>
-              <MiniChart
-                samples={runningSamples.get(focusedTarget.controllerId) ?? []}
-                setpoint={focusedTarget.config.setpoint}
-                oat={focusedTarget.config.outdoorAir}
-              />
+              <MiniChart primary={primarySeries} ghosts={ghostSeries} />
             </div>
           </Panel>
         {/if}
