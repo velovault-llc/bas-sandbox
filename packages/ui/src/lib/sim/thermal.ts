@@ -58,7 +58,7 @@ export interface SingleZoneConfig {
   initialZone: number;
   /** Outdoor air temperature, treated as a constant disturbance (°F). */
   outdoorAir: number;
-  /** Setpoint (°F). */
+  /** Setpoint (°F). Used directly unless `schedule.enabled` overrides it. */
   setpoint: number;
   /** Proportional gain. Units: actuator-fraction per °F of error. */
   Kp: number;
@@ -68,6 +68,34 @@ export interface SingleZoneConfig {
   dt: number;
   /** History window length (number of samples retained). */
   historyLength: number;
+  /**
+   * Optional occupancy schedule. When enabled, `setpoint` is computed each
+   * tick from sim-time-of-day:
+   *   - occupied hours → `occupiedSetpoint`
+   *   - everything else (night setback) → `unoccupiedSetpoint`
+   *
+   * Sim time advances at `dt` sim-seconds per tick. occStartHour / occEndHour
+   * are wall-clock hours (0-24) wrapping a midnight boundary if needed.
+   */
+  schedule?: {
+    enabled: boolean;
+    occupiedSetpoint: number;
+    unoccupiedSetpoint: number;
+    occStartHour: number;
+    occEndHour: number;
+  };
+  /**
+   * Two-zone thermal coupling factor (0..1). When > 0, this zone "feels" its
+   * neighbors' temperatures — useful for modeling sibling VAVs that share an
+   * AHU and bleed heat through return-air mixing or interior walls. The
+   * canvas computes neighbor temps and writes them to `couplingNeighborTemp`
+   * each tick; the model uses that value, weighted by this factor.
+   *
+   * 0 = isolated (current behavior). 0.3 = mild coupling (most realistic for
+   * adjacent VAVs in an open floorplan). 1.0 = the neighbor's temp is as
+   * dominant as the envelope itself.
+   */
+  couplingFactor?: number;
 }
 
 export const DEFAULT_CONFIG: SingleZoneConfig = {
@@ -82,12 +110,34 @@ export const DEFAULT_CONFIG: SingleZoneConfig = {
   historyLength: 60,
 };
 
+/**
+ * Pick the active setpoint for this tick. Honors the optional occupancy
+ * schedule — outside occupied hours, the unoccupied setpoint takes over
+ * (night setback). Handles schedules that wrap midnight (e.g. 22:00–06:00).
+ */
+function effectiveSetpoint(config: SingleZoneConfig, simSeconds: number): number {
+  const sched = config.schedule;
+  if (!sched || !sched.enabled) return config.setpoint;
+  const hourOfDay = (simSeconds / 3600) % 24;
+  const { occStartHour: start, occEndHour: end } = sched;
+  const occupied =
+    start <= end ? hourOfDay >= start && hourOfDay < end : hourOfDay >= start || hourOfDay < end;
+  return occupied ? sched.occupiedSetpoint : sched.unoccupiedSetpoint;
+}
+
 export class SingleZoneSystem {
   T_zone: number;
   actuator: number;
   integral: number;
   history: Sample[] = [];
   tick = 0;
+  /** Sim-seconds elapsed since start. Drives the occupancy schedule. */
+  simSeconds = 0;
+  /**
+   * Neighbor temp written by the canvas each tick when coupling is enabled.
+   * `null` = isolated this tick; the model falls back to single-zone math.
+   */
+  couplingNeighborTemp: number | null = null;
   /** Sensor model the controller reads through. Mutated by setFault(). */
   sensor: SensorState = {
     fault: 'normal',
@@ -156,12 +206,22 @@ export class SingleZoneSystem {
   }
 
   step(): Sample {
-    const { tau, coolingMax, setpoint, Kp, Ki, dt, outdoorAir } = this.config;
+    const { tau, coolingMax, Kp, Ki, dt, outdoorAir } = this.config;
+    // Setpoint is either the static config value or the scheduled value
+    // (occupied vs. unoccupied) depending on schedule.enabled.
+    const setpoint = effectiveSetpoint(this.config, this.simSeconds);
 
-    // 1) Thermal (explicit Euler — fine for dt/tau ≤ 0.1)
+    // 1) Thermal (explicit Euler — fine for dt/tau ≤ 0.1).
+    //    With coupling on, a fraction of the drift term is replaced by
+    //    pull-toward-neighbor instead of pull-toward-OAT.
     const drift = (outdoorAir - this.T_zone) / tau;
+    const couplingFactor = Math.max(0, Math.min(1, this.config.couplingFactor ?? 0));
+    let couplingPull = 0;
+    if (couplingFactor > 0 && this.couplingNeighborTemp !== null) {
+      couplingPull = (couplingFactor * (this.couplingNeighborTemp - this.T_zone)) / tau;
+    }
     const cooling = -this.actuator * coolingMax;
-    this.T_zone += dt * (drift + cooling);
+    this.T_zone += dt * (drift + cooling + couplingPull);
 
     // 2) Accumulate drift bias *before* sensing (so this tick already reflects it).
     //    Tuned so drift fault adds ~1°F per 10 sim-minutes (~600 sim-seconds).
@@ -192,8 +252,9 @@ export class SingleZoneSystem {
       this.actuator = next;
     }
 
-    // 4) Record
+    // 4) Record. simSeconds advances by dt so schedule lookup is monotonic.
     this.tick++;
+    this.simSeconds += dt;
     const sample: Sample = {
       t: this.tick,
       T_zone: this.T_zone,
@@ -218,5 +279,7 @@ export class SingleZoneSystem {
     this.sensor.lastReading = this.config.initialZone;
     this.history = [];
     this.tick = 0;
+    this.simSeconds = 0;
+    this.couplingNeighborTemp = null;
   }
 }

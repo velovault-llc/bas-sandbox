@@ -518,6 +518,53 @@
     focusedTarget.config = { ...scenarioBaseline };
   }
 
+  /** Default schedule shape, seeded with sane office-building values. */
+  const DEFAULT_SCHEDULE = {
+    enabled: true,
+    occupiedSetpoint: 72,
+    unoccupiedSetpoint: 78,
+    occStartHour: 6,
+    occEndHour: 22,
+  } as const;
+
+  function toggleSchedule(on: boolean): void {
+    if (!focusedTarget) return;
+    if (on) {
+      focusedTarget.config.schedule = { ...DEFAULT_SCHEDULE };
+    } else {
+      // Don't actually delete — flip enabled off so the user keeps their
+      // last-edited times/setpoints when they toggle back on.
+      const cur = focusedTarget.config.schedule;
+      focusedTarget.config.schedule = cur
+        ? { ...cur, enabled: false }
+        : { ...DEFAULT_SCHEDULE, enabled: false };
+    }
+  }
+
+  function updateSchedule(
+    patch: Partial<{
+      occupiedSetpoint: number;
+      unoccupiedSetpoint: number;
+      occStartHour: number;
+      occEndHour: number;
+    }>,
+  ): void {
+    if (!focusedTarget || !focusedTarget.config.schedule) return;
+    focusedTarget.config.schedule = { ...focusedTarget.config.schedule, ...patch };
+  }
+
+  /** UI-only mirror of the thermal sim's effectiveSetpoint logic for the
+   *  "Sim clock 14:32 — occupied" readout. Kept tiny so the canvas doesn't
+   *  depend on the sim's internal helper. */
+  function isOccupiedNow(
+    sched: { occStartHour: number; occEndHour: number },
+    hourOfDay: number,
+  ): boolean {
+    const { occStartHour: start, occEndHour: end } = sched;
+    if (start <= end) return hourOfDay >= start && hourOfDay < end;
+    return hourOfDay >= start || hourOfDay < end;
+  }
+
   function tempReading(): string {
     return `${(65 + Math.random() * 15).toFixed(1)} °F`;
   }
@@ -554,10 +601,46 @@
     // returns the last good value, so the trace flatlines until the wire
     // is restored.
     const offline = offlineNodes;
+
+    // Pre-compute sibling-group neighbor temps for thermal coupling. Two
+    // wired targets are "siblings" when they share the same parent
+    // controller — i.e. they hang off the same FEC / AHU in the topology.
+    // Each system reads the average of its siblings' T_zone as a neighbor
+    // pull. This is the "two adjacent VAVs bleed heat through the return
+    // air plenum" effect — small in practice (couplingFactor defaults to 0)
+    // but visible when enabled.
+    const siblingNeighborByTarget = new Map<string, number | null>();
+    if (runningSnapshot.length > 1) {
+      const groups = new Map<string, string[]>(); // parentId|none → [controllerId]
+      for (const t of runningSnapshot) {
+        const parent = findParentController(t.controllerId);
+        const key = parent?.id ?? '__orphans__';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(t.controllerId);
+      }
+      for (const ids of groups.values()) {
+        if (ids.length < 2) continue;
+        for (const id of ids) {
+          const others = ids.filter((x) => x !== id);
+          let sum = 0;
+          let count = 0;
+          for (const otherId of others) {
+            const otherSys = systems.get(otherId);
+            if (otherSys) {
+              sum += otherSys.T_zone;
+              count++;
+            }
+          }
+          siblingNeighborByTarget.set(id, count > 0 ? sum / count : null);
+        }
+      }
+    }
+
     for (const target of runningSnapshot) {
       const sys = systems.get(target.controllerId);
       if (!sys) continue;
       sys.offline = offline.has(target.controllerId) || offline.has(target.sensorId);
+      sys.couplingNeighborTemp = siblingNeighborByTarget.get(target.controllerId) ?? null;
       const sample = sys.step();
       sampleByCtrl.set(target.controllerId, sample);
       let hist = samples.get(target.controllerId) ?? [];
@@ -862,6 +945,91 @@
   let saveButtonTimer: ReturnType<typeof setTimeout> | null = null;
   let loadMessage = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
+  // ============ Named in-browser scenario slots ============
+  //
+  // The Save/Load buttons download / upload JSON files (good for sharing),
+  // but a tech iterating on a setup wants quick access to "the boiler-trip
+  // demo" or "weekend test" without a download. Slots live in localStorage
+  // under SLOTS_KEY as { name → BasScenarioV1 }, with the slot list kept in
+  // memory as `slotNames` for the UI.
+
+  const SLOTS_KEY = 'bas-sandbox:slots-v1';
+  type SlotMap = Record<string, BasScenarioV1>;
+
+  function readSlots(): SlotMap {
+    try {
+      const raw = localStorage.getItem(SLOTS_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as unknown;
+      return typeof parsed === 'object' && parsed !== null ? (parsed as SlotMap) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeSlots(slots: SlotMap): void {
+    try {
+      localStorage.setItem(SLOTS_KEY, JSON.stringify(slots));
+    } catch (e) {
+      flashLoad('err', `localStorage full? ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  let slotNames = $state<string[]>(Object.keys(readSlots()).sort());
+
+  function buildCurrentScenario(): BasScenarioV1 {
+    const cleanNodes = nodes.map((n) => {
+      const data = n.data as Record<string, unknown>;
+      const { runtime: _runtime, ...rest } = data;
+      return { ...n, data: rest };
+    });
+    const focused = focusedTarget;
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      topology: { nodes: cleanNodes, edges: edges.map((e) => ({ ...e, animated: false })) },
+      selection: { controllerId: focusedTargetId },
+      config: focused ? { ...focused.config } : { ...DEFAULT_CONFIG },
+      wiredTargets: wiredTargets.map((t) => ({ ...t, config: { ...t.config } })),
+      focusedTargetId,
+      counters: { ...counters },
+      nextId,
+    };
+  }
+
+  function saveSlot(): void {
+    const name = prompt('Name this scenario (e.g. "morning ramp", "boiler trip demo"):');
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const slots = readSlots();
+    if (slots[trimmed] && !confirm(`Overwrite existing "${trimmed}" slot?`)) return;
+    slots[trimmed] = buildCurrentScenario();
+    writeSlots(slots);
+    slotNames = Object.keys(slots).sort();
+    flashLoad('ok', `Saved "${trimmed}"`);
+  }
+
+  function loadSlot(name: string): void {
+    const slots = readSlots();
+    const scenario = slots[name];
+    if (!scenario) {
+      flashLoad('err', `Slot "${name}" missing`);
+      return;
+    }
+    applyScenario(scenario);
+    flashLoad('ok', `Loaded "${name}"`);
+  }
+
+  function deleteSlot(name: string): void {
+    if (!confirm(`Delete slot "${name}"? This can't be undone.`)) return;
+    const slots = readSlots();
+    delete slots[name];
+    writeSlots(slots);
+    slotNames = Object.keys(slots).sort();
+    flashLoad('ok', `Deleted "${name}"`);
+  }
+
   function flashSave(text: string) {
     saveButtonText = text;
     if (saveButtonTimer) clearTimeout(saveButtonTimer);
@@ -876,6 +1044,53 @@
     setTimeout(() => {
       loadMessage = null;
     }, 4000);
+  }
+
+  /**
+   * Dump every running target's sample history as a CSV "trend log" — same
+   * column layout a JCI trend export gives you (controller, tick, sensed
+   * temp, real temp, setpoint, actuator, OAT). Skipped when nothing has
+   * run yet.
+   */
+  function exportSamplesCsv(): void {
+    if (runningSamples.size === 0) {
+      flashLoad('err', 'Nothing to export — run the sim first');
+      return;
+    }
+    const lines: string[] = [
+      'controller,label,tick,T_zone_F,T_sensed_F,T_OA_F,setpoint_F,actuator_pct',
+    ];
+    for (const target of wiredTargets) {
+      const hist = runningSamples.get(target.controllerId);
+      if (!hist || hist.length === 0) continue;
+      const ctrl = nodes.find((n) => n.id === target.controllerId);
+      const label = ctrl ? nodeLabel(ctrl) : target.controllerId;
+      for (const s of hist) {
+        // CSV-escape just the label in case someone renamed a node with a comma.
+        const safeLabel = label.includes(',') ? `"${label.replace(/"/g, '""')}"` : label;
+        lines.push(
+          [
+            target.controllerId,
+            safeLabel,
+            s.t,
+            s.T_zone.toFixed(3),
+            s.T_sensed.toFixed(3),
+            s.T_OA.toFixed(2),
+            s.setpoint.toFixed(2),
+            (s.actuator * 100).toFixed(2),
+          ].join(','),
+        );
+      }
+    }
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    a.download = `bas-trend-${stamp}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    flashLoad('ok', `Exported ${lines.length - 1} sample rows`);
   }
 
   function saveScenario() {
@@ -1837,6 +2052,49 @@
         {#if loadMessage}
           <p class="load-message {loadMessage.kind}">{loadMessage.text}</p>
         {/if}
+
+        <!-- Named in-browser slots (localStorage). Faster than file
+             round-trips when you're switching between a handful of
+             test setups during a session. -->
+        <div class="slots-section">
+          <div class="slots-head">
+            <h4>Saved slots</h4>
+            <button
+              type="button"
+              class="slot-add"
+              title="Save the current canvas + sim config under a name in localStorage"
+              onclick={saveSlot}
+            >
+              + Save as…
+            </button>
+          </div>
+          {#if slotNames.length === 0}
+            <p class="slots-empty">No saved slots yet. Hit "+ Save as…" to add one.</p>
+          {:else}
+            <ul class="slots-list">
+              {#each slotNames as name (name)}
+                <li class="slot-row">
+                  <button
+                    type="button"
+                    class="slot-load"
+                    title="Load slot &quot;{name}&quot;"
+                    onclick={() => loadSlot(name)}
+                  >
+                    {name}
+                  </button>
+                  <button
+                    type="button"
+                    class="slot-delete"
+                    title="Delete slot &quot;{name}&quot;"
+                    onclick={() => deleteSlot(name)}
+                  >
+                    ✕
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
         {#if trunkSummaries.length > 0}
           <div class="trunks-section">
             <h3>Trunks</h3>
@@ -2162,6 +2420,14 @@
                     0,
                   )}min</span
                 >
+                <button
+                  type="button"
+                  class="chart-csv"
+                  title="Download every running target's sample history as a CSV trend log"
+                  onclick={exportSamplesCsv}
+                >
+                  ↓ CSV
+                </button>
               </div>
               <MiniChart primary={primarySeries} ghosts={ghostSeries} />
             </div>
@@ -2292,6 +2558,106 @@
                     max={0.1}
                     step={0.005}
                   />
+                </div>
+
+                <!-- Two-zone coupling slider: 0 = isolated, 1 = neighbor's
+                     temp dominates. Only meaningful when there are other
+                     wired siblings sharing this controller's parent. -->
+                <div class="slider-row">
+                  <label for="couple-slider">
+                    <span class="lbl">Neighbor pull</span>
+                    <span class="val"
+                      >{((focusedTarget.config.couplingFactor ?? 0) * 100).toFixed(0)}%</span
+                    >
+                  </label>
+                  <input
+                    id="couple-slider"
+                    type="range"
+                    value={focusedTarget.config.couplingFactor ?? 0}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    oninput={(e) => {
+                      if (focusedTarget)
+                        focusedTarget.config.couplingFactor = Number(e.currentTarget.value);
+                    }}
+                  />
+                </div>
+
+                <!-- Occupancy schedule: night-setback for whichever VAV
+                     you've got selected. Tucked behind a toggle so it
+                     doesn't show up unless the user wants it. -->
+                <div class="schedule-block">
+                  <label class="schedule-toggle">
+                    <input
+                      type="checkbox"
+                      checked={focusedTarget.config.schedule?.enabled ?? false}
+                      onchange={(e) => toggleSchedule(e.currentTarget.checked)}
+                    />
+                    <span>Occupancy schedule (night setback)</span>
+                  </label>
+                  {#if focusedTarget.config.schedule?.enabled}
+                    {@const sched = focusedTarget.config.schedule}
+                    {@const tickHours = ((tick * focusedTarget.config.dt) / 3600) % 24}
+                    <div class="schedule-grid">
+                      <label>
+                        <span>Occ SP</span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={sched.occupiedSetpoint}
+                          oninput={(e) =>
+                            updateSchedule({ occupiedSetpoint: Number(e.currentTarget.value) })}
+                        />
+                        <span class="ctrl-unit">°F</span>
+                      </label>
+                      <label>
+                        <span>Unocc SP</span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={sched.unoccupiedSetpoint}
+                          oninput={(e) =>
+                            updateSchedule({ unoccupiedSetpoint: Number(e.currentTarget.value) })}
+                        />
+                        <span class="ctrl-unit">°F</span>
+                      </label>
+                      <label>
+                        <span>Occ start</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="23.5"
+                          step="0.5"
+                          value={sched.occStartHour}
+                          oninput={(e) =>
+                            updateSchedule({ occStartHour: Number(e.currentTarget.value) })}
+                        />
+                        <span class="ctrl-unit">h</span>
+                      </label>
+                      <label>
+                        <span>Occ end</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="23.5"
+                          step="0.5"
+                          value={sched.occEndHour}
+                          oninput={(e) =>
+                            updateSchedule({ occEndHour: Number(e.currentTarget.value) })}
+                        />
+                        <span class="ctrl-unit">h</span>
+                      </label>
+                    </div>
+                    <span class="schedule-now">
+                      Sim clock {Math.floor(tickHours).toString().padStart(2, '0')}:{Math.floor(
+                        (tickHours % 1) * 60,
+                      )
+                        .toString()
+                        .padStart(2, '0')}
+                      — {isOccupiedNow(sched, tickHours) ? 'occupied' : 'setback'}
+                    </span>
+                  {/if}
                 </div>
               {/if}
               <button
@@ -2697,6 +3063,102 @@
 
   .scenario-btn.load {
     display: inline-block;
+  }
+
+  .slots-section {
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed color-mix(in srgb, CanvasText 15%, transparent);
+  }
+
+  .slots-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.35rem;
+  }
+
+  .slots-head h4 {
+    margin: 0;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+
+  .slot-add {
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 80%, transparent);
+    font: inherit;
+    font-size: 0.68rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .slot-add:hover {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
+  }
+
+  .slots-empty {
+    margin: 0;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-style: italic;
+  }
+
+  .slots-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .slot-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.25rem;
+  }
+
+  .slot-load {
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    background: color-mix(in srgb, CanvasText 5%, transparent);
+    color: color-mix(in srgb, CanvasText 85%, transparent);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slot-load:hover {
+    background: color-mix(in srgb, CanvasText 12%, transparent);
+    color: CanvasText;
+  }
+
+  .slot-delete {
+    border: 1px solid color-mix(in srgb, #e74c3c 35%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #e74c3c 80%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    width: 1.6rem;
+    padding: 0;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .slot-delete:hover {
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    color: #e74c3c;
   }
 
   .load-message {
@@ -3234,6 +3696,23 @@
     margin-bottom: 0.3rem;
   }
 
+  .chart-csv {
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font: inherit;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+
+  .chart-csv:hover {
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+    color: CanvasText;
+  }
+
   .chart-title {
     font-size: 0.74rem;
     text-transform: uppercase;
@@ -3660,6 +4139,65 @@
     width: 100%;
     margin-top: 0.15rem;
     accent-color: #f59e0b;
+  }
+
+  .schedule-block {
+    margin-top: 0.3rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px dashed color-mix(in srgb, CanvasText 18%, transparent);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .schedule-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: color-mix(in srgb, CanvasText 80%, transparent);
+    cursor: pointer;
+  }
+
+  .schedule-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem 0.4rem;
+  }
+
+  .schedule-grid label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+  }
+
+  .schedule-grid label > span:first-child {
+    min-width: 3.2rem;
+  }
+
+  .schedule-grid input[type='number'] {
+    width: 3rem;
+    padding: 0.1rem 0.3rem;
+    background: Canvas;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 3px;
+    color: CanvasText;
+    font: inherit;
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+  }
+
+  .schedule-now {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    font-variant-numeric: tabular-nums;
   }
 
   .advanced-toggle {
