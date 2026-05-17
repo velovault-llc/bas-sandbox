@@ -1066,6 +1066,21 @@
   }
 
   /**
+   * Imperatively delete a node by id. Used by the inspector panel's Delete
+   * button. Drops the node + every edge that touched it, then runs the same
+   * cascade as keyboard-driven deletion (clean up wired targets, etc.).
+   */
+  function deleteNodeById(id: string): void {
+    const node = nodes.find((n) => n.id === id);
+    if (!node) return;
+    const removedEdges = edges.filter((e) => e.source === id || e.target === id);
+    nodes = nodes.filter((n) => n.id !== id);
+    edges = edges.filter((e) => e.source !== id && e.target !== id);
+    onNodesDelete([node]);
+    if (removedEdges.length > 0) onEdgesDelete(removedEdges);
+  }
+
+  /**
    * When nodes get deleted, any wired physics target that referenced them
    * loses its meaning — drop it and unfocus if it was the focus.
    */
@@ -1984,9 +1999,19 @@
           {@const currentFault = (sensorData?.fault ?? 'normal') as SensorFault}
           {@const currentSignal = (sensorData?.signal ?? DEFAULT_SENSOR_SIGNAL) as SensorSignal}
           {@const wiredHere = wiredTargets.some((t) => t.sensorId === selectedSensor.id)}
-          <Panel position="bottom-center">
-            <div class="sensor-panel">
-              <span class="sensor-title">Sensor — {nodeLabel(selectedSensor)}</span>
+          <Panel position="bottom-left">
+            <div class="sensor-panel inspector-panel">
+              <div class="inspector-head">
+                <span class="sensor-title">Sensor — {nodeLabel(selectedSensor)}</span>
+                <button
+                  type="button"
+                  class="inspector-delete"
+                  title="Delete this sensor (also: select + press Delete or Backspace)"
+                  onclick={() => deleteNodeById(selectedSensor.id)}
+                >
+                  ✕ Delete
+                </button>
+              </div>
               <div class="sensor-row">
                 <span class="sensor-sub">Signal</span>
                 <div class="signal-chips">
@@ -2034,9 +2059,19 @@
             | { highAlarm?: number; lowAlarm?: number; manualOverride?: number }
             | undefined}
           {@const overrideOn = typeof ctrlData?.manualOverride === 'number'}
-          <Panel position="bottom-center">
-            <div class="ctrl-panel">
-              <span class="ctrl-title">Controller — {nodeLabel(selectedController)}</span>
+          <Panel position="bottom-left">
+            <div class="ctrl-panel inspector-panel">
+              <div class="inspector-head">
+                <span class="ctrl-title">Controller — {nodeLabel(selectedController)}</span>
+                <button
+                  type="button"
+                  class="inspector-delete"
+                  title="Delete this controller (also: select + press Delete or Backspace)"
+                  onclick={() => deleteNodeById(selectedController.id)}
+                >
+                  ✕ Delete
+                </button>
+              </div>
               <label class="ctrl-field">
                 <span>High</span>
                 <input
@@ -3377,6 +3412,43 @@
     font-size: 0.65rem;
     color: color-mix(in srgb, CanvasText 60%, transparent);
     font-style: italic;
+  }
+
+  /* Inspector panels (sensor + controller) share a bottom-left anchor with
+     the tune-panel. The tune-panel is ~240px wide and always sits at
+     bottom-left; we offset the inspector by enough to clear it so the two
+     coexist without overlapping. Without this offset xyflow's bottom-left
+     position would stack them directly on top of each other. */
+  .inspector-panel {
+    margin-left: 260px;
+    max-width: 600px;
+  }
+
+  .inspector-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    width: 100%;
+    margin-bottom: 0.15rem;
+  }
+
+  .inspector-delete {
+    border: 1px solid color-mix(in srgb, #e74c3c 50%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .inspector-delete:hover {
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    color: #e74c3c;
   }
 
   .sensor-row {
