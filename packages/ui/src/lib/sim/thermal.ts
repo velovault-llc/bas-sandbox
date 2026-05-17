@@ -96,6 +96,13 @@ export interface SingleZoneConfig {
    * dominant as the envelope itself.
    */
   couplingFactor?: number;
+  /**
+   * Controller mode: cool removes heat from the zone, heat adds it.
+   * The PI logic flips its error sign accordingly so the actuator always
+   * opens in the direction that drives sensed temp toward the setpoint.
+   * Defaults to 'cool' so existing scenarios stay valid.
+   */
+  mode?: 'cool' | 'heat';
 }
 
 export const DEFAULT_CONFIG: SingleZoneConfig = {
@@ -207,6 +214,7 @@ export class SingleZoneSystem {
 
   step(): Sample {
     const { tau, coolingMax, Kp, Ki, dt, outdoorAir } = this.config;
+    const mode = this.config.mode ?? 'cool';
     // Setpoint is either the static config value or the scheduled value
     // (occupied vs. unoccupied) depending on schedule.enabled.
     const setpoint = effectiveSetpoint(this.config, this.simSeconds);
@@ -214,14 +222,17 @@ export class SingleZoneSystem {
     // 1) Thermal (explicit Euler — fine for dt/tau ≤ 0.1).
     //    With coupling on, a fraction of the drift term is replaced by
     //    pull-toward-neighbor instead of pull-toward-OAT.
+    //    Heat mode adds energy to the zone; cool mode removes it. Same
+    //    config knob (`coolingMax`) is reused as the equipment's capacity,
+    //    just signed by mode.
     const drift = (outdoorAir - this.T_zone) / tau;
     const couplingFactor = Math.max(0, Math.min(1, this.config.couplingFactor ?? 0));
     let couplingPull = 0;
     if (couplingFactor > 0 && this.couplingNeighborTemp !== null) {
       couplingPull = (couplingFactor * (this.couplingNeighborTemp - this.T_zone)) / tau;
     }
-    const cooling = -this.actuator * coolingMax;
-    this.T_zone += dt * (drift + cooling + couplingPull);
+    const equipmentDelta = (mode === 'cool' ? -1 : +1) * this.actuator * coolingMax;
+    this.T_zone += dt * (drift + equipmentDelta + couplingPull);
 
     // 2) Accumulate drift bias *before* sensing (so this tick already reflects it).
     //    Tuned so drift fault adds ~1°F per 10 sim-minutes (~600 sim-seconds).
@@ -235,12 +246,15 @@ export class SingleZoneSystem {
     //    short-circuits this — the actuator is held at the commanded value
     //    and the PI integral freezes so it doesn't wind up while the loop
     //    is open.
+    //    In cool mode, positive error = "too hot, open actuator". In heat
+    //    mode, positive error = "too cold, open actuator". The PI math is
+    //    identical; only the sign of (sensed - setpoint) flips.
     const sensed = this.senseZone();
     this.sensor.lastReading = sensed;
     if (this.manualOverride !== null) {
       this.actuator = Math.max(0, Math.min(1, this.manualOverride));
     } else {
-      const error = sensed - setpoint;
+      const error = mode === 'cool' ? sensed - setpoint : setpoint - sensed;
       const candidate = Kp * error + Ki * this.integral;
       const next = Math.max(0, Math.min(1, candidate));
       // Only integrate when not pushing further into a saturated direction.

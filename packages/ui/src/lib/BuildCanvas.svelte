@@ -27,6 +27,8 @@
     type SensorSignal,
   } from './sim/sensorModels';
   import { importStore } from './canvasStore.svelte';
+  import type { BasScenarioV1 } from './scenario';
+  import { DEMOS } from './demoScenarios';
 
   const nodeTypes = { bas: BasNode };
 
@@ -942,26 +944,9 @@
   }
 
   // ============ Scenario save / load ============
-
-  type BasScenarioV1 = {
-    version: 1;
-    savedAt: string;
-    topology: {
-      nodes: Node[];
-      edges: Edge[];
-    };
-    /** Legacy single-selection (v1.0/1.1). Still written for back-compat. */
-    selection: {
-      controllerId: string | null;
-    };
-    /** Legacy single-config (v1.0/1.1). Mirrors the focused target's config. */
-    config: SingleZoneConfig;
-    /** v1.2+: explicit multi-target list. */
-    wiredTargets?: WiredTarget[];
-    focusedTargetId?: string | null;
-    counters: Record<string, number>;
-    nextId: number;
-  };
+  //
+  // BasScenarioV1 type lives in ./scenario.ts so demoScenarios.ts can
+  // construct scenarios without circular-importing through this file.
 
   let saveButtonText = $state('Save scenario');
   let saveButtonTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1050,6 +1035,18 @@
     writeSlots(slots);
     slotNames = Object.keys(slots).sort();
     flashLoad('ok', `Deleted "${name}"`);
+  }
+
+  /**
+   * Load a bundled demo scenario into the canvas. Uses the same path as
+   * file/slot loading so any future scenario-shape changes flow through
+   * a single applyScenario(). Deep-clones the scenario first because
+   * applyScenario mutates the node/edge arrays in place.
+   */
+  function loadDemo(demo: (typeof DEMOS)[number]): void {
+    const cloned = JSON.parse(JSON.stringify(demo.scenario)) as BasScenarioV1;
+    applyScenario(cloned);
+    flashLoad('ok', `Loaded demo: ${demo.name}`);
   }
 
   function flashSave(text: string) {
@@ -2078,6 +2075,32 @@
           <p class="load-message {loadMessage.kind}">{loadMessage.text}</p>
         {/if}
 
+        <!-- Pre-built demo scenarios bundled with the app. One-click load
+             so a first-time visitor (or a commercial contact you're showing
+             this to) gets something interesting on the canvas without
+             having to build it up themselves. -->
+        <div class="slots-section demos-section">
+          <div class="slots-head">
+            <h4>Demos</h4>
+            <span class="demos-sub">{DEMOS.length} samples</span>
+          </div>
+          <ul class="demos-list">
+            {#each DEMOS as demo (demo.id)}
+              <li class="demo-row">
+                <button
+                  type="button"
+                  class="demo-load"
+                  title={demo.blurb}
+                  onclick={() => loadDemo(demo)}
+                >
+                  <span class="demo-name">{demo.name}</span>
+                  <span class="demo-blurb">{demo.blurb}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+
         <!-- Named in-browser slots (localStorage). Faster than file
              round-trips when you're switching between a handful of
              test setups during a session. -->
@@ -2537,6 +2560,31 @@
                   </span>
                 {/if}
               </div>
+              <!-- Mode toggle: cool removes heat from the zone, heat adds it.
+                   PI flips its error sign so the slider behavior feels
+                   identical — turn the dial, watch the actuator open the
+                   right direction. -->
+              <div class="mode-row">
+                <span class="mode-label">Mode</span>
+                <button
+                  type="button"
+                  class="mode-chip"
+                  class:active={(focusedTarget.config.mode ?? 'cool') === 'cool'}
+                  title="Cooling — actuator removes heat from the zone"
+                  onclick={() => focusedTarget && (focusedTarget.config.mode = 'cool')}
+                >
+                  ❄ Cool
+                </button>
+                <button
+                  type="button"
+                  class="mode-chip heat"
+                  class:active={focusedTarget.config.mode === 'heat'}
+                  title="Heating — actuator adds heat to the zone"
+                  onclick={() => focusedTarget && (focusedTarget.config.mode = 'heat')}
+                >
+                  ☼ Heat
+                </button>
+              </div>
               <div class="slider-row">
                 <label for="sp-slider">
                   <span class="lbl">Setpoint</span>
@@ -2610,7 +2658,11 @@
                 </div>
                 <div class="slider-row">
                   <label for="cool-slider">
-                    <span class="lbl">Cool max</span>
+                    <span class="lbl"
+                      >{(focusedTarget.config.mode ?? 'cool') === 'cool'
+                        ? 'Cool max'
+                        : 'Heat max'}</span
+                    >
                     <span class="val"
                       >{(focusedTarget.config.coolingMax * 60).toFixed(1)} °F/min</span
                     >
@@ -3162,6 +3214,53 @@
     margin-top: 0.6rem;
     padding-top: 0.5rem;
     border-top: 1px dashed color-mix(in srgb, CanvasText 15%, transparent);
+  }
+
+  .demos-sub {
+    font-size: 0.62rem;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    font-style: italic;
+  }
+
+  .demos-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .demo-load {
+    width: 100%;
+    text-align: left;
+    border: 1px solid color-mix(in srgb, #4a9eff 28%, transparent);
+    background: color-mix(in srgb, #4a9eff 6%, transparent);
+    color: inherit;
+    font: inherit;
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .demo-load:hover {
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+    border-color: color-mix(in srgb, #4a9eff 45%, transparent);
+  }
+
+  .demo-name {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: color-mix(in srgb, #4a9eff 95%, CanvasText);
+  }
+
+  .demo-blurb {
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    line-height: 1.3;
   }
 
   .slots-head {
@@ -4253,6 +4352,56 @@
     cursor: default;
     border-style: dashed;
     color: color-mix(in srgb, CanvasText 55%, transparent);
+  }
+
+  .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .mode-label {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    min-width: 2.5rem;
+  }
+
+  .mode-chip {
+    border: 1px solid color-mix(in srgb, #4a9eff 50%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #4a9eff 90%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 12px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+
+  .mode-chip:hover {
+    background: color-mix(in srgb, #4a9eff 12%, transparent);
+  }
+
+  .mode-chip.active {
+    background: color-mix(in srgb, #4a9eff 22%, transparent);
+    color: #4a9eff;
+  }
+
+  .mode-chip.heat {
+    border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+  }
+
+  .mode-chip.heat:hover {
+    background: color-mix(in srgb, #e74c3c 12%, transparent);
+  }
+
+  .mode-chip.heat.active {
+    background: color-mix(in srgb, #e74c3c 22%, transparent);
+    color: #e74c3c;
   }
 
   .tune-title {
