@@ -453,6 +453,16 @@
   let running = $state(false);
   let tick = $state(0);
   let intervalId: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Sim wall-clock start hour (0..23.99). Initializes every running system's
+   * simSeconds when start() fires, so the occupancy schedule sees the right
+   * hour-of-day from tick 0. The whole reason this exists: in CCT/SCT there's
+   * no way to fast-forward the clock to test "does my 22:00 setback transition
+   * actually fire?" — here you set start=21:58 and watch the schedule trip.
+   */
+  let simStartHour = $state(0);
+  /** Sim seconds elapsed *since* the start hour, ticked alongside `tick`. */
+  let simSecondsElapsed = $state(0);
   const TICK_MS = 1000;
 
   // Per-target running state, keyed by controllerId.
@@ -590,6 +600,11 @@
 
   function tickOnce() {
     tick++;
+    // Sim wall-clock advances by `dt` sim-seconds per tick. We mirror the
+    // running systems' internal counter at the canvas level so the clock
+    // readout works whether or not any target is wired.
+    const dtSeconds = runningSnapshot[0]?.config.dt ?? DEFAULT_CONFIG.dt;
+    simSecondsElapsed += dtSeconds;
 
     // Step every wired system. Build a fast lookup from controllerId → latest sample
     // so the node-runtime pass below can resolve in O(1).
@@ -843,10 +858,16 @@
     // Snapshot the current wired targets so config/topology edits during a run
     // don't yank the chart or restart a system mid-trajectory.
     runningSnapshot = wiredTargets.slice();
+    // Seed the sim clock from the user-set start hour. Each system's
+    // internal simSeconds starts here too so occupancy schedules see the
+    // right hour-of-day from tick 0.
+    simSecondsElapsed = 0;
+    const startSeconds = simStartHour * 3600;
     const systems = new Map<string, SingleZoneSystem>();
     const samples = new Map<string, Sample[]>();
     for (const t of runningSnapshot) {
       const sys = new SingleZoneSystem(t.config);
+      sys.simSeconds = startSeconds;
       // Restore any persisted sensor fault so the run picks up where the
       // user left it (e.g. they injected a fault, stopped, hit Run again).
       const sensor = nodes.find((n) => n.id === t.sensorId);
@@ -899,6 +920,7 @@
   function resetSim() {
     stop();
     tick = 0;
+    simSecondsElapsed = 0;
     runningSamples = new Map();
     nodes = nodes.map((n) => {
       const data = n.data as Record<string, unknown>;
@@ -1217,6 +1239,9 @@
     for (const t of wiredTargets) {
       if (!current.has(t.controllerId)) {
         const sys = new SingleZoneSystem(t.config);
+        // Late-added targets join the sim at the current clock time, not
+        // back at the run's start hour — feels right (they "exist now").
+        sys.simSeconds = simStartHour * 3600 + simSecondsElapsed;
         const sensor = nodes.find((n) => n.id === t.sensorId);
         const persistedFault = (sensor?.data as { fault?: SensorFault } | undefined)?.fault;
         if (persistedFault && persistedFault !== 'normal') sys.setFault(persistedFault);
@@ -2317,6 +2342,11 @@
             | { highAlarm?: number; lowAlarm?: number; manualOverride?: number }
             | undefined}
           {@const overrideOn = typeof ctrlData?.manualOverride === 'number'}
+          {@const isWiredTarget = wiredTargets.some(
+            (t) => t.controllerId === selectedController.id,
+          )}
+          {@const isFocusedTarget = focusedTargetId === selectedController.id}
+          {@const ctrlHasSensor = findConnectedSensor(selectedController.id) !== null}
           <Panel position="bottom-left">
             <div class="ctrl-panel inspector-panel">
               <div class="inspector-head">
@@ -2329,6 +2359,41 @@
                 >
                   ✕ Delete
                 </button>
+              </div>
+              <!-- Physics-target status row — makes the relationship between
+                   the clicked controller and the active tune panel explicit.
+                   Common confusion: user clicks Controller B expecting the
+                   tune sliders to update, but B isn't wired so the tune
+                   panel keeps showing Controller A. This row tells them
+                   exactly what's happening and gives a one-click fix. -->
+              <div class="ctrl-physics-row">
+                {#if isFocusedTarget}
+                  <span class="phys-status phys-good">
+                    ✓ Active tune target — sliders below match this controller
+                  </span>
+                {:else if isWiredTarget}
+                  <button
+                    type="button"
+                    class="phys-action"
+                    title="Switch the tune panel to this controller's config"
+                    onclick={() => (focusedTargetId = selectedController.id)}
+                  >
+                    → Make this the tune target
+                  </button>
+                {:else if ctrlHasSensor}
+                  <button
+                    type="button"
+                    class="phys-action"
+                    title="Wire this controller's sensor pair as a physics target"
+                    onclick={() => onNodeClick({ node: selectedController })}
+                  >
+                    → Wire as physics target
+                  </button>
+                {:else}
+                  <span class="phys-status phys-warn">
+                    Wire a sensor to this controller (drag between handles) to enable physics tuning
+                  </span>
+                {/if}
               </div>
               <label class="ctrl-field">
                 <span>High</span>
@@ -2727,6 +2792,34 @@
               Reset
             </button>
             <span class="tick">t = {tick}s</span>
+            <!-- Sim clock readout: shows the current hour-of-day the sim is at.
+                 Lets you set a START hour before pressing Run so occupancy
+                 schedules can be tested without waiting for the schedule's
+                 actual transition time. CCT/SCT don't expose this; here it
+                 takes one input. -->
+            <label
+              class="sim-clock-input"
+              title="Wall-clock hour the sim starts at — used to test occupancy schedules"
+            >
+              <span>start</span>
+              <input
+                type="number"
+                min="0"
+                max="23.5"
+                step="0.5"
+                bind:value={simStartHour}
+                disabled={running || tick > 0}
+              />
+              <span class="ctrl-unit">h</span>
+            </label>
+            {#if tick > 0 || running}
+              {@const totalSec = simStartHour * 3600 + simSecondsElapsed}
+              {@const h = Math.floor(totalSec / 3600) % 24}
+              {@const m = Math.floor((totalSec % 3600) / 60)}
+              <span class="sim-clock-readout" title="Current sim hour-of-day">
+                sim {h.toString().padStart(2, '0')}:{m.toString().padStart(2, '0')}
+              </span>
+            {/if}
             {#if nodes.length > 0}
               <span class="status-divider"></span>
               <span class="status-pill ok" title="Reachable from a supervisor"
@@ -3497,6 +3590,49 @@
     padding: 0 0.25rem;
   }
 
+  .sim-clock-input {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .sim-clock-input input {
+    width: 3.5rem;
+    padding: 0.1rem 0.3rem;
+    background: Canvas;
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 3px;
+    color: CanvasText;
+    font: inherit;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    text-transform: none;
+    outline: none;
+  }
+
+  .sim-clock-input input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .sim-clock-readout {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0.1rem 0.45rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+    color: #4a9eff;
+    border: 1px solid color-mix(in srgb, #4a9eff 35%, transparent);
+    white-space: nowrap;
+  }
+
   .status-divider {
     width: 1px;
     height: 1.2rem;
@@ -3650,6 +3786,48 @@
     width: 1px;
     height: 1.2rem;
     background: color-mix(in srgb, CanvasText 18%, transparent);
+  }
+
+  .ctrl-physics-row {
+    flex-basis: 100%;
+    margin-top: 0.05rem;
+  }
+
+  .phys-status {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 3px;
+    line-height: 1.3;
+  }
+
+  .phys-status.phys-good {
+    background: color-mix(in srgb, #2ecc71 14%, transparent);
+    color: #2ecc71;
+    border: 1px solid color-mix(in srgb, #2ecc71 40%, transparent);
+  }
+
+  .phys-status.phys-warn {
+    background: color-mix(in srgb, #f39c12 14%, transparent);
+    color: color-mix(in srgb, #f39c12 95%, CanvasText);
+    border: 1px solid color-mix(in srgb, #f39c12 35%, transparent);
+    font-style: italic;
+  }
+
+  .phys-action {
+    border: 1px solid color-mix(in srgb, #4a9eff 55%, transparent);
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+    color: #4a9eff;
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+
+  .phys-action:hover {
+    background: color-mix(in srgb, #4a9eff 24%, transparent);
   }
 
   .override-toggle {
