@@ -26,7 +26,7 @@
     DEFAULT_SENSOR_SIGNAL,
     type SensorSignal,
   } from './sim/sensorModels';
-  import { importStore, canvasActions } from './canvasStore.svelte';
+  import { importStore, canvasActions, openModelPicker } from './canvasStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
@@ -323,25 +323,70 @@
       y: (screenY - ty) / zoom - 25,
     };
 
-    // Optional vendor-model payload: when the drag came from the catalog
-    // drawer, the model id rides along on a secondary dataTransfer key.
-    // Resolve it now so the new node carries the vendor metadata.
+    // Resolve any model-id riding on the dataTransfer (drawer-drag path).
     const vendorId = event.dataTransfer?.getData('application/bas-controller-vendor');
     const vendorModel = vendorId ? findControllerModel(vendorId) : undefined;
-
-    // Same pattern for sensors / safeties dragged from the Devices drawer.
     const sensorModelId = event.dataTransfer?.getData('application/bas-sensor-model');
     const sensorModel = sensorModelId ? findSensorModel(sensorModelId) : undefined;
     const safetyModelId = event.dataTransfer?.getData('application/bas-safety-model');
     const safetyModel = safetyModelId ? findSafetyDevice(safetyModelId) : undefined;
+
+    // Generic-palette drop with no model attached → force a model pick
+    // before finalizing the node. The user can still escape to a "generic
+    // placeholder" but the explicit choice matters: it tells them this is
+    // not a real-world configuration.
+    const needsPick =
+      !vendorModel && !sensorModel && !safetyModel &&
+      (kind === 'controller' || kind === 'sensor' || kind === 'safety');
+
+    if (needsPick) {
+      openModelPicker(
+        kind as 'controller' | 'sensor' | 'safety',
+        (pickedId) => {
+          finalizeDrop(item.kind, kind, position, pickedId, undefined);
+        },
+        () => {
+          // Cancel — do nothing; user can drop again
+        },
+      );
+      return;
+    }
+
+    finalizeDrop(item.kind, kind, position,
+      vendorModel?.id ?? sensorModel?.id ?? safetyModel?.id ?? null,
+      { vendorModel, sensorModel, safetyModel },
+    );
+  }
+
+  function finalizeDrop(
+    paletteKind: Kind,
+    dropKind: string,
+    position: { x: number; y: number },
+    pickedId: string | null,
+    preResolved?: {
+      vendorModel?: ReturnType<typeof findControllerModel>;
+      sensorModel?: ReturnType<typeof findSensorModel>;
+      safetyModel?: ReturnType<typeof findSafetyDevice>;
+    },
+  ): void {
+    // Re-resolve the model from pickedId when called from the picker
+    // (which doesn't know which catalog applies).
+    let vendorModel = preResolved?.vendorModel;
+    let sensorModel = preResolved?.sensorModel;
+    let safetyModel = preResolved?.safetyModel;
+    if (pickedId && !vendorModel && !sensorModel && !safetyModel) {
+      if (dropKind === 'controller') vendorModel = findControllerModel(pickedId);
+      else if (dropKind === 'sensor') sensorModel = findSensorModel(pickedId);
+      else if (dropKind === 'safety') safetyModel = findSafetyDevice(pickedId);
+    }
 
     const id = `n${nextId++}`;
     let baseLabel: string;
     if (vendorModel) baseLabel = vendorModel.model;
     else if (sensorModel) baseLabel = sensorModel.model;
     else if (safetyModel) baseLabel = safetyModel.model;
-    else baseLabel = nextName(item.kind);
-    const data: Record<string, unknown> = { kind: item.kind, label: baseLabel };
+    else baseLabel = nextName(paletteKind);
+    const data: Record<string, unknown> = { kind: paletteKind, label: baseLabel };
     if (vendorModel) {
       data.vendorModelId = vendorModel.id;
       data.subtitle = `${vendorModel.vendor} · ${vendorModel.programmingLanguage}`;
@@ -3003,6 +3048,35 @@
           </Panel>
         {/if}
 
+        <Panel position="top-left">
+          <div class="canvas-actions">
+            <button
+              type="button"
+              class="ca-btn"
+              onclick={saveScenario}
+              title="Download the canvas as a .bas-scenario JSON file"
+            >
+              💾 Save
+            </button>
+            <button
+              type="button"
+              class="ca-btn"
+              onclick={clearAll}
+              title="Remove every node and wire from the canvas"
+            >
+              ✕ Clear
+            </button>
+            <button
+              type="button"
+              class="ca-btn ca-btn-danger"
+              onclick={resetCanvas}
+              title="Wipe everything (including localStorage) to a fresh empty canvas"
+            >
+              ⟲ Reset
+            </button>
+          </div>
+        </Panel>
+
         <Panel position="top-right">
           <div class="sim-panel">
             {#if !running}
@@ -3018,7 +3092,7 @@
               onclick={resetSim}
               disabled={tick === 0 && !running}
             >
-              Reset
+              Reset sim
             </button>
             <span class="tick">t = {tick}s</span>
             <!-- Sim clock readout: shows the current hour-of-day the sim is at.
@@ -3820,6 +3894,47 @@
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
     font-size: 0.82rem;
+  }
+
+  /* Floating canvas-actions cluster — top-left of the canvas, mirrors the
+     header buttons so Save / Clear / Reset are always one click away
+     regardless of how the page is scrolled or rendered. */
+  .canvas-actions {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.35rem 0.55rem;
+    background: color-mix(in srgb, Canvas 90%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+  }
+
+  .ca-btn {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    color: color-mix(in srgb, CanvasText 85%, transparent);
+    padding: 0.25rem 0.6rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .ca-btn:hover {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
+  }
+
+  .ca-btn-danger {
+    border-color: color-mix(in srgb, #e74c3c 35%, transparent);
+    color: color-mix(in srgb, #e74c3c 85%, CanvasText);
+  }
+
+  .ca-btn-danger:hover {
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    color: #e74c3c;
   }
 
   .sim-panel button {

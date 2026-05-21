@@ -1,8 +1,4 @@
 // Shared module-scoped state for cross-component messages on the build canvas.
-//
-// Right now this just carries a "pending import" — a topology computed by App
-// (e.g. when the user clicks "Open in Build" on a parsed .dbexport) that
-// BuildCanvas should swap onto the canvas the next time it runs an effect.
 
 import type { Edge, Node } from '@xyflow/svelte';
 
@@ -26,3 +22,38 @@ export const canvasActions = $state<{
   reset: null,
   saveScenario: null,
 });
+
+/**
+ * Model-pick modal coordination. When a user drops a generic Controller /
+ * Sensor / Safety from the bottom dock, BuildCanvas defers final node
+ * creation and sets `pending` here. App.svelte renders a modal that lets
+ * the user pick a real-world catalog model (or "generic placeholder" if
+ * they really want a no-model node). Picking calls back into BuildCanvas
+ * via the resolver fn.
+ */
+export type PendingKind = 'controller' | 'sensor' | 'safety';
+
+export const modelPickerStore = $state<{
+  pending: {
+    kind: PendingKind;
+    /** Called once the user has chosen. `modelId` is null when the user
+     *  explicitly picks "generic placeholder". */
+    resolve: (modelId: string | null) => void;
+    /** Called if the user cancels the pick (Esc / close button). */
+    cancel: () => void;
+  } | null;
+}>({
+  pending: null,
+});
+
+export function openModelPicker(
+  kind: PendingKind,
+  resolve: (modelId: string | null) => void,
+  cancel: () => void,
+): void {
+  modelPickerStore.pending = { kind, resolve, cancel };
+}
+
+export function closeModelPicker(): void {
+  modelPickerStore.pending = null;
+}

@@ -11,6 +11,7 @@
   import AboutPage from './lib/about/AboutPage.svelte';
   import VendorPalette from './lib/equipment/VendorPalette.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
+  import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
@@ -410,6 +411,7 @@
           {#if programStore.activeFbdControllerId}
             <FBDCanvas />
           {/if}
+          <ModelPickerModal />
           <button
             type="button"
             class="dock-toggle"
