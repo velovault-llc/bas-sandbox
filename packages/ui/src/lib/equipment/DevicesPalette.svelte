@@ -12,10 +12,33 @@
     type SafetyKind,
     type ExpansionModule,
   } from '@bas/core';
-  import { selectionStore } from '../canvasStore.svelte';
+  import { selectionStore, devicesNavStore } from '../canvasStore.svelte';
 
   type DeviceTab = 'controllers' | 'sensors' | 'safeties' | 'expansions';
   let tab = $state<DeviceTab>('controllers');
+
+  // React to "show me X" signals from the scenario panel: switch sub-tab,
+  // then highlight + scroll-into-view the requested model.
+  let highlightModelId = $state<string | null>(null);
+  let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const pulse = devicesNavStore.pulse;
+    if (pulse === 0 || !devicesNavStore.tab) return;
+    tab = devicesNavStore.tab;
+    const modelId = devicesNavStore.modelId;
+    if (modelId) {
+      highlightModelId = modelId;
+      // Wait for DOM render, then scroll
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-model-id="${modelId}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      if (highlightTimer) clearTimeout(highlightTimer);
+      highlightTimer = setTimeout(() => {
+        highlightModelId = null;
+      }, 2500);
+    }
+  });
 
   const controllerGroups = $derived.by(() => {
     const map = controllerCatalogByVendor();
@@ -139,7 +162,14 @@
         </summary>
         <ul>
           {#each group.models as m (m.id)}
-            <li class="model" draggable="true" ondragstart={(e) => onDragController(e, m)} title={m.notes}>
+            <li
+              class="model"
+              class:highlight={highlightModelId === m.id}
+              data-model-id={m.id}
+              draggable="true"
+              ondragstart={(e) => onDragController(e, m)}
+              title={m.notes}
+            >
               <div class="model-head">
                 <strong class="mono">{m.model}</strong>
                 <span class="role">{m.role}</span>
@@ -172,7 +202,14 @@
         </summary>
         <ul>
           {#each group.models as m (m.id)}
-            <li class="model" draggable="true" ondragstart={(e) => onDragSensor(e, m)} title={m.notes}>
+            <li
+              class="model"
+              class:highlight={highlightModelId === m.id}
+              data-model-id={m.id}
+              draggable="true"
+              ondragstart={(e) => onDragSensor(e, m)}
+              title={m.notes}
+            >
               <div class="model-head">
                 <strong>{m.vendor}</strong>
                 <span class="muted">·</span>
@@ -198,7 +235,14 @@
         </summary>
         <ul>
           {#each group.devices as d (d.id)}
-            <li class="model safety" draggable="true" ondragstart={(e) => onDragSafety(e, d)} title={d.notes}>
+            <li
+              class="model safety"
+              class:highlight={highlightModelId === d.id}
+              data-model-id={d.id}
+              draggable="true"
+              ondragstart={(e) => onDragSafety(e, d)}
+              title={d.notes}
+            >
               <div class="model-head">
                 <strong>{d.vendor}</strong>
                 <span class="muted">·</span>
@@ -382,6 +426,17 @@
 
   .model.incompat:hover {
     background: transparent;
+  }
+
+  .model.highlight {
+    background: color-mix(in srgb, #4a9eff 18%, transparent);
+    border-left: 3px solid #4a9eff;
+    animation: pulseHighlight 1.4s ease;
+  }
+
+  @keyframes pulseHighlight {
+    0%   { background: color-mix(in srgb, #4a9eff 40%, transparent); }
+    100% { background: color-mix(in srgb, #4a9eff 18%, transparent); }
   }
 
   .model-head {

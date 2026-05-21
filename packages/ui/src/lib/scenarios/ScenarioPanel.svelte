@@ -1,7 +1,14 @@
 <script lang="ts">
   import { scenarioStore, stopScenario, toggleScenarioCollapsed } from './scenarioStore.svelte';
-  import { canvasSnapshot } from '../canvasStore.svelte';
+  import { canvasSnapshot, showInDevices } from '../canvasStore.svelte';
   import { validateScenario } from './validator';
+
+  function tabForKind(kind: string): 'controllers' | 'sensors' | 'safeties' | 'expansions' {
+    if (kind === 'controller') return 'controllers';
+    if (kind === 'sensor') return 'sensors';
+    if (kind === 'safety') return 'safeties';
+    return 'expansions';
+  }
 
   const result = $derived.by(() => {
     if (!scenarioStore.active) return null;
@@ -60,6 +67,15 @@
                   <div class="step-detail" class:err={!step.passed}>{step.detail}</div>
                   {#if req}
                     <div class="step-rationale">{req.rationale}</div>
+                    {#if !step.passed && req.preferredModelId}
+                      <button
+                        type="button"
+                        class="show-me"
+                        onclick={() => showInDevices(tabForKind(req.kind), req.preferredModelId!)}
+                      >
+                        Show recommended → {req.preferredModelId}
+                      </button>
+                    {/if}
                   {/if}
                 </div>
               </li>
@@ -350,6 +366,25 @@
     color: color-mix(in srgb, CanvasText 55%, transparent);
     margin-top: 0.2rem;
     font-style: italic;
+  }
+
+  .show-me {
+    margin-top: 0.35rem;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, #4a9eff 50%, transparent);
+    color: color-mix(in srgb, #4a9eff 95%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+
+  .show-me:hover {
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
   }
 
   .seq-line {

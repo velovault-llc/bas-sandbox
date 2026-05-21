@@ -27,6 +27,7 @@
     type SensorSignal,
   } from './sim/sensorModels';
   import { importStore, canvasActions, openModelPicker, selectionStore, canvasSnapshot } from './canvasStore.svelte';
+  import { log as logEvent } from './runtime/runtimeLogStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
@@ -148,13 +149,27 @@
   }
 
   function setEdgeBroken(edgeId: string, broken: boolean): void {
-    edges = edges.map((e) =>
-      e.id === edgeId
+    const e = edges.find((edge) => edge.id === edgeId);
+    if (e) {
+      const wasBroken = (e.data as { comm?: string } | undefined)?.comm === 'broken';
+      if (wasBroken !== broken) {
+        const srcNode = nodes.find((n) => n.id === e.source);
+        const tgtNode = nodes.find((n) => n.id === e.target);
+        const lbl = `${srcNode ? nodeLabel(srcNode) : e.source} ↔ ${tgtNode ? nodeLabel(tgtNode) : e.target}`;
+        if (broken) {
+          logEvent(simSecondsElapsed, 'error', lbl, 'Trunk break — devices downstream go offline; last good values freeze.');
+        } else {
+          logEvent(simSecondsElapsed, 'info', lbl, 'Trunk restored — downstream devices back online.');
+        }
+      }
+    }
+    edges = edges.map((edge) =>
+      edge.id === edgeId
         ? withStyle({
-            ...e,
-            data: { ...(e.data ?? {}), comm: broken ? 'broken' : 'normal' },
+            ...edge,
+            data: { ...(edge.data ?? {}), comm: broken ? 'broken' : 'normal' },
           })
-        : e,
+        : edge,
     );
   }
 
@@ -1103,12 +1118,14 @@
       edges = edges.map((e) => withStyle({ ...e, animated: true }));
     }
 
+    logEvent(0, 'info', 'sim', `Run started with ${runningSnapshot.length} physics target${runningSnapshot.length === 1 ? '' : 's'} (sim start hour ${simStartHour}).`);
     tickOnce();
     intervalId = setInterval(tickOnce, TICK_MS);
   }
 
   function stop() {
     running = false;
+    logEvent(simSecondsElapsed, 'info', 'sim', `Run stopped at t=${Math.round(simSecondsElapsed)}s.`);
     runningSnapshot = [];
     runningSystems = new Map();
     if (intervalId) clearInterval(intervalId);
@@ -1584,6 +1601,38 @@
     const src = nodes.find((n) => n.id === connection.source);
     const tgt = nodes.find((n) => n.id === connection.target);
     if (!src || !tgt) return;
+
+    // One-wire-per-terminal: real-world terminal blocks are single-input
+    // and single-source. Refuse a wire when either endpoint's specific
+    // handle already has a connection — this stops two sensors from
+    // sharing UI-1, or two outputs from being driven by the same BO. The
+    // network handles ("net-in" / "net-out") are exempted because trunks
+    // carry many devices on one physical run.
+    const isTerminal = (h: string | null | undefined) =>
+      !!h && h !== 'net-in' && h !== 'net-out';
+    if (connection.sourceHandle && isTerminal(connection.sourceHandle)) {
+      const exists = edges.find(
+        (e) => e.source === connection.source && e.sourceHandle === connection.sourceHandle,
+      );
+      if (exists) {
+        flashWireRefusal(
+          `Source terminal ${connection.sourceHandle} on ${nodeLabel(src)} is already wired. Disconnect that wire first — real terminals are single-source.`,
+        );
+        return;
+      }
+    }
+    if (connection.targetHandle && isTerminal(connection.targetHandle)) {
+      const exists = edges.find(
+        (e) => e.target === connection.target && e.targetHandle === connection.targetHandle,
+      );
+      if (exists) {
+        flashWireRefusal(
+          `Target terminal ${connection.targetHandle} on ${nodeLabel(tgt)} is already wired. Disconnect that wire first — real terminals are single-input.`,
+        );
+        return;
+      }
+    }
+
     const kind: WireKind =
       selectedWireKind === 'auto'
         ? defaultWireKind(nodeKind(src), nodeKind(tgt))
@@ -1823,6 +1872,13 @@
         },
         ...alarmLog,
       ].slice(0, ALARM_LOG_MAX);
+      logEvent(
+        simSecondsElapsed,
+        next === 'high' ? 'error' : 'warn',
+        label,
+        `${next === 'high' ? '▲ HIGH' : '▼ LOW'} TEMP alarm fired at ${zoneTemp.toFixed(1)}°F.`,
+        controllerId,
+      );
     } else if (prev !== 'normal') {
       alarmLog = [
         {
@@ -1836,6 +1892,13 @@
         },
         ...alarmLog,
       ].slice(0, ALARM_LOG_MAX);
+      logEvent(
+        simSecondsElapsed,
+        'info',
+        label,
+        `Alarm cleared — zone back in band (${zoneTemp.toFixed(1)}°F).`,
+        controllerId,
+      );
     }
   }
 
@@ -1922,15 +1985,34 @@
    *  localStorage / scenario save, AND mutates the running thermal sim (if any)
    *  so the change is visible on the next tick. */
   function setSensorFault(sensorId: string, fault: SensorFault): void {
+    const sensorNode = nodes.find((n) => n.id === sensorId);
+    const prev = (sensorNode?.data as { fault?: SensorFault } | undefined)?.fault ?? 'normal';
     nodes = nodes.map((n) =>
       n.id === sensorId ? { ...n, data: { ...(n.data as Record<string, unknown>), fault } } : n,
     );
     // Find the wired target this sensor belongs to and push the fault into
     // its live SingleZoneSystem so the trace reacts immediately.
     const target = wiredTargets.find((t) => t.sensorId === sensorId);
-    if (!target) return;
-    const sys = runningSystems.get(target.controllerId);
-    if (sys) sys.setFault(fault);
+    if (target) {
+      const sys = runningSystems.get(target.controllerId);
+      if (sys) sys.setFault(fault);
+    }
+    // Emit a runtime log entry when fault actually changes
+    if (prev !== fault) {
+      const label = sensorNode ? nodeLabel(sensorNode) : sensorId;
+      if (fault === 'normal') {
+        logEvent(simSecondsElapsed, 'info', label, `Sensor fault cleared (was ${prev}); reading back in range.`);
+      } else {
+        const msg: Record<Exclude<SensorFault, 'normal'>, string> = {
+          open: 'Sensor open-circuit detected — reading pinned at +250°F (full-scale high). Check wire continuity.',
+          short: 'Sensor shorted leads detected — reading pinned at -40°F (full-scale low). Check wiring.',
+          stuck: 'Sensor frozen at last good value — possible firmware lockup or comm fault upstream.',
+          drift: 'Sensor reading drifting ~1°F per 10 sim-min. Field calibration recommended.',
+        };
+        const level: 'warn' | 'error' = fault === 'open' || fault === 'short' ? 'error' : 'warn';
+        logEvent(simSecondsElapsed, level, label, msg[fault]);
+      }
+    }
   }
 
   // ============ Topology validation (live, build-mode checks) ============

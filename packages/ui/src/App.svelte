@@ -13,13 +13,23 @@
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
   import ScenariosTab from './lib/scenarios/ScenariosTab.svelte';
   import ScenarioPanel from './lib/scenarios/ScenarioPanel.svelte';
+  import RuntimeLogPanel from './lib/runtime/RuntimeLogPanel.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
-  import { canvasActions } from './lib/canvasStore.svelte';
+  import { canvasActions, devicesNavStore } from './lib/canvasStore.svelte';
   import { onMount } from 'svelte';
 
   onMount(() => rehydrateAllPrograms());
+
+  // When the scenario panel requests "show me", flip to Devices tab.
+  // DevicesPalette listens to the same store for sub-tab + scroll-to.
+  $effect(() => {
+    if (devicesNavStore.pulse > 0 && devicesNavStore.tab) {
+      leftDrawerTab = 'devices';
+      leftDrawerOpen = true;
+    }
+  });
 
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
@@ -414,6 +424,7 @@
           {/if}
           <ModelPickerModal />
           <ScenarioPanel />
+          <RuntimeLogPanel />
           <button
             type="button"
             class="dock-toggle"

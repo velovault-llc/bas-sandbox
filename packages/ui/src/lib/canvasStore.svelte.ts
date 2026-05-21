@@ -83,3 +83,30 @@ export const canvasSnapshot = $state<{
   nodes: [],
   edges: [],
 });
+
+/**
+ * "Show me" — when the scenario walkthrough wants to point the user at a
+ * specific model in the Devices drawer, it writes the request here. The
+ * App + DevicesPalette pick it up and open the drawer to the right tab.
+ */
+export const devicesNavStore = $state<{
+  /** Bumped each time a "show me" is requested so palette can react. */
+  pulse: number;
+  /** Sub-tab to switch to. */
+  tab: 'controllers' | 'sensors' | 'safeties' | 'expansions' | null;
+  /** Model id to highlight + scroll-to. */
+  modelId: string | null;
+}>({
+  pulse: 0,
+  tab: null,
+  modelId: null,
+});
+
+export function showInDevices(
+  tab: 'controllers' | 'sensors' | 'safeties' | 'expansions',
+  modelId: string,
+): void {
+  devicesNavStore.tab = tab;
+  devicesNavStore.modelId = modelId;
+  devicesNavStore.pulse++;
+}
