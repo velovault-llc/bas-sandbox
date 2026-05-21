@@ -1130,6 +1130,30 @@
     }
 
     logEvent(0, 'info', 'sim', `Run started with ${runningSnapshot.length} physics target${runningSnapshot.length === 1 ? '' : 's'} (sim start hour ${simStartHour}).`);
+
+    // Safety polarity audit — emit a warning for any NO-state safeties on
+    // the canvas. Most BAS code paths assume NC fail-safe (wire break =
+    // chain opens = trip). A NO device wired without explicit handling
+    // produces a fail-DANGEROUS condition: the chain stays closed even
+    // when the device fires. The user has to acknowledge this by writing
+    // logic that interprets the input correctly.
+    for (const n of nodes) {
+      if ((n.data as { kind?: string } | undefined)?.kind !== 'safety') continue;
+      const safetyId = (n.data as { safetyModelId?: string } | undefined)?.safetyModelId;
+      if (!safetyId) continue;
+      const m = findSafetyDevice(safetyId);
+      if (!m) continue;
+      if (m.normalState === 'NO') {
+        logEvent(
+          0,
+          'warn',
+          nodeLabel(n),
+          `${m.vendor} ${m.model} is NORMALLY OPEN. Most BAS code treats safety inputs as NC (fail-safe by wire break). If your program doesn't explicitly invert this input, the safety chain becomes fail-DANGEROUS — won't trip when the device fires.`,
+          n.id,
+        );
+      }
+    }
+
     tickOnce();
     intervalId = setInterval(tickOnce, TICK_MS);
   }
