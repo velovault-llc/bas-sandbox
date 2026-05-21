@@ -26,7 +26,7 @@
     DEFAULT_SENSOR_SIGNAL,
     type SensorSignal,
   } from './sim/sensorModels';
-  import { importStore, canvasActions, openModelPicker } from './canvasStore.svelte';
+  import { importStore, canvasActions, openModelPicker, selectionStore } from './canvasStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
@@ -36,6 +36,8 @@
     findControllerModel,
     findSensorModel,
     findSafetyDevice,
+    findExpansionModule,
+    formatPointBreakdown,
     type StEnv,
   } from '@bas/core';
   import { onMount } from 'svelte';
@@ -44,7 +46,7 @@
 
   const nodeTypes = { bas: BasNode };
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -292,7 +294,12 @@
 
     const kind = event.dataTransfer?.getData('application/bas-node-kind') as Kind | undefined;
     if (!kind) return;
-    const item = PALETTE.find((p) => p.kind === kind);
+    // Expansion-kind drops don't have a PALETTE entry (no dock palette item)
+    // — they come only from Devices > Expansion. We synthesize the needed
+    // bits inline below.
+    const item = kind === 'expansion'
+      ? { kind: 'expansion' as Kind, label: 'Expansion module', defaultName: 'XP', icon: '⊞', description: 'Expansion module' }
+      : PALETTE.find((p) => p.kind === kind);
     if (!item) return;
 
     // Convert the drop's screen-space coordinates into xyflow's internal flow
@@ -330,6 +337,28 @@
     const sensorModel = sensorModelId ? findSensorModel(sensorModelId) : undefined;
     const safetyModelId = event.dataTransfer?.getData('application/bas-safety-model');
     const safetyModel = safetyModelId ? findSafetyDevice(safetyModelId) : undefined;
+    const expansionModelId = event.dataTransfer?.getData('application/bas-expansion-model');
+    const expansionModel = expansionModelId ? findExpansionModule(expansionModelId) : undefined;
+
+    // Expansion drops always carry a model id (no generic expansions).
+    if (kind === 'expansion' && expansionModel) {
+      const id = `n${nextId++}`;
+      nodes = [
+        ...nodes,
+        {
+          id,
+          type: 'bas',
+          position,
+          data: {
+            kind: 'expansion',
+            label: expansionModel.model,
+            expansionModelId: expansionModel.id,
+            subtitle: `${expansionModel.vendor} · ${expansionModel.family} · +${formatPointBreakdown(expansionModel.addedPoints)}`,
+          },
+        },
+      ];
+      return;
+    }
 
     // Generic-palette drop with no model attached → force a model pick
     // before finalizing the node. The user can still escape to a "generic
@@ -1729,6 +1758,18 @@
     return selectedNode;
   });
 
+  // Broadcast the selected controller's vendor to the Devices drawer so the
+  // Expansions sub-tab can grey out incompatible modules.
+  $effect(() => {
+    if (selectedController) {
+      const vendorId = (selectedController.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+      const model = vendorId ? findControllerModel(vendorId) : null;
+      selectionStore.selectedControllerVendor = model?.vendor ?? null;
+    } else {
+      selectionStore.selectedControllerVendor = null;
+    }
+  });
+
   /** Rolling log of alarm transitions — each entry captures a fire or clear
    *  event so the user can scroll back through what happened. */
   type AlarmLogEntry = {
@@ -2354,6 +2395,31 @@
             </button>
           {/each}
         </div>
+      </div>
+
+      <!-- Points legend — color key for the terminal dots that paint along
+           the left/right of a controller node. Sits next to the WIRES list
+           so the whole "what does this color mean" answer lives in one
+           place at the bottom of the canvas. -->
+      <div class="points-legend-section">
+        <h3>Points</h3>
+        <ul class="legend-table">
+          <li>
+            <span class="legend-dot" style:background="#4a9eff"></span>
+            <span class="legend-code">UI / UO</span>
+            <span class="legend-desc">Universal — configurable AI or BI per channel</span>
+          </li>
+          <li>
+            <span class="legend-dot" style:background="#f39c12"></span>
+            <span class="legend-code">AI / AO</span>
+            <span class="legend-desc">Analog — fixed type (4-20mA, 0-10V, RTD…)</span>
+          </li>
+          <li>
+            <span class="legend-dot" style:background="#2ecc71"></span>
+            <span class="legend-code">BI / BO</span>
+            <span class="legend-desc">Binary — dry contact in, relay/triac out</span>
+          </li>
+        </ul>
       </div>
 
       <div class="palette-foot">
@@ -3409,6 +3475,60 @@
   }
   .item.kind-safety {
     --accent: #e74c3c;
+  }
+
+  .points-legend-section {
+    border-left: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    padding-left: 0.75rem;
+    margin-left: 0.25rem;
+    width: 17rem;
+    flex-shrink: 0;
+  }
+
+  .points-legend-section h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    margin: 0 0 0.35rem 0;
+  }
+
+  .legend-table {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .legend-table li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+  }
+
+  .legend-table .legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-table .legend-code {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .legend-table .legend-desc {
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    font-size: 0.66rem;
+    line-height: 1.25;
   }
 
   .wires-section {

@@ -10,7 +10,9 @@
     type SafetyDevice,
     type SensorSubject,
     type SafetyKind,
+    type ExpansionModule,
   } from '@bas/core';
+  import { selectionStore } from '../canvasStore.svelte';
 
   type DeviceTab = 'controllers' | 'sensors' | 'safeties' | 'expansions';
   let tab = $state<DeviceTab>('controllers');
@@ -49,6 +51,18 @@
     event.dataTransfer.setData('application/bas-node-kind', 'safety');
     event.dataTransfer.setData('application/bas-safety-model', device.id);
     event.dataTransfer.effectAllowed = 'move';
+  }
+  function onDragExpansion(event: DragEvent, module: ExpansionModule): void {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.setData('application/bas-node-kind', 'expansion');
+    event.dataTransfer.setData('application/bas-expansion-model', module.id);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function isExpansionCompatible(m: ExpansionModule): boolean {
+    const v = selectionStore.selectedControllerVendor;
+    if (!v) return true; // no controller selected — show all
+    return m.compatibleWith.includes(v);
   }
 
   function subjectLabel(s: SensorSubject): string {
@@ -209,8 +223,8 @@
   {:else}
     <!-- Expansions tab: read-only catalog for now. Future: draggable child-of-parent nodes. -->
     <p class="hint">
-      Expansion modules add I/O points to a parent controller. Listed here for reference;
-      drag-to-canvas support arrives in a future layout pass.
+      Drag a module onto the canvas, then wire it to a parent controller from the same vendor.
+      Adds its I/O to the parent's point count.
     </p>
     {#each expansionGroups as group (group.vendor)}
       <details class="group" open>
@@ -220,7 +234,14 @@
         </summary>
         <ul>
           {#each group.modules as m (m.id)}
-            <li class="model expansion" title={m.notes}>
+            {@const compat = isExpansionCompatible(m)}
+            <li
+              class="model expansion-item"
+              class:incompat={!compat}
+              draggable={compat}
+              ondragstart={(e) => compat && onDragExpansion(e, m)}
+              title={compat ? m.notes : `Not compatible with the selected controller (clip-on to ${m.compatibleWith.join(', ')} only)`}
+            >
               <div class="model-head">
                 <strong class="mono">{m.model}</strong>
                 <span class="role">{m.family}</span>
@@ -349,9 +370,18 @@
     border-left: 3px solid #e74c3c;
   }
 
-  .model.expansion {
-    cursor: default;
-    opacity: 0.85;
+  .model.expansion-item {
+    border-left: 3px solid #4a9eff;
+  }
+
+  .model.incompat {
+    opacity: 0.32;
+    cursor: not-allowed;
+    filter: grayscale(0.7);
+  }
+
+  .model.incompat:hover {
+    background: transparent;
   }
 
   .model-head {

@@ -2,14 +2,20 @@
   import { getContext } from 'svelte';
   import { Handle, Position, type NodeProps } from '@xyflow/svelte';
   import { SENSOR_TEMPLATE_BY_ID, type SensorSignal } from './sim/sensorModels';
-  import { findControllerModel, generateTerminals, fixedOnboardPoints, type TerminalLabel } from '@bas/core';
+  import {
+    findControllerModel,
+    findExpansionModule,
+    generateTerminals,
+    fixedOnboardPoints,
+    type TerminalLabel,
+  } from '@bas/core';
 
   /** Cap above which we abandon per-terminal handles and fall back to the
    *  generic top/bottom pair. Beckhoff CX9020 (1024 bus terminals) would
    *  otherwise paint an unreadable column of dots. */
   const TERMINAL_HANDLE_CAP = 24;
 
-  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety';
+  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion';
 
   type BasNodeData = {
     label: string;
@@ -55,6 +61,8 @@
     sensorModelId?: string;
     /** Safety-only: id from SAFETY_CATALOG (real-world model). */
     safetyModelId?: string;
+    /** Expansion-only: id from EXPANSION_CATALOG (real-world module). */
+    expansionModelId?: string;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -76,12 +84,16 @@
   // controller's terminal block. Above the cap, we keep the generic
   // top/bottom handle pair (modular IPCs would otherwise show ~1000 dots).
   const terminals = $derived.by((): { inputs: TerminalLabel[]; outputs: TerminalLabel[] } | null => {
-    if (data.kind !== 'controller' || !data.vendorModelId) return null;
-    const model = findControllerModel(data.vendorModelId);
-    if (!model || !model.points) return null;
-    if (fixedOnboardPoints(model.points) === 0) return null;
-    if (fixedOnboardPoints(model.points) > TERMINAL_HANDLE_CAP) return null;
-    const all = generateTerminals(model.points);
+    let points: import('@bas/core').PointCount | undefined;
+    if (data.kind === 'controller' && data.vendorModelId) {
+      points = findControllerModel(data.vendorModelId)?.points;
+    } else if (data.kind === 'expansion' && data.expansionModelId) {
+      points = findExpansionModule(data.expansionModelId)?.addedPoints;
+    }
+    if (!points) return null;
+    if (fixedOnboardPoints(points) === 0) return null;
+    if (fixedOnboardPoints(points) > TERMINAL_HANDLE_CAP) return null;
+    const all = generateTerminals(points);
     return {
       inputs: all.filter((t) => t.direction === 'in'),
       outputs: all.filter((t) => t.direction === 'out'),
@@ -134,6 +146,7 @@
     controller: '◈',
     sensor: '◇',
     safety: '⚠',
+    expansion: '⊞',
   };
 
   const KIND_LABEL: Record<BasNodeKind, string> = {
@@ -141,6 +154,7 @@
     controller: 'Controller',
     sensor: 'Sensor',
     safety: 'Safety',
+    expansion: 'Expansion',
   };
 
   /** Subtitle for a sensor — prefers any import-supplied subtitle (mac / instance
@@ -175,33 +189,26 @@
   {#if terminals}
     {#each terminals.inputs as t, i (t.id)}
       {@const topPct = 18 + (i / Math.max(1, terminals.inputs.length - 1)) * 70}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={t.id}
-        style="top: {topPct}%;"
-        class="term term-{t.kind}"
-        title={t.id}
-      />
+      <span class="term-wrap term-wrap-left" style:top="{topPct}%" data-tip={t.id}>
+        <Handle
+          type="target"
+          position={Position.Left}
+          id={t.id}
+          class="term term-{t.kind}"
+        />
+      </span>
     {/each}
     {#each terminals.outputs as t, i (t.id)}
       {@const topPct = 18 + (i / Math.max(1, terminals.outputs.length - 1)) * 70}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={t.id}
-        style="top: {topPct}%;"
-        class="term term-{t.kind}"
-        title={t.id}
-      />
+      <span class="term-wrap term-wrap-right" style:top="{topPct}%" data-tip={t.id}>
+        <Handle
+          type="source"
+          position={Position.Right}
+          id={t.id}
+          class="term term-{t.kind}"
+        />
+      </span>
     {/each}
-    <!-- Color legend chip — surfaces the UI/AI/BI -> blue/orange/green
-         scheme without permanent label clutter on the node face. -->
-    <div class="term-legend" title="Terminal color key">
-      <span class="legend-dot legend-UI"></span><span class="legend-text">UI/UO</span>
-      <span class="legend-dot legend-AI"></span><span class="legend-text">AI/AO</span>
-      <span class="legend-dot legend-BI"></span><span class="legend-text">BI/BO</span>
-    </div>
   {/if}
 
   <div class="header">
@@ -450,6 +457,14 @@
   .kind-safety {
     --accent: #e74c3c;
   }
+  .kind-expansion {
+    --accent: #4a9eff;
+  }
+  .kind-expansion {
+    font-size: 0.78rem;
+    padding: 0.35rem 0.55rem;
+    min-width: 8.5rem;
+  }
 
   .header {
     display: flex;
@@ -589,56 +604,60 @@
     background: color-mix(in srgb, #2ecc71 25%, Canvas) !important;
   }
 
-  /* Native title-attribute tooltip handles the per-handle reveal. The
-     small legend chip below sits at the bottom-right corner of the node
-     face so users can map dot color -> point type at a glance without
-     hovering each one. */
-  .term-legend {
+  /* Wrap each Handle in a small positioned span so we can paint our own
+     instant tooltip via a ::after pseudo-element — bypasses the ~700ms
+     native title= delay. */
+  .term-wrap {
     position: absolute;
-    right: 0.4rem;
-    bottom: 0.35rem;
-    display: flex;
-    align-items: center;
-    gap: 0.18rem;
-    padding: 0.1rem 0.35rem;
-    background: color-mix(in srgb, CanvasText 8%, transparent);
-    border-radius: 10px;
-    font-size: 0.58rem;
-    font-family:
-      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-      monospace;
-    color: color-mix(in srgb, CanvasText 70%, transparent);
-    line-height: 1;
-    opacity: 0.5;
-    transition: opacity 120ms ease;
+    width: 0;
+    height: 0;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .term-wrap-left {
+    left: 0;
+  }
+
+  .term-wrap-right {
+    right: 0;
+  }
+
+  .term-wrap :global(.svelte-flow__handle) {
     pointer-events: auto;
   }
 
-  .term-legend:hover {
+  .term-wrap::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.62rem;
+    padding: 0.1rem 0.4rem;
+    background: color-mix(in srgb, Canvas 95%, CanvasText 8%);
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 4px;
+    color: CanvasText;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    transition: opacity 60ms ease;
+    z-index: 10;
+  }
+
+  .term-wrap-left::after {
+    right: 0.85rem;
+  }
+
+  .term-wrap-right::after {
+    left: 0.85rem;
+  }
+
+  .term-wrap:hover::after {
     opacity: 1;
-  }
-
-  .legend-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .legend-UI {
-    background: #4a9eff;
-  }
-  .legend-AI {
-    background: #f39c12;
-  }
-  .legend-BI {
-    background: #2ecc71;
-  }
-
-  .legend-text {
-    margin-right: 0.25rem;
-  }
-  .legend-text:last-of-type {
-    margin-right: 0;
   }
 </style>

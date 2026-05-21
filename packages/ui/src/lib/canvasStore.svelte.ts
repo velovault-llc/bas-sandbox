@@ -57,3 +57,15 @@ export function openModelPicker(
 export function closeModelPicker(): void {
   modelPickerStore.pending = null;
 }
+
+/**
+ * Selection broadcast — BuildCanvas writes the currently-selected
+ * controller's vendor here so the Devices drawer can grey out
+ * incompatible expansion modules. Null when no controller is selected
+ * (or a non-controller node is).
+ */
+export const selectionStore = $state<{
+  selectedControllerVendor: string | null;
+}>({
+  selectedControllerVendor: null,
+});
