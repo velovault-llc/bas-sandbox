@@ -12,6 +12,7 @@
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
+  import { canvasActions } from './lib/canvasStore.svelte';
   import { onMount } from 'svelte';
 
   onMount(() => rehydrateAllPrograms());
@@ -148,6 +149,38 @@
       <h1>bas-sandbox</h1>
       <span class="badge">Phase 1 · v{VERSION}</span>
     </div>
+
+    {#if mode === 'build'}
+      <div class="header-actions">
+        <button
+          type="button"
+          class="hdr-btn"
+          onclick={() => canvasActions.saveScenario?.()}
+          disabled={!canvasActions.saveScenario}
+          title="Download the current canvas as a .bas-scenario JSON file"
+        >
+          💾 Save
+        </button>
+        <button
+          type="button"
+          class="hdr-btn"
+          onclick={() => canvasActions.clear?.()}
+          disabled={!canvasActions.clear}
+          title="Remove every node and wire from the canvas"
+        >
+          ✕ Clear
+        </button>
+        <button
+          type="button"
+          class="hdr-btn hdr-btn-danger"
+          onclick={() => canvasActions.reset?.()}
+          disabled={!canvasActions.reset}
+          title="Reset the canvas to a fresh empty state (also clears your work)"
+        >
+          ⟲ Reset
+        </button>
+      </div>
+    {/if}
 
     <div class="tabs" role="tablist">
       <button
@@ -438,6 +471,45 @@
     background: Canvas;
     color: CanvasText;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 0.35rem;
+    margin-left: auto;
+    margin-right: 0.85rem;
+  }
+
+  .hdr-btn {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    color: color-mix(in srgb, CanvasText 85%, transparent);
+    padding: 0.25rem 0.65rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  .hdr-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
+  }
+
+  .hdr-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .hdr-btn-danger {
+    border-color: color-mix(in srgb, #e74c3c 35%, transparent);
+    color: color-mix(in srgb, #e74c3c 85%, CanvasText);
+  }
+
+  .hdr-btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    color: #e74c3c;
   }
 
   .lede {

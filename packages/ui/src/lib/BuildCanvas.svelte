@@ -26,7 +26,7 @@
     DEFAULT_SENSOR_SIGNAL,
     type SensorSignal,
   } from './sim/sensorModels';
-  import { importStore } from './canvasStore.svelte';
+  import { importStore, canvasActions } from './canvasStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
@@ -2001,6 +2001,11 @@
   //   - apply `set setpoint 72` against the target's config (which the
   //     running SingleZoneSystem reads each tick — same object ref)
   onMount(() => {
+    // Expose canvas actions to the App header so Clear / Reset / Save
+    // are reachable without scrolling through the bottom dock.
+    canvasActions.clear = clearAll;
+    canvasActions.reset = resetCanvas;
+    canvasActions.saveScenario = saveScenario;
     registerBridge({
       getSnapshot(controllerId): ControllerSnapshot | null {
         const target = wiredTargets.find((t) => t.controllerId === controllerId);

@@ -11,3 +11,18 @@ export const importStore = $state<{
 }>({
   pending: null,
 });
+
+/**
+ * Top-bar hooks. BuildCanvas registers its Clear / Reset / Save fns here
+ * on mount so App.svelte's header can expose one-click buttons without
+ * lifting state. Null = canvas not mounted yet (header buttons disabled).
+ */
+export const canvasActions = $state<{
+  clear: (() => void) | null;
+  reset: (() => void) | null;
+  saveScenario: (() => void) | null;
+}>({
+  clear: null,
+  reset: null,
+  saveScenario: null,
+});
