@@ -1803,8 +1803,15 @@
         if (direction === 'target' && e.target === node.id && e.targetHandle) used.add(e.targetHandle);
         if (direction === 'source' && e.source === node.id && e.sourceHandle) used.add(e.sourceHandle);
       }
-      const points = (node.data as { points?: Record<string, number> } | undefined)?.points;
-      if (!points) return null;
+      // Point counts live on the vendor catalog (looked up by vendorModelId),
+      // not on the node data itself. For a generic controller with no model
+      // picked, fall back to a permissive 16-channel default so the user can
+      // still wire things up.
+      const data = node.data as { vendorModelId?: string } | undefined;
+      const model = data?.vendorModelId ? findControllerModel(data.vendorModelId) : undefined;
+      const points: Record<string, number> = model?.points
+        ? { ...model.points }
+        : { UI: 16, AI: 8, BI: 8, UO: 8, AO: 4, BO: 4 };
       for (const kind of kinds) {
         const count = points[kind] ?? 0;
         for (let i = 1; i <= count; i++) {
