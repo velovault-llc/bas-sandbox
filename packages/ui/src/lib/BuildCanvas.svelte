@@ -28,6 +28,10 @@
   } from './sim/sensorModels';
   import { importStore } from './canvasStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
+  import { openCli, programStore } from './cli/programStore.svelte';
+  import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
+  import { runProgram, makeEnv, type StEnv } from '@bas/core';
+  import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
   import { DEMOS } from './demoScenarios';
 
@@ -678,6 +682,55 @@
       sys.offline = offline.has(target.controllerId) || offline.has(target.sensorId);
       sys.couplingNeighborTemp = siblingNeighborByTarget.get(target.controllerId) ?? null;
       const sample = sys.step();
+
+      // ST program post-step. If the user has compiled an ST program for
+      // this controller, run it with the latest sensed/setpoint/oat as
+      // inputs. Outputs that match known fields override the PI step:
+      //   - `actuator` (0..1): replaces sys.actuator, mirroring a manual
+      //     override but driven by the user's program.
+      //   - `setpoint`: replaces the controller's setpoint this tick (and
+      //     persists into config so subsequent ticks see it).
+      // Anything else stays in the program's output map / VAR state.
+      const userProgram = programStore.byId[target.controllerId];
+      if (userProgram?.compiled) {
+        // Inputs are read-only from the program's perspective. `actuator`
+        // is exposed via the separate read-only name `pi_out` so users can
+        // see what PI commanded this tick without colliding with the
+        // assignment target. `actuator` itself goes through outputs.
+        const env: StEnv = makeEnv({
+          inputs: {
+            sensed: sample.T_sensed,
+            setpoint: sample.setpoint,
+            oat: sample.T_OA,
+            zone: sample.T_zone,
+            pi_out: sample.actuator,
+            dt: target.config.dt,
+          },
+          // Seed `actuator` in outputs with the current PI value so a
+          // program that only sometimes assigns it (e.g. conditional
+          // override) still has a sane default.
+          outputs: { actuator: sample.actuator },
+          state: userProgram.state,
+          dt: target.config.dt,
+        });
+        try {
+          runProgram(userProgram.compiled, env);
+          if (typeof env.outputs.actuator === 'number' && Number.isFinite(env.outputs.actuator)) {
+            sys.actuator = Math.max(0, Math.min(1, env.outputs.actuator));
+            // Reflect the program's override in the sample so the chart shows what's commanded.
+            (sample as { actuator: number }).actuator = sys.actuator;
+          }
+          if (typeof env.outputs.setpoint === 'number' && Number.isFinite(env.outputs.setpoint)) {
+            (target.config as { setpoint: number }).setpoint = env.outputs.setpoint;
+            (sample as { setpoint: number }).setpoint = env.outputs.setpoint;
+          }
+          // Clear any prior runtime error
+          userProgram.error = null;
+        } catch (err) {
+          userProgram.error = err instanceof Error ? err.message : String(err);
+        }
+      }
+
       sampleByCtrl.set(target.controllerId, sample);
       let hist = samples.get(target.controllerId) ?? [];
       hist = [...hist, sample];
@@ -1924,6 +1977,46 @@
     }, 300);
   });
 
+  // ─── CLI bridge ─────────────────────────────────────────────────────────
+  // Expose snapshot + config-mutation hooks so the CLIPanel can:
+  //   - render `show points` and `show config` from live sim state
+  //   - apply `set setpoint 72` against the target's config (which the
+  //     running SingleZoneSystem reads each tick — same object ref)
+  onMount(() => {
+    registerBridge({
+      getSnapshot(controllerId): ControllerSnapshot | null {
+        const target = wiredTargets.find((t) => t.controllerId === controllerId);
+        if (!target) return null;
+        const hist = runningSamples.get(controllerId);
+        const last = hist && hist.length > 0 ? hist[hist.length - 1] : null;
+        return {
+          sensed: last?.T_sensed ?? target.config.initialZone,
+          setpoint: last?.setpoint ?? target.config.setpoint,
+          oat: last?.T_OA ?? target.config.outdoorAir,
+          actuator: last?.actuator ?? 0,
+          mode: target.config.mode ?? 'cool',
+          Kp: target.config.Kp,
+          Ki: target.config.Ki,
+        };
+      },
+      setConfig(controllerId, key, value) {
+        const target = wiredTargets.find((t) => t.controllerId === controllerId);
+        if (!target) return `controller "${controllerId}" not wired to a sensor`;
+        // Mutate the target's config in place — same object ref as the
+        // running system's config, so changes apply immediately.
+        const cfg = target.config as unknown as Record<string, unknown>;
+        if (key === 'mode') {
+          if (value !== 'cool' && value !== 'heat') return `mode must be cool|heat`;
+          cfg.mode = value;
+          return null;
+        }
+        if (typeof value !== 'number') return `${key} expects a number`;
+        cfg[key] = value;
+        return null;
+      },
+    });
+  });
+
   function resetCanvas() {
     if (!confirm('Reset to an empty canvas? Your current work will be lost.')) return;
     stop();
@@ -2393,6 +2486,14 @@
             <div class="ctrl-panel inspector-panel">
               <div class="inspector-head">
                 <span class="ctrl-title">Controller — {nodeLabel(selectedController)}</span>
+                <button
+                  type="button"
+                  class="inspector-terminal"
+                  title="Open Cisco-IOS-style terminal (program this controller in Structured Text)"
+                  onclick={() => openCli(selectedController.id, nodeLabel(selectedController))}
+                >
+                  &gt;_ Terminal
+                </button>
                 <button
                   type="button"
                   class="inspector-delete"
@@ -4224,6 +4325,25 @@
   .inspector-delete:hover {
     background: color-mix(in srgb, #e74c3c 14%, transparent);
     color: #e74c3c;
+  }
+
+  .inspector-terminal {
+    border: 1px solid color-mix(in srgb, #4a9eff 50%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #4a9eff 90%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+    margin-right: 0.35rem;
+  }
+
+  .inspector-terminal:hover {
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+    color: #4a9eff;
   }
 
   .sensor-row {

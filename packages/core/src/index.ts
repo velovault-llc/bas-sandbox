@@ -19,6 +19,23 @@ export type {
   WeatherResult,
 } from './weather.js';
 
+export {
+  compile,
+  tokenize,
+  parse,
+  runProgram,
+  makeEnv,
+  LexError,
+  ParseError,
+  RuntimeError,
+} from './st/index.js';
+export type {
+  CompileResult,
+  Env as StEnv,
+  Program as StProgram,
+  Token as StToken,
+} from './st/index.js';
+
 export type IngestPlugin = {
   readonly id: string;
   readonly displayName: string;

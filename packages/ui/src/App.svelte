@@ -6,8 +6,13 @@
   import FindingsPanel from './lib/FindingsPanel.svelte';
   import BuildCanvas from './lib/BuildCanvas.svelte';
   import WeatherPanel from './lib/weather/WeatherPanel.svelte';
+  import CLIPanel from './lib/cli/CLIPanel.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
+  import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
+  import { onMount } from 'svelte';
+
+  onMount(() => rehydrateAllPrograms());
 
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
@@ -320,6 +325,9 @@
 
         <div class="canvas-area" class:drawer-open={leftDrawerOpen} class:dock-open={bottomDockOpen}>
           <BuildCanvas />
+          {#if programStore.activeControllerId}
+            <CLIPanel />
+          {/if}
           <button
             type="button"
             class="dock-toggle"
@@ -551,7 +559,7 @@
      horizontal ribbon. */
   .canvas-area.dock-open :global(.build) {
     grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr 12rem !important;
+    grid-template-rows: 1fr 17rem !important;
   }
 
   .canvas-area.dock-open :global(.palette) {
@@ -566,34 +574,44 @@
     overflow-y: hidden;
   }
 
+  /* Hide the "Equipment" header text entirely in dock mode — items are
+     self-evident and the header eats horizontal space we'd rather give
+     to the foot. */
   .canvas-area.dock-open :global(.palette > .palette-head) {
-    flex-shrink: 0;
-    max-width: 9rem;
-  }
-
-  .canvas-area.dock-open :global(.palette > .palette-head .hint) {
     display: none;
   }
 
   .canvas-area.dock-open :global(.palette > .items) {
     display: flex !important;
     flex-direction: row !important;
-    gap: 0.5rem !important;
+    gap: 0.35rem !important;
     flex-shrink: 0;
     margin: 0;
     padding: 0;
   }
 
+  /* Compact items: smaller min-width + no example sub-text so the row
+     fits without horizontal scroll on most viewports. */
   .canvas-area.dock-open :global(.palette > .items > li) {
-    min-width: 9.5rem;
+    min-width: 6rem;
+    padding: 0.35rem 0.4rem !important;
+  }
+
+  .canvas-area.dock-open :global(.palette > .items > li .ex) {
+    display: none;
   }
 
   .canvas-area.dock-open :global(.palette > .wires-section) {
     flex-shrink: 0;
     border-left: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
-    padding-left: 1rem;
+    padding-left: 0.75rem;
     margin-left: 0.25rem;
-    max-width: 18rem;
+    width: 11rem;
+  }
+
+  .canvas-area.dock-open :global(.palette > .wires-section h3) {
+    font-size: 0.7rem;
+    margin: 0 0 0.3rem;
   }
 
   .canvas-area.dock-open :global(.palette > .wires-section .hint) {
@@ -601,18 +619,28 @@
   }
 
   .canvas-area.dock-open :global(.palette > .wires-section .wire-palette) {
-    flex-direction: row !important;
-    flex-wrap: wrap;
-    gap: 0.3rem;
+    flex-direction: column !important;
+    gap: 0.2rem;
+  }
+
+  /* Compact wire rows — strip the descriptive label sub-text in dock mode */
+  .canvas-area.dock-open :global(.palette > .wires-section .wire-row) {
+    padding: 0.2rem 0.4rem !important;
+    font-size: 0.72rem;
+  }
+
+  .canvas-area.dock-open :global(.palette > .wires-section .wire-row-sub) {
+    display: none;
   }
 
   .canvas-area.dock-open :global(.palette > .palette-foot) {
-    flex-shrink: 1;
+    flex-shrink: 0;
     margin-left: auto;
     border-left: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
     padding-left: 1rem;
-    max-width: 24rem;
-    max-height: calc(12rem - 1rem);
+    min-width: 24rem;
+    width: 28rem;
+    max-height: calc(17rem - 1.3rem);
     overflow-y: auto;
   }
 
@@ -651,7 +679,7 @@
 
   /* When dock is open, lift the toggle above the dock so it stays visible */
   .canvas-area.dock-open .dock-toggle {
-    bottom: 12.5rem;
+    bottom: 17.5rem;
   }
 
   @media (max-width: 720px) {

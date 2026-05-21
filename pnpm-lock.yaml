@@ -83,6 +83,12 @@ importers:
       '@velovault/dbexport-parser':
         specifier: github:velovault-llc/dbexport-parser
         version: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f
+      '@xterm/addon-fit':
+        specifier: ^0.11.0
+        version: 0.11.0
+      '@xterm/xterm':
+        specifier: ^6.0.0
+        version: 6.0.0
       '@xyflow/svelte':
         specifier: ^1.5.2
         version: 1.5.2(svelte@5.55.7)
@@ -624,7 +630,7 @@ packages:
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@velovault/dbexport-parser@https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f':
-    resolution: {gitHosted: true, integrity: sha512-6ywqHB7Kxqz7078DSEFHJBnbQ8nLkYS5fzD6GGL3O/cBX5EAcd9rfeoc/T0vKlX7/a0HjyhlL3CjcEao3UhDoQ==, tarball: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f}
     version: 0.2.0
     engines: {node: '>=22'}
 
@@ -656,6 +662,12 @@ packages:
 
   '@vitest/utils@2.1.9':
     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
+
+  '@xterm/addon-fit@0.11.0':
+    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
+
+  '@xterm/xterm@6.0.0':
+    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   '@xyflow/svelte@1.5.2':
     resolution: {integrity: sha512-jPLc2cwRmrkXSv/jvsNDQqTGCsNyTWURKtBl28UCH3BdOAA3CIc0/oQ0EvIcjPdzr0NwvWMgq9TmLdjOIccCEQ==}
@@ -1483,6 +1495,10 @@ snapshots:
       '@vitest/pretty-format': 2.1.9
       loupe: 3.2.1
       tinyrainbow: 1.2.0
+
+  '@xterm/addon-fit@0.11.0': {}
+
+  '@xterm/xterm@6.0.0': {}
 
   '@xyflow/svelte@1.5.2(svelte@5.55.7)':
     dependencies:
