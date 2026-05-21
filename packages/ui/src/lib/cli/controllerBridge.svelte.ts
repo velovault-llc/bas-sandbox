@@ -16,6 +16,9 @@ export interface ControllerSnapshot {
   mode: 'cool' | 'heat';
   Kp: number;
   Ki: number;
+  /** Vendor model id from VENDOR_CATALOG when the user dragged from the
+   *  catalog drawer; null/undefined for generic controllers. */
+  vendorModelId?: string;
 }
 
 export interface ControllerBridge {

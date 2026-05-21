@@ -29,6 +29,18 @@ export {
   ParseError,
   RuntimeError,
 } from './st/index.js';
+
+export {
+  VENDOR_CATALOG,
+  findControllerModel,
+  controllerCatalogByVendor,
+} from './equipment/catalog.js';
+export type {
+  ControllerModel,
+  ControllerRole,
+  ProgrammingLanguage,
+  Protocol,
+} from './equipment/catalog.js';
 export type {
   CompileResult,
   Env as StEnv,

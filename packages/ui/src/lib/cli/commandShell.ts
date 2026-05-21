@@ -39,6 +39,7 @@
 //     During program mode the prompt is `CTRL(config-prog)# `.
 
 import type { ControllerProgram } from './programStore.svelte';
+import { findControllerModel } from '@bas/core';
 
 export type ShellMode = 'user' | 'privileged' | 'config' | 'program';
 
@@ -54,6 +55,7 @@ export interface ControllerContext {
     mode: 'cool' | 'heat';
     Kp: number;
     Ki: number;
+    vendorModelId?: string;
   };
   /** Mutate the controller config from the CLI. */
   readonly setConfig: (key: 'setpoint' | 'Kp' | 'Ki' | 'mode', value: number | string) => string | null;
@@ -105,6 +107,18 @@ export function dispatch(
   }
   const line = raw.trim();
   if (line === '') return reply(state, []);
+
+  // Assignment-shape detection: if the raw line contains `:=`, this is almost
+  // certainly ST. Surface the same nudge as the keyword detector below, so
+  // pasting `actuator := 0.42;` in user mode prints the helpful hint instead
+  // of "Unknown command actuator".
+  if (line.includes(':=') && (state.mode === 'user' || state.mode === 'privileged')) {
+    return reply(state, [
+      `% That looks like Structured Text.`,
+      `  Type "program" to drop into the ST editor, then paste your code.`,
+    ]);
+  }
+
   const [cmd, ...rest] = line.split(/\s+/);
   const cmdLower = cmd.toLowerCase();
 
@@ -149,7 +163,27 @@ function userCmd(cmd: string, args: string[], state: ShellState, ctx: Controller
     return reply(state, []);
   }
   if (cmd === 'show') return privCmd('show', args, state, ctx); // allow read-only show in user mode
+  // Shortcut: `program` from user mode auto-elevates through enable +
+  // configure terminal + program. Saves the typical three-step IOS chain
+  // when the user just wants to write code.
+  if (cmd === 'program') {
+    state.mode = 'config';
+    return configCmd('program', args, state, ctx);
+  }
+  // Friendly nudge when the user pastes ST-shaped input directly into
+  // user mode (e.g. `actuator := 1.0;` or `IF sensed > 70.0 THEN`).
+  if (looksLikeSt(cmd)) {
+    return reply(state, [
+      `% Unknown command "${cmd}" in user mode.`,
+      `  Looks like Structured Text — type "program" to drop into the ST editor first.`,
+    ]);
+  }
   return reply(state, [`% Unknown command "${cmd}" in user mode — try "enable" or "help"`]);
+}
+
+const ST_KEYWORDS = /^(IF|ELSIF|ELSE|END_IF|END_PROGRAM|VAR|END_VAR|PROGRAM|FOR|WHILE)$/i;
+function looksLikeSt(firstToken: string): boolean {
+  return ST_KEYWORDS.test(firstToken);
 }
 
 function privCmd(cmd: string, args: string[], state: ShellState, ctx: ControllerContext): ShellResponse {
@@ -160,6 +194,11 @@ function privCmd(cmd: string, args: string[], state: ShellState, ctx: Controller
   if (cmd === 'configure' && args[0]?.toLowerCase() === 'terminal') {
     state.mode = 'config';
     return reply(state, ['Enter configuration commands, one per line.  End with "end" or Ctrl-Z.']);
+  }
+  // Shortcut: `program` from privileged mode auto-enters config + program.
+  if (cmd === 'program') {
+    state.mode = 'config';
+    return configCmd('program', args, state, ctx);
   }
   if (cmd === 'show') {
     return handleShow(args, state, ctx);
@@ -200,13 +239,30 @@ function handleShow(args: string[], state: ShellState, ctx: ControllerContext): 
   }
   const s = ctx.snapshot();
   if (sub === 'config') {
-    return reply(state, [
+    const lines: string[] = [
       `  controller : ${ctx.controllerLabel}`,
       `  mode       : ${s.mode}`,
       `  setpoint   : ${s.setpoint.toFixed(2)} °F`,
       `  Kp         : ${s.Kp.toFixed(3)}`,
       `  Ki         : ${s.Ki.toFixed(3)}`,
-    ]);
+    ];
+    if (s.vendorModelId) {
+      const m = findControllerModel(s.vendorModelId);
+      if (m) {
+        lines.push('');
+        lines.push(`  vendor     : ${m.vendor} ${m.model}`);
+        lines.push(`  family     : ${m.family} · ${m.role}`);
+        lines.push(`  language   : ${m.programmingLanguage}`);
+        lines.push(`  protocols  : ${m.protocols.join(', ')}`);
+        lines.push(`  capacity   : ${m.maxPoints} points`);
+        if (!m.stPortable) {
+          lines.push('');
+          lines.push(`  ! ST programs on this controller are simulated only —`);
+          lines.push(`    real ${m.vendor} hardware programs in ${m.programmingLanguage}.`);
+        }
+      }
+    }
+    return reply(state, lines);
   }
   if (sub === 'points') {
     return reply(state, [
@@ -307,6 +363,7 @@ function helpFor(state: ShellState): ShellResponse {
   if (state.mode === 'user') {
     return reply(state, [
       'enable                — enter privileged mode',
+      'program               — shortcut: enter ST editor (skips enable/config)',
       'show ...              — read-only diagnostics',
       'exit                  — close terminal',
     ]);

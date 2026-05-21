@@ -7,6 +7,7 @@
   import BuildCanvas from './lib/BuildCanvas.svelte';
   import WeatherPanel from './lib/weather/WeatherPanel.svelte';
   import CLIPanel from './lib/cli/CLIPanel.svelte';
+  import VendorPalette from './lib/equipment/VendorPalette.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
@@ -19,7 +20,7 @@
   type Mode = 'view' | 'build';
   let mode = $state<Mode>('build');
 
-  type LeftDrawerTab = 'weather' | 'settings';
+  type LeftDrawerTab = 'weather' | 'catalog' | 'settings';
   let leftDrawerOpen = $state(true);
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
@@ -291,6 +292,16 @@
           <button
             type="button"
             class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'catalog'}
+            onclick={() => pickLeftDrawerTab('catalog')}
+            title="Vendor controller catalog"
+          >
+            <span class="rail-icon">▣</span>
+            <span class="rail-label">Catalog</span>
+          </button>
+          <button
+            type="button"
+            class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'settings'}
             onclick={() => pickLeftDrawerTab('settings')}
             title="Settings"
@@ -312,6 +323,8 @@
         <aside class="left-drawer" class:open={leftDrawerOpen} aria-hidden={!leftDrawerOpen}>
           {#if leftDrawerTab === 'weather'}
             <WeatherPanel />
+          {:else if leftDrawerTab === 'catalog'}
+            <VendorPalette />
           {:else if leftDrawerTab === 'settings'}
             <div class="settings-placeholder">
               <h3>Settings</h3>

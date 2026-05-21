@@ -42,6 +42,9 @@
     /** Sensor-only: seconds since the last supervisor poll. Set each tick by
      *  BuildCanvas, equals tick % pollSec of the chosen signal template. */
     ageSinceLastPollSec?: number;
+    /** Controller-only: id from VENDOR_CATALOG. Drives subtitle + ST-portability
+     *  hint + vendor info in `show config`. Null = generic controller. */
+    vendorModelId?: string;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */

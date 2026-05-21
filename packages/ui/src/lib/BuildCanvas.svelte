@@ -30,7 +30,7 @@
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
-  import { runProgram, makeEnv, type StEnv } from '@bas/core';
+  import { runProgram, makeEnv, findControllerModel, type StEnv } from '@bas/core';
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
   import { DEMOS } from './demoScenarios';
@@ -316,14 +316,26 @@
       y: (screenY - ty) / zoom - 25,
     };
 
+    // Optional vendor-model payload: when the drag came from the catalog
+    // drawer, the model id rides along on a secondary dataTransfer key.
+    // Resolve it now so the new node carries the vendor metadata.
+    const vendorId = event.dataTransfer?.getData('application/bas-controller-vendor');
+    const vendorModel = vendorId ? findControllerModel(vendorId) : undefined;
+
     const id = `n${nextId++}`;
+    const baseLabel = vendorModel ? vendorModel.model : nextName(item.kind);
+    const data: Record<string, unknown> = { kind: item.kind, label: baseLabel };
+    if (vendorModel) {
+      data.vendorModelId = vendorModel.id;
+      data.subtitle = `${vendorModel.vendor} · ${vendorModel.programmingLanguage}`;
+    }
     nodes = [
       ...nodes,
       {
         id,
         type: 'bas',
         position,
-        data: { kind: item.kind, label: nextName(item.kind) },
+        data,
       },
     ];
   }
@@ -1989,6 +2001,8 @@
         if (!target) return null;
         const hist = runningSamples.get(controllerId);
         const last = hist && hist.length > 0 ? hist[hist.length - 1] : null;
+        const node = nodes.find((n) => n.id === controllerId);
+        const vendorModelId = (node?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
         return {
           sensed: last?.T_sensed ?? target.config.initialZone,
           setpoint: last?.setpoint ?? target.config.setpoint,
@@ -1997,6 +2011,7 @@
           mode: target.config.mode ?? 'cool',
           Kp: target.config.Kp,
           Ki: target.config.Ki,
+          vendorModelId,
         };
       },
       setConfig(controllerId, key, value) {
