@@ -852,12 +852,17 @@
       // Anything else stays in the program's output map / VAR state.
       const userProgram = programStore.byId[target.controllerId];
       // Gate ST execution to IEC-portable controllers — for everything else
-      // (JCI CCT, Niagara Wiresheet, PPCL, etc.), the sandbox doesn't pretend
-      // to run their native language, so we don't run ST against them either.
+      // (JCI CCT, Distech EC-gfx, Niagara Wiresheet, PPCL, etc.), the sandbox
+      // doesn't pretend to run their native text language. BUT: programs
+      // authored in the FBD block diagram are vendor-neutral by design — the
+      // sim interprets our own block library regardless of what the real
+      // panel speaks. So we allow FBD-derived programs on every controller,
+      // and only restrict hand-typed ST text to IEC-portable gear.
       const ctrlNode = nodes.find((n) => n.id === target.controllerId);
       const vendorModelId = (ctrlNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
       const stAllowed = !vendorModelId || (findControllerModel(vendorModelId)?.stPortable ?? true);
-      if (userProgram?.compiled && stAllowed) {
+      const fbdAuthored = !!userProgram?.fbdGraph;
+      if (userProgram?.compiled && (stAllowed || fbdAuthored)) {
         // Inputs are read-only from the program's perspective. `actuator`
         // is exposed via the separate read-only name `pi_out` so users can
         // see what PI commanded this tick without colliding with the
