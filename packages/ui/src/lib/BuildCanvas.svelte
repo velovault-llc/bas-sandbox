@@ -113,8 +113,15 @@
    */
   function defaultWireKind(sourceKind: Kind | undefined, targetKind: Kind | undefined): WireKind {
     const involves = (k: Kind) => sourceKind === k || targetKind === k;
-    if (involves('sensor') || involves('safety')) return 'hardwired';
+    // Hardwired covers the entire physical-cable-from-terminal-block category:
+    //   - sensor / safety devices land on hardwired AI / BI terminals
+    //   - expansion modules clip onto their parent controller via a vendor
+    //     bus (K-bus, 750-bus, XPM backplane) — abstracted to hardwired here
+    if (involves('sensor') || involves('safety') || involves('expansion')) return 'hardwired';
+    // Supervisor pairs and controller↔supervisor go BACnet/IP by default
+    // (modern installs are mostly IP-backbone with MS/TP only at field tier).
     if (involves('supervisor')) return 'bacnet-ip';
+    // Otherwise it's a controller↔controller trunk — MS/TP is the safe default.
     return 'mstp';
   }
 
