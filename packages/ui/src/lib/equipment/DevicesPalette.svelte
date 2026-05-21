@@ -1,16 +1,24 @@
 <script lang="ts">
   import {
+    controllerCatalogByVendor,
     sensorCatalogBySubject,
     safetyCatalogByKind,
+    expansionsByVendor,
+    formatPointBreakdown,
+    type ControllerModel,
     type SensorModel,
     type SafetyDevice,
     type SensorSubject,
     type SafetyKind,
   } from '@bas/core';
 
-  type DeviceTab = 'sensors' | 'safeties';
-  let tab = $state<DeviceTab>('sensors');
+  type DeviceTab = 'controllers' | 'sensors' | 'safeties' | 'expansions';
+  let tab = $state<DeviceTab>('controllers');
 
+  const controllerGroups = $derived.by(() => {
+    const map = controllerCatalogByVendor();
+    return Array.from(map.entries()).map(([vendor, models]) => ({ vendor, models }));
+  });
   const sensorGroups = $derived.by(() => {
     const map = sensorCatalogBySubject();
     return Array.from(map.entries()).map(([subject, models]) => ({ subject, models }));
@@ -19,7 +27,17 @@
     const map = safetyCatalogByKind();
     return Array.from(map.entries()).map(([kind, devices]) => ({ kind, devices }));
   });
+  const expansionGroups = $derived.by(() => {
+    const map = expansionsByVendor();
+    return Array.from(map.entries()).map(([vendor, modules]) => ({ vendor, modules }));
+  });
 
+  function onDragController(event: DragEvent, model: ControllerModel): void {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.setData('application/bas-node-kind', 'controller');
+    event.dataTransfer.setData('application/bas-controller-vendor', model.id);
+    event.dataTransfer.effectAllowed = 'move';
+  }
   function onDragSensor(event: DragEvent, model: SensorModel): void {
     if (!event.dataTransfer) return;
     event.dataTransfer.setData('application/bas-node-kind', 'sensor');
@@ -62,20 +80,76 @@
       'fire-alarm-shutdown': 'Fire alarm shutdown',
     }[k];
   }
+
+  function langClass(lang: ControllerModel['programmingLanguage']): string {
+    if (lang.includes('IEC')) return 'lang-iec';
+    if (lang.includes('CCT')) return 'lang-cct';
+    if (lang.includes('Niagara')) return 'lang-niagara';
+    if (lang.includes('PPCL')) return 'lang-ppcl';
+    if (lang.includes('Distech')) return 'lang-distech';
+    if (lang.includes('Reliable')) return 'lang-reliable';
+    return 'lang-other';
+  }
 </script>
 
-<section class="devices-palette" aria-label="Real-world device catalog">
+<section class="devices-palette" aria-label="Equipment catalog">
   <header class="head">
     <h3>Devices</h3>
-    <p class="hint">Drag a sensor or safety onto the canvas. Each model carries its real-world signal type, range, accuracy, and (for safeties) trip set point + reset behavior.</p>
+    <p class="hint">
+      Drag any model onto the canvas. ST programs only run natively on IEC 61131-3 controllers
+      (green pills under Controllers).
+    </p>
   </header>
 
   <div class="tabs">
-    <button type="button" class:active={tab === 'sensors'} onclick={() => (tab = 'sensors')}>Sensors</button>
-    <button type="button" class:active={tab === 'safeties'} onclick={() => (tab = 'safeties')}>Safeties</button>
+    <button type="button" class:active={tab === 'controllers'} onclick={() => (tab = 'controllers')}>
+      Controllers
+    </button>
+    <button type="button" class:active={tab === 'sensors'} onclick={() => (tab = 'sensors')}>
+      Sensors
+    </button>
+    <button type="button" class:active={tab === 'safeties'} onclick={() => (tab = 'safeties')}>
+      Safeties
+    </button>
+    <button type="button" class:active={tab === 'expansions'} onclick={() => (tab = 'expansions')}>
+      Expansion
+    </button>
   </div>
 
-  {#if tab === 'sensors'}
+  {#if tab === 'controllers'}
+    {#each controllerGroups as group (group.vendor)}
+      <details class="group" open>
+        <summary>
+          <span class="group-name">{group.vendor}</span>
+          <span class="group-count">{group.models.length}</span>
+        </summary>
+        <ul>
+          {#each group.models as m (m.id)}
+            <li class="model" draggable="true" ondragstart={(e) => onDragController(e, m)} title={m.notes}>
+              <div class="model-head">
+                <strong class="mono">{m.model}</strong>
+                <span class="role">{m.role}</span>
+              </div>
+              <div class="meta">
+                <span class="pill {langClass(m.programmingLanguage)}" class:portable={m.stPortable}>
+                  {m.programmingLanguage}
+                </span>
+                <span class="pts">{m.maxPoints} pts</span>
+              </div>
+              {#if m.points && formatPointBreakdown(m.points)}
+                <div class="breakdown">{formatPointBreakdown(m.points)}</div>
+              {/if}
+              <div class="proto-row">
+                {#each m.protocols as p}
+                  <span class="proto">{p}</span>
+                {/each}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </details>
+    {/each}
+  {:else if tab === 'sensors'}
     {#each sensorGroups as group (group.subject)}
       <details class="group" open>
         <summary>
@@ -84,12 +158,7 @@
         </summary>
         <ul>
           {#each group.models as m (m.id)}
-            <li
-              class="model"
-              draggable="true"
-              ondragstart={(e) => onDragSensor(e, m)}
-              title={m.notes}
-            >
+            <li class="model" draggable="true" ondragstart={(e) => onDragSensor(e, m)} title={m.notes}>
               <div class="model-head">
                 <strong>{m.vendor}</strong>
                 <span class="muted">·</span>
@@ -106,7 +175,7 @@
         </ul>
       </details>
     {/each}
-  {:else}
+  {:else if tab === 'safeties'}
     {#each safetyGroups as group (group.kind)}
       <details class="group" open>
         <summary>
@@ -115,12 +184,7 @@
         </summary>
         <ul>
           {#each group.devices as d (d.id)}
-            <li
-              class="model safety"
-              draggable="true"
-              ondragstart={(e) => onDragSafety(e, d)}
-              title={d.notes}
-            >
+            <li class="model safety" draggable="true" ondragstart={(e) => onDragSafety(e, d)} title={d.notes}>
               <div class="model-head">
                 <strong>{d.vendor}</strong>
                 <span class="muted">·</span>
@@ -135,6 +199,35 @@
                 </span>
                 {#if d.tripPoint}
                   <span class="range">trip @ {d.tripPoint.value} {d.tripPoint.units}</span>
+                {/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </details>
+    {/each}
+  {:else}
+    <!-- Expansions tab: read-only catalog for now. Future: draggable child-of-parent nodes. -->
+    <p class="hint">
+      Expansion modules add I/O points to a parent controller. Listed here for reference;
+      drag-to-canvas support arrives in a future layout pass.
+    </p>
+    {#each expansionGroups as group (group.vendor)}
+      <details class="group" open>
+        <summary>
+          <span class="group-name">{group.vendor}</span>
+          <span class="group-count">{group.modules.length}</span>
+        </summary>
+        <ul>
+          {#each group.modules as m (m.id)}
+            <li class="model expansion" title={m.notes}>
+              <div class="model-head">
+                <strong class="mono">{m.model}</strong>
+                <span class="role">{m.family}</span>
+              </div>
+              <div class="meta">
+                {#if formatPointBreakdown(m.addedPoints)}
+                  <span class="pill expansion-pill">+ {formatPointBreakdown(m.addedPoints)}</span>
                 {/if}
               </div>
             </li>
@@ -178,8 +271,8 @@
     background: transparent;
     border: 0;
     color: inherit;
-    padding: 0.35rem;
-    font-size: 0.8rem;
+    padding: 0.3rem 0.15rem;
+    font-size: 0.72rem;
     cursor: pointer;
   }
 
@@ -256,6 +349,11 @@
     border-left: 3px solid #e74c3c;
   }
 
+  .model.expansion {
+    cursor: default;
+    opacity: 0.85;
+  }
+
   .model-head {
     display: flex;
     align-items: baseline;
@@ -267,12 +365,19 @@
     font-size: 0.78rem;
   }
 
+  .model-head .mono,
   .model-head code {
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
-    font-size: 0.7rem;
-    color: color-mix(in srgb, CanvasText 70%, transparent);
+    font-size: 0.78rem;
+  }
+
+  .role {
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .muted {
@@ -287,6 +392,39 @@
     font-size: 0.65rem;
   }
 
+  .pts {
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+
+  .breakdown {
+    margin-top: 0.2rem;
+    font-size: 0.62rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+
+  .proto-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    margin-top: 0.25rem;
+  }
+
+  .proto {
+    font-size: 0.6rem;
+    padding: 0.02rem 0.35rem;
+    border-radius: 3px;
+    background: color-mix(in srgb, CanvasText 7%, transparent);
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+
   .pill {
     padding: 0.02rem 0.35rem;
     border-radius: 8px;
@@ -295,6 +433,12 @@
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
+  }
+
+  .pill.portable {
+    background: color-mix(in srgb, #2ecc71 18%, transparent);
+    color: color-mix(in srgb, #2ecc71 90%, CanvasText);
+    border: 1px solid color-mix(in srgb, #2ecc71 40%, transparent);
   }
 
   .pill.signal {
@@ -320,6 +464,11 @@
   .pill.reset.manual {
     background: color-mix(in srgb, #e74c3c 22%, transparent);
     color: color-mix(in srgb, #e74c3c 95%, CanvasText);
+  }
+
+  .pill.expansion-pill {
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+    color: color-mix(in srgb, #4a9eff 90%, CanvasText);
   }
 
   .range,

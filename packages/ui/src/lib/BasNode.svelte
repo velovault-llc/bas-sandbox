@@ -181,8 +181,8 @@
         id={t.id}
         style="top: {topPct}%;"
         class="term term-{t.kind}"
+        title={t.id}
       />
-      <span class="term-label term-label-left" style:top="{topPct}%">{t.id}</span>
     {/each}
     {#each terminals.outputs as t, i (t.id)}
       {@const topPct = 18 + (i / Math.max(1, terminals.outputs.length - 1)) * 70}
@@ -192,9 +192,16 @@
         id={t.id}
         style="top: {topPct}%;"
         class="term term-{t.kind}"
+        title={t.id}
       />
-      <span class="term-label term-label-right" style:top="{topPct}%">{t.id}</span>
     {/each}
+    <!-- Color legend chip — surfaces the UI/AI/BI -> blue/orange/green
+         scheme without permanent label clutter on the node face. -->
+    <div class="term-legend" title="Terminal color key">
+      <span class="legend-dot legend-UI"></span><span class="legend-text">UI/UO</span>
+      <span class="legend-dot legend-AI"></span><span class="legend-text">AI/AO</span>
+      <span class="legend-dot legend-BI"></span><span class="legend-text">BI/BO</span>
+    </div>
   {/if}
 
   <div class="header">
@@ -582,28 +589,56 @@
     background: color-mix(in srgb, #2ecc71 25%, Canvas) !important;
   }
 
-  .term-label {
+  /* Native title-attribute tooltip handles the per-handle reveal. The
+     small legend chip below sits at the bottom-right corner of the node
+     face so users can map dot color -> point type at a glance without
+     hovering each one. */
+  .term-legend {
     position: absolute;
+    right: 0.4rem;
+    bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.18rem;
+    padding: 0.1rem 0.35rem;
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    border-radius: 10px;
     font-size: 0.58rem;
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
-    color: color-mix(in srgb, CanvasText 65%, transparent);
-    pointer-events: none;
-    transform: translateY(-50%);
-    white-space: nowrap;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
     line-height: 1;
+    opacity: 0.5;
+    transition: opacity 120ms ease;
+    pointer-events: auto;
   }
 
-  .term-label-left {
-    left: -2.6rem;
-    text-align: right;
-    width: 2.3rem;
+  .term-legend:hover {
+    opacity: 1;
   }
 
-  .term-label-right {
-    right: -2.6rem;
-    text-align: left;
-    width: 2.3rem;
+  .legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-UI {
+    background: #4a9eff;
+  }
+  .legend-AI {
+    background: #f39c12;
+  }
+  .legend-BI {
+    background: #2ecc71;
+  }
+
+  .legend-text {
+    margin-right: 0.25rem;
+  }
+  .legend-text:last-of-type {
+    margin-right: 0;
   }
 </style>

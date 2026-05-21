@@ -1477,6 +1477,36 @@
   function validateWireCompat(srcN: Node, tgtN: Node, kind: WireKind): string | null {
     const srcKind = nodeKind(srcN);
     const tgtKind = nodeKind(tgtN);
+
+    // 1-supervisor-per-controller rule. In real installs a field equipment
+    // controller is hosted by ONE engine; N+1 redundancy (JCI Metasys
+    // redundancy, Tridium supervisor pairs) is enterprise-tier and operates
+    // through dedicated mechanisms not modeled here. Refuse wires that
+    // would give a controller a second supervisor parent.
+    if (
+      (srcKind === 'supervisor' && tgtKind === 'controller') ||
+      (srcKind === 'controller' && tgtKind === 'supervisor')
+    ) {
+      const ctrlNode = srcKind === 'controller' ? srcN : tgtN;
+      const existing = edges.find((e) => {
+        // Find an existing supervisor parent on the controller's other end.
+        const a = nodes.find((n) => n.id === e.source);
+        const b = nodes.find((n) => n.id === e.target);
+        if (!a || !b) return false;
+        const aIsSup = nodeKind(a) === 'supervisor';
+        const bIsSup = nodeKind(b) === 'supervisor';
+        const aIsCtrl = a.id === ctrlNode.id;
+        const bIsCtrl = b.id === ctrlNode.id;
+        return (aIsSup && bIsCtrl) || (bIsSup && aIsCtrl);
+      });
+      if (existing) {
+        const supId = existing.source === ctrlNode.id ? existing.target : existing.source;
+        const supNode = nodes.find((n) => n.id === supId);
+        const supLabel = supNode ? nodeLabel(supNode) : 'another engine';
+        return `${nodeLabel(ctrlNode)} is already hosted by ${supLabel}. Disconnect the existing trunk first — a controller has one upstream engine in real installs (N+1 redundancy is enterprise-tier and isn't modeled here).`;
+      }
+    }
+
     // Sensor / safety endpoints: only hardwired makes physical sense in
     // most real installs (intelligent BACnet sensors exist but the
     // sandbox doesn't model them yet).

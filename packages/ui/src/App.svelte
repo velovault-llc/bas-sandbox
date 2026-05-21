@@ -9,7 +9,6 @@
   import CLIPanel from './lib/cli/CLIPanel.svelte';
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
-  import VendorPalette from './lib/equipment/VendorPalette.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
   import { importStore } from './lib/canvasStore.svelte';
@@ -30,7 +29,7 @@
     else if (window.location.hash === '#about') window.history.replaceState(null, '', window.location.pathname);
   });
 
-  type LeftDrawerTab = 'weather' | 'catalog' | 'devices' | 'settings';
+  type LeftDrawerTab = 'weather' | 'devices' | 'settings';
   let leftDrawerOpen = $state(true);
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
@@ -347,21 +346,11 @@
           <button
             type="button"
             class="rail-tab"
-            class:active={leftDrawerOpen && leftDrawerTab === 'catalog'}
-            onclick={() => pickLeftDrawerTab('catalog')}
-            title="Vendor controller catalog"
-          >
-            <span class="rail-icon">▣</span>
-            <span class="rail-label">Catalog</span>
-          </button>
-          <button
-            type="button"
-            class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'devices'}
             onclick={() => pickLeftDrawerTab('devices')}
-            title="Real-world sensors + safety devices"
+            title="Equipment catalog — controllers, sensors, safeties, expansion modules"
           >
-            <span class="rail-icon">◇</span>
+            <span class="rail-icon">▣</span>
             <span class="rail-label">Devices</span>
           </button>
           <button
@@ -388,8 +377,6 @@
         <aside class="left-drawer" class:open={leftDrawerOpen} aria-hidden={!leftDrawerOpen}>
           {#if leftDrawerTab === 'weather'}
             <WeatherPanel />
-          {:else if leftDrawerTab === 'catalog'}
-            <VendorPalette />
           {:else if leftDrawerTab === 'devices'}
             <DevicesPalette />
           {:else if leftDrawerTab === 'settings'}
