@@ -51,13 +51,22 @@
   // Drag-to-reposition. The header acts as the grab handle. We track the
   // mouse origin + the panel's offset at grab time, then translate the
   // panel by the delta on mousemove. On mouseup we persist via the store.
+  //
+  // Click-vs-drag: a real drag moves the mouse > DRAG_THRESHOLD pixels. If
+  // the pointer barely moved we treat it as a click and let the header's
+  // onclick toggle the panel. After a real drag we suppress the next
+  // click event so the toggle doesn't fire as the user releases.
+  const DRAG_THRESHOLD = 4;
   let dragging = $state(false);
+  let didActuallyDrag = false;
+  let suppressNextClick = $state(false);
   let dragStart = { x: 0, y: 0, originX: 0, originY: 0 };
 
   function startDrag(e: MouseEvent): void {
     // Only start drag on the header's bare area — not on a button inside.
     if ((e.target as HTMLElement).closest('button')) return;
     dragging = true;
+    didActuallyDrag = false;
     dragStart = {
       x: e.clientX,
       y: e.clientY,
@@ -71,20 +80,35 @@
 
   function onDragMove(e: MouseEvent): void {
     if (!dragging) return;
+    const dx = dragStart.x - e.clientX;
+    const dy = dragStart.y - e.clientY;
+    if (!didActuallyDrag && Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
+      didActuallyDrag = true;
+    }
+    if (!didActuallyDrag) return; // tiny jitter — don't move yet
     // offset is from the bottom-right anchor; dragging right/down should
     // SHRINK both offsets (panel moves toward the corner), dragging
     // left/up should grow them. So invert deltas.
-    const dx = dragStart.x - e.clientX;
-    const dy = dragStart.y - e.clientY;
     runtimeLog.offsetX = Math.max(0, dragStart.originX + dx);
     runtimeLog.offsetY = Math.max(0, dragStart.originY + dy);
   }
 
   function endDrag(): void {
+    if (didActuallyDrag) {
+      setPanelPosition(runtimeLog.offsetX, runtimeLog.offsetY);
+      suppressNextClick = true;
+      // Reset suppression after the click event would have fired.
+      setTimeout(() => { suppressNextClick = false; }, 50);
+    }
     dragging = false;
-    setPanelPosition(runtimeLog.offsetX, runtimeLog.offsetY);
     window.removeEventListener('mousemove', onDragMove);
     window.removeEventListener('mouseup', endDrag);
+  }
+
+  function onHeaderClick(e: MouseEvent): void {
+    if (suppressNextClick) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    togglePanel();
   }
 </script>
 
@@ -97,7 +121,7 @@
   style:right="{1 + runtimeLog.offsetX / 16}rem"
   style:bottom="{0.75 + runtimeLog.offsetY / 16}rem"
 >
-  <header class="head" onmousedown={startDrag} onclick={(e) => { if (!dragging && !(e.target as HTMLElement).closest('button')) togglePanel(); }} title="Drag to reposition · click to collapse">
+  <header class="head" onmousedown={startDrag} onclick={onHeaderClick} title="Drag to reposition · click to collapse">
     <span class="glyph grip">⠿</span>
     <strong>Runtime log</strong>
     <span class="counts">
