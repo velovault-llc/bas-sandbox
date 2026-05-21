@@ -1154,6 +1154,63 @@
       }
     }
 
+    // Sensor signal-type vs terminal-type audit. Each sensor signal has a
+    // set of compatible terminal types it can land on without garbage
+    // readings. Examples:
+    //   4-20 mA on BI       → reads binary high/low based on a threshold,
+    //                         throws away the proportional info
+    //   RTD Pt1000 on BI    → resistance circuit driven into a binary
+    //                         input — controller reports nonsense
+    //   Binary-dry on AI    → reads ~0 / 5 V depending on pull-up, still
+    //                         binary but treated as analog by code
+    // Universal Inputs (UI) accept anything — they auto-detect per-channel.
+    const signalAcceptsTerminal: Record<string, Set<'UI' | 'AI' | 'BI'>> = {
+      'rtd-pt1000':        new Set(['UI', 'AI']),
+      'rtd-pt100':         new Set(['UI', 'AI']),
+      'thermistor-10k-t2': new Set(['UI', 'AI']),
+      'thermistor-10k-t3': new Set(['UI', 'AI']),
+      'thermistor-20k':    new Set(['UI', 'AI']),
+      'analog-0-10v':      new Set(['UI', 'AI']),
+      'analog-2-10v':      new Set(['UI', 'AI']),
+      'analog-4-20ma':     new Set(['UI', 'AI']),
+      'analog-0-5v':       new Set(['UI', 'AI']),
+      'binary-dry':        new Set(['UI', 'BI']),
+    };
+    for (const e of edges) {
+      const targetHandle = e.targetHandle ?? '';
+      if (!targetHandle || targetHandle === 'net-in' || targetHandle === 'net-out') continue;
+      const termKind = targetHandle.split('-')[0] as 'UI' | 'AI' | 'BI' | 'UO' | 'AO' | 'BO';
+      if (termKind !== 'UI' && termKind !== 'AI' && termKind !== 'BI') continue;
+      const srcNode = nodes.find((n) => n.id === e.source);
+      const tgtNode = nodes.find((n) => n.id === e.target);
+      const sensorNode = (srcNode?.data as { kind?: string } | undefined)?.kind === 'sensor'
+        ? srcNode
+        : (tgtNode?.data as { kind?: string } | undefined)?.kind === 'sensor'
+          ? tgtNode
+          : null;
+      if (!sensorNode) continue;
+      const sensorModelId = (sensorNode.data as { sensorModelId?: string } | undefined)?.sensorModelId;
+      if (!sensorModelId) continue;
+      const sensorModel = findSensorModel(sensorModelId);
+      if (!sensorModel) continue;
+      const accepted = signalAcceptsTerminal[sensorModel.signal];
+      if (!accepted) continue;
+      if (!accepted.has(termKind)) {
+        logEvent(
+          0,
+          'error',
+          nodeLabel(sensorNode),
+          `Signal/terminal mismatch — ${sensorModel.signal} sensor wired to ${termKind} terminal (${targetHandle}). ` +
+            (termKind === 'BI'
+              ? 'Binary input throws away the proportional reading; controller reports unstable on/off.'
+              : termKind === 'AI'
+                ? 'Analog input reads the dry-contact as a fixed voltage, missing the open/close transitions.'
+                : 'Reading will be garbage. Rewire to a UI terminal or use a matching sensor.'),
+          sensorNode.id,
+        );
+      }
+    }
+
     tickOnce();
     intervalId = setInterval(tickOnce, TICK_MS);
   }
