@@ -352,6 +352,23 @@ function handleNo(args: string[], state: ShellState, ctx: ControllerContext): Sh
 
 function handleProgramLine(raw: string, state: ShellState, ctx: ControllerContext): ShellResponse {
   const trimmed = raw.trim();
+  // help / ? — intercept before buffering so users can ask "what do I do here?"
+  // without that line getting appended to their program source.
+  const trimmedLower = trimmed.toLowerCase();
+  if (trimmedLower === 'help' || trimmedLower === '?') {
+    return helpFor(state);
+  }
+  // show program / show buffer — peek at what's been typed so far
+  if (trimmedLower === 'show program' || trimmedLower === 'show buffer') {
+    if (!state.programBuffer) {
+      return reply(state, ['  (buffer is empty)']);
+    }
+    return reply(state, [
+      '  ── current program buffer ──',
+      ...state.programBuffer.split('\n').map((l) => `  ${l}`),
+      '  ─── end ───',
+    ]);
+  }
   if (trimmed.toLowerCase() === 'end' || trimmed.toUpperCase() === 'END_PROGRAM') {
     const source = state.programBuffer;
     state.programBuffer = '';
@@ -402,7 +419,26 @@ function helpFor(state: ShellState): ShellResponse {
   }
   // program
   return reply(state, [
-    '  (program mode — every line goes to the buffer)',
-    '  Type "end" alone to commit, "exit" to discard.',
+    'Program editor (every other line you type is appended to the program buffer).',
+    '',
+    'Commands recognized here:',
+    '  end                   — commit + compile + activate the program',
+    '  exit / quit           — discard the buffer and leave program mode',
+    '  show program          — peek at the buffer so far',
+    '  help / ?              — this message',
+    '',
+    'ST cheat sheet (case-insensitive):',
+    '  actuator := 0.5;                          // command damper / valve to 50%',
+    '  IF sensed > setpoint THEN actuator := 1.0; END_IF;',
+    '  ELSIF / ELSE / END_IF / VAR / END_VAR all supported',
+    '',
+    'Read-only inputs available each tick:',
+    '  sensed, setpoint, oat, zone, pi_out, dt',
+    '  + secondary sensors (occ, damper, co2, rh, cfm, ps, dp, amps, valve)',
+    '',
+    'Outputs you can write:',
+    '  actuator (0..1)   — overrides the PI damper / valve command',
+    '  setpoint (°F)     — overrides the controller setpoint',
+    '  any other name    — kept in VAR space across ticks (useful for integrators)',
   ]);
 }

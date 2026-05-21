@@ -30,6 +30,8 @@
   import { log as logEvent } from './runtime/runtimeLogStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
+  import { scenarioStore } from './scenarios/scenarioStore.svelte';
+  import { validateScenario } from './scenarios/validator';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import {
     runProgram,
@@ -447,8 +449,39 @@
     }
 
     const id = `n${nextId++}`;
+    // Scenario auto-name: if a scenario is active and this drop would satisfy
+    // an unmatched equipment requirement, pre-label the node with the
+    // scenario's expected tag (VAV-1, ZN-T, OCC, DMP-FB, …) so the user
+    // doesn't have to rename by hand for the validator to recognize it.
+    let scenarioTag: string | null = null;
+    if (scenarioStore.active) {
+      const sc = scenarioStore.active;
+      const beforeResult = validateScenario(sc, nodes, edges);
+      const droppedModelId = vendorModel?.id ?? sensorModel?.id ?? safetyModel?.id ?? null;
+      for (const req of sc.equipment) {
+        if (req.kind !== paletteKind) continue;
+        // Already satisfied? skip.
+        if (beforeResult.tagToNodeId.has(req.tag)) continue;
+        // Preferred-model match is the strongest signal — take it first.
+        if (req.preferredModelId && droppedModelId === req.preferredModelId) {
+          scenarioTag = req.tag;
+          break;
+        }
+      }
+      // No preferred-model hit? fall back to first-kind-match so the user
+      // still gets named correctly when they substitute equivalent models.
+      if (!scenarioTag) {
+        for (const req of sc.equipment) {
+          if (req.kind !== paletteKind) continue;
+          if (beforeResult.tagToNodeId.has(req.tag)) continue;
+          scenarioTag = req.tag;
+          break;
+        }
+      }
+    }
     let baseLabel: string;
-    if (vendorModel) baseLabel = vendorModel.model;
+    if (scenarioTag) baseLabel = scenarioTag;
+    else if (vendorModel) baseLabel = vendorModel.model;
     else if (sensorModel) baseLabel = sensorModel.model;
     else if (safetyModel) baseLabel = safetyModel.model;
     else baseLabel = nextName(paletteKind);
