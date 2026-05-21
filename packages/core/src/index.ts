@@ -79,6 +79,9 @@ export {
 } from './equipment/expansions.js';
 export type { ExpansionModule } from './equipment/expansions.js';
 
+export { computeSensorReading } from './sim/sensorSim.js';
+export type { SensorReading, SimContext } from './sim/sensorSim.js';
+
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';
 export type {
   ScenarioDefinition,

@@ -39,6 +39,7 @@
     findSafetyDevice,
     findExpansionModule,
     formatPointBreakdown,
+    computeSensorReading,
     type StEnv,
   } from '@bas/core';
   import { onMount } from 'svelte';
@@ -863,6 +864,30 @@
       const stAllowed = !vendorModelId || (findControllerModel(vendorModelId)?.stPortable ?? true);
       const fbdAuthored = !!userProgram?.fbdGraph;
       if (userProgram?.compiled && (stAllowed || fbdAuthored)) {
+        // Collect inputs from every sensor wired to this controller. The
+        // primary thermal sensor still drives `sensed`, but secondary
+        // sensors (occupancy, damper feedback, CO2, humidity, etc.) get
+        // their own per-subject canonical keys via computeSensorReading.
+        const simHour = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
+        const secondaryInputs: Record<string, number> = {};
+        for (const edge of edges) {
+          // Only sensor→controller wires count as inputs to this controller.
+          if (edge.target !== target.controllerId) continue;
+          if (edge.source === target.sensorId) continue; // primary, handled below
+          const senNode = nodes.find((n) => n.id === edge.source);
+          if (!senNode) continue;
+          if (nodeKind(senNode) !== 'sensor') continue;
+          const senModelId = (senNode.data as { sensorModelId?: string } | undefined)?.sensorModelId;
+          const senModel = senModelId ? findSensorModel(senModelId) : undefined;
+          if (!senModel) continue;
+          const reading = computeSensorReading(senModel.subject, {
+            hour: simHour,
+            actuator: sample.actuator,
+            zoneTemp: sample.T_zone,
+            outsideTemp: sample.T_OA,
+          });
+          secondaryInputs[reading.inputKey] = reading.value;
+        }
         // Inputs are read-only from the program's perspective. `actuator`
         // is exposed via the separate read-only name `pi_out` so users can
         // see what PI commanded this tick without colliding with the
@@ -875,6 +900,7 @@
             zone: sample.T_zone,
             pi_out: sample.actuator,
             dt: target.config.dt,
+            ...secondaryInputs,
           },
           // Seed `actuator` in outputs with the current PI value so a
           // program that only sometimes assigns it (e.g. conditional
@@ -932,6 +958,31 @@
         value: `${sample.T_sensed.toFixed(1)} °F`,
         status: 'responded',
       });
+      // Secondary sensors on the same controller render their subject value
+      // (occ 0/1, damper %, CO2 ppm, RH %, …) instead of falling back to
+      // the thermal sample. This is what makes the VAV scenario's OCC and
+      // DMP-FB nodes report meaningful values during a live run.
+      const simHourDisp = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
+      for (const edge of edges) {
+        if (edge.target !== target.controllerId) continue;
+        if (edge.source === target.sensorId) continue;
+        const senNode = nodes.find((n) => n.id === edge.source);
+        if (!senNode || nodeKind(senNode) !== 'sensor') continue;
+        if (physicsValueByNode.has(senNode.id)) continue;
+        const senModelId = (senNode.data as { sensorModelId?: string } | undefined)?.sensorModelId;
+        const senModel = senModelId ? findSensorModel(senModelId) : undefined;
+        if (!senModel) continue;
+        const reading = computeSensorReading(senModel.subject, {
+          hour: simHourDisp,
+          actuator: sample.actuator,
+          zoneTemp: sample.T_zone,
+          outsideTemp: sample.T_OA,
+        });
+        physicsValueByNode.set(senNode.id, {
+          value: reading.display,
+          status: 'responded',
+        });
+      }
     }
     // Parent SP/OAT readout: only emit for the *focused* target's parent.
     // Without this, when two wired VAVs share a single FEC parent the
