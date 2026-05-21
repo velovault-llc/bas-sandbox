@@ -3,6 +3,22 @@ export const VERSION = '0.0.0';
 export { BrickGraph } from './brick.js';
 export type { BrickEntity } from './brick.js';
 
+export {
+  geocodeCity,
+  fetchCurrentWeather,
+  fetchForecastHourly,
+  fetchHistoricalHourly,
+  sampleAt,
+  OPEN_METEO_ATTRIBUTION,
+  _resetWeatherCache,
+} from './weather.js';
+export type {
+  GeocodedLocation,
+  WeatherSample,
+  WeatherSeries,
+  WeatherResult,
+} from './weather.js';
+
 export type IngestPlugin = {
   readonly id: string;
   readonly displayName: string;

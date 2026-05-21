@@ -27,6 +27,7 @@
     type SensorSignal,
   } from './sim/sensorModels';
   import { importStore } from './canvasStore.svelte';
+  import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import type { BasScenarioV1 } from './scenario';
   import { DEMOS } from './demoScenarios';
 
@@ -607,6 +608,24 @@
     // readout works whether or not any target is wired.
     const dtSeconds = runningSnapshot[0]?.config.dt ?? DEFAULT_CONFIG.dt;
     simSecondsElapsed += dtSeconds;
+
+    // Weather drive: when active, advance the weather playback clock by the
+    // same dt and write the interpolated OAT into every running system's
+    // config.outdoorAir BEFORE stepping. Mutating `config.outdoorAir` is safe
+    // because the thermal model reads it each tick — no need to touch the
+    // SingleZoneSystem internals. When weather drive is off, this loop and
+    // advancePlayback() are both no-ops.
+    if (weatherStore.mode !== 'off' && weatherStore.status === 'ready') {
+      advancePlayback(dtSeconds);
+      const sample = currentWeatherSample();
+      if (sample) {
+        for (const target of runningSnapshot) {
+          // Mutate via Object.assign-like reassignment — `config` is a
+          // structured object on the scenario; rewriting the field is fine.
+          (target.config as { outdoorAir: number }).outdoorAir = sample.T_F;
+        }
+      }
+    }
 
     // Step every wired system. Build a fast lookup from controllerId → latest sample
     // so the node-runtime pass below can resolve in O(1).

@@ -5,6 +5,7 @@
   import TreeNode from './lib/TreeNode.svelte';
   import FindingsPanel from './lib/FindingsPanel.svelte';
   import BuildCanvas from './lib/BuildCanvas.svelte';
+  import WeatherPanel from './lib/weather/WeatherPanel.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
 
@@ -255,7 +256,14 @@
         by dragging between handles, then hit <strong>Run</strong> to see synthetic state propagate across
         the topology. The dbexport tool tab parses real Metasys archives.
       </p>
-      <BuildCanvas />
+      <div class="build-grid">
+        <aside class="build-side">
+          <WeatherPanel />
+        </aside>
+        <div class="build-main">
+          <BuildCanvas />
+        </div>
+      </div>
     </main>
   {/if}
 
@@ -337,6 +345,31 @@
   .lede {
     color: color-mix(in srgb, CanvasText 80%, transparent);
     margin: 0 0 1.5rem 0;
+  }
+
+  .build-grid {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .build-side {
+    position: sticky;
+    top: 1rem;
+  }
+
+  .build-main {
+    min-width: 0;
+  }
+
+  @media (max-width: 900px) {
+    .build-grid {
+      grid-template-columns: 1fr;
+    }
+    .build-side {
+      position: static;
+    }
   }
 
   .dropzone {
