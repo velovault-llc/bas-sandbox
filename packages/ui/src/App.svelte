@@ -10,6 +10,7 @@
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import VendorPalette from './lib/equipment/VendorPalette.svelte';
+  import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
@@ -28,7 +29,7 @@
     else if (window.location.hash === '#about') window.history.replaceState(null, '', window.location.pathname);
   });
 
-  type LeftDrawerTab = 'weather' | 'catalog' | 'settings';
+  type LeftDrawerTab = 'weather' | 'catalog' | 'devices' | 'settings';
   let leftDrawerOpen = $state(true);
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
@@ -355,6 +356,16 @@
           <button
             type="button"
             class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'devices'}
+            onclick={() => pickLeftDrawerTab('devices')}
+            title="Real-world sensors + safety devices"
+          >
+            <span class="rail-icon">◇</span>
+            <span class="rail-label">Devices</span>
+          </button>
+          <button
+            type="button"
+            class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'settings'}
             onclick={() => pickLeftDrawerTab('settings')}
             title="Settings"
@@ -378,6 +389,8 @@
             <WeatherPanel />
           {:else if leftDrawerTab === 'catalog'}
             <VendorPalette />
+          {:else if leftDrawerTab === 'devices'}
+            <DevicesPalette />
           {:else if leftDrawerTab === 'settings'}
             <div class="settings-placeholder">
               <h3>Settings</h3>

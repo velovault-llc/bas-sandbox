@@ -42,6 +42,29 @@ export type {
   Protocol,
 } from './equipment/catalog.js';
 
+export {
+  SENSOR_CATALOG,
+  findSensorModel,
+  sensorCatalogBySubject,
+} from './equipment/sensors.js';
+export type {
+  SensorModel,
+  SensorSubject,
+  SensorSignal,
+  SensorMounting,
+} from './equipment/sensors.js';
+
+export {
+  SAFETY_CATALOG,
+  findSafetyDevice,
+  safetyCatalogByKind,
+} from './equipment/safeties.js';
+export type {
+  SafetyDevice,
+  SafetyKind,
+  SafetyResetBehavior,
+} from './equipment/safeties.js';
+
 export { BLOCK_LIBRARY, compileFbd } from './fbd/index.js';
 export type {
   BlockTypeDef,

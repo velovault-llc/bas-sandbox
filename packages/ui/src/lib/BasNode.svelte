@@ -45,6 +45,10 @@
     /** Controller-only: id from VENDOR_CATALOG. Drives subtitle + ST-portability
      *  hint + vendor info in `show config`. Null = generic controller. */
     vendorModelId?: string;
+    /** Sensor-only: id from SENSOR_CATALOG (real-world model). */
+    sensorModelId?: string;
+    /** Safety-only: id from SAFETY_CATALOG (real-world model). */
+    safetyModelId?: string;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */

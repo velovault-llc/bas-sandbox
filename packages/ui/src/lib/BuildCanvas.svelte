@@ -30,7 +30,14 @@
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
-  import { runProgram, makeEnv, findControllerModel, type StEnv } from '@bas/core';
+  import {
+    runProgram,
+    makeEnv,
+    findControllerModel,
+    findSensorModel,
+    findSafetyDevice,
+    type StEnv,
+  } from '@bas/core';
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
   import { DEMOS } from './demoScenarios';
@@ -322,12 +329,31 @@
     const vendorId = event.dataTransfer?.getData('application/bas-controller-vendor');
     const vendorModel = vendorId ? findControllerModel(vendorId) : undefined;
 
+    // Same pattern for sensors / safeties dragged from the Devices drawer.
+    const sensorModelId = event.dataTransfer?.getData('application/bas-sensor-model');
+    const sensorModel = sensorModelId ? findSensorModel(sensorModelId) : undefined;
+    const safetyModelId = event.dataTransfer?.getData('application/bas-safety-model');
+    const safetyModel = safetyModelId ? findSafetyDevice(safetyModelId) : undefined;
+
     const id = `n${nextId++}`;
-    const baseLabel = vendorModel ? vendorModel.model : nextName(item.kind);
+    let baseLabel: string;
+    if (vendorModel) baseLabel = vendorModel.model;
+    else if (sensorModel) baseLabel = sensorModel.model;
+    else if (safetyModel) baseLabel = safetyModel.model;
+    else baseLabel = nextName(item.kind);
     const data: Record<string, unknown> = { kind: item.kind, label: baseLabel };
     if (vendorModel) {
       data.vendorModelId = vendorModel.id;
       data.subtitle = `${vendorModel.vendor} · ${vendorModel.programmingLanguage}`;
+    }
+    if (sensorModel) {
+      data.sensorModelId = sensorModel.id;
+      data.subtitle = `${sensorModel.vendor} · ${sensorModel.signal} · ${sensorModel.range[0]}–${sensorModel.range[1]} ${sensorModel.units}`;
+    }
+    if (safetyModel) {
+      data.safetyModelId = safetyModel.id;
+      const trip = safetyModel.tripPoint ? ` · trip @ ${safetyModel.tripPoint.value} ${safetyModel.tripPoint.units}` : '';
+      data.subtitle = `${safetyModel.vendor} · ${safetyModel.normalState} · ${safetyModel.resetBehavior}-reset${trip}`;
     }
     nodes = [
       ...nodes,
@@ -1038,7 +1064,11 @@
   // BasScenarioV1 type lives in ./scenario.ts so demoScenarios.ts can
   // construct scenarios without circular-importing through this file.
 
-  let saveButtonText = $state('Save scenario');
+  // Used by the (removed) in-dock Save button — kept for compatibility with
+  // the saveScenario fn's UX timer, even though the header button doesn't
+  // render this label today.
+  let _saveButtonText = $state('Save scenario');
+  void _saveButtonText;
   let saveButtonTimer: ReturnType<typeof setTimeout> | null = null;
   let loadMessage = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -1140,10 +1170,10 @@
   }
 
   function flashSave(text: string) {
-    saveButtonText = text;
+    _saveButtonText = text;
     if (saveButtonTimer) clearTimeout(saveButtonTimer);
     saveButtonTimer = setTimeout(() => {
-      saveButtonText = 'Save scenario';
+      _saveButtonText = 'Save scenario';
       saveButtonTimer = null;
     }, 2000);
   }
@@ -2196,11 +2226,8 @@
           {/if}
         </div>
         <div class="scenario-row">
-          <button type="button" class="scenario-btn save" onclick={saveScenario}>
-            {saveButtonText}
-          </button>
           <label class="scenario-btn load">
-            Load
+            Load scenario file
             <input
               type="file"
               accept=".json,.bas-scenario,application/json"
@@ -2304,16 +2331,6 @@
             </ul>
           </div>
         {/if}
-
-        <div class="canvas-buttons">
-          <button type="button" class="clear" onclick={clearAll}>Clear</button>
-          <button
-            type="button"
-            class="clear"
-            onclick={resetCanvas}
-            title="Wipe everything (including localStorage) to a fresh empty canvas">Reset</button
-          >
-        </div>
 
         <div class="topology-checks">
           <button
