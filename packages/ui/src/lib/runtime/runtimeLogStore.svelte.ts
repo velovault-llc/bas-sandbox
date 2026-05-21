@@ -20,7 +20,11 @@ export interface LogEntry {
 }
 
 const MAX_ENTRIES = 500;
-const LS_POSITION = 'bas-sandbox.runtime-log.position';
+// Bumped the key suffix when we tightened the viewport clamp — anyone who
+// had a position saved from before would otherwise stay stranded near the
+// top of the viewport. Loading from the OLD key falls through to the
+// default (0, 0) = bottom-right corner.
+const LS_POSITION = 'bas-sandbox.runtime-log.position.v2';
 
 interface RuntimeLogStore {
   entries: LogEntry[];
@@ -57,10 +61,11 @@ export const runtimeLog = $state<RuntimeLogStore>({
   offsetY: _initialPos.y,
 });
 
-/** Headroom (px) to keep the drag-handle inside the viewport. Anything
- *  larger than (viewportHeight - this) would push the header above the
- *  top of the screen and the panel becomes un-draggable. */
-const PANEL_MIN_HEADER_VISIBLE = 80;
+/** Vertical headroom (px) the panel must keep below the viewport top so
+ *  the drag handle stays both visible AND clear of the page's top header
+ *  bar (which is ~60px tall). Big enough to comfortably accommodate the
+ *  panel's own header + the page chrome on top of it. */
+const PANEL_MIN_HEADER_VISIBLE = 250;
 
 export function setPanelPosition(x: number, y: number): void {
   const { cx, cy } = clampToViewport(x, y);
