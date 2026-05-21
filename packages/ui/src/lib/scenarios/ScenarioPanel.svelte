@@ -2,12 +2,40 @@
   import { scenarioStore, stopScenario, toggleScenarioCollapsed } from './scenarioStore.svelte';
   import { canvasSnapshot, showInDevices } from '../canvasStore.svelte';
   import { validateScenario } from './validator';
+  import { runRuntimeChecks, type RuntimeChecksResult } from './runtimeChecks';
+  import { programStore } from '../cli/programStore.svelte';
 
   function tabForKind(kind: string): 'controllers' | 'sensors' | 'safeties' | 'expansions' {
     if (kind === 'controller') return 'controllers';
     if (kind === 'sensor') return 'sensors';
     if (kind === 'safety') return 'safeties';
     return 'expansions';
+  }
+
+  // Runtime-check results — refreshed on demand via the button below,
+  // and automatically re-run when the program changes after a previous
+  // run (so users see fresh results as they iterate).
+  let checksResult = $state<RuntimeChecksResult | null>(null);
+
+  function runChecks(): void {
+    if (!scenarioStore.active) return;
+    // The scenario's primary controller tag is the first equipment entry
+    // with kind = 'controller'. Resolve its canvas id via the build-time
+    // validator's tagToNodeId map.
+    const sc = scenarioStore.active;
+    const buildResult = validateScenario(sc, canvasSnapshot.nodes, canvasSnapshot.edges);
+    const primaryCtrl = sc.equipment.find((e) => e.kind === 'controller');
+    if (!primaryCtrl) {
+      checksResult = { allPassed: false, perCheck: [], notice: 'No controller in scenario.' };
+      return;
+    }
+    const nodeId = buildResult.tagToNodeId.get(primaryCtrl.tag);
+    if (!nodeId) {
+      checksResult = { allPassed: false, perCheck: [], notice: `Place ${primaryCtrl.tag} on the canvas first.` };
+      return;
+    }
+    const program = programStore.byId[nodeId];
+    checksResult = runRuntimeChecks(sc, program?.compiled ?? null);
   }
 
   const result = $derived.by(() => {
@@ -118,11 +146,47 @@
         </section>
 
         <section class="card">
-          <h4>Runtime checks</h4>
-          <p class="muted">After you Run the sim, these checks will validate the controller's response under driven conditions.</p>
+          <div class="card-head">
+            <h4>Runtime checks</h4>
+            {#if checksResult}
+              <span class="progress" class:done={checksResult.allPassed}>
+                {checksResult.perCheck.filter((c) => c.passed).length} / {checksResult.perCheck.length}
+              </span>
+            {/if}
+          </div>
+          <p class="muted">
+            Drives the controller program with each test condition and validates the outputs. Click below after you've programmed the controller.
+          </p>
+          <button type="button" class="run-checks-btn" onclick={runChecks}>
+            ▶ Run checks now
+          </button>
+          {#if checksResult?.notice}
+            <p class="muted" style="margin-top:0.55rem;">{checksResult.notice}</p>
+          {/if}
           <ul class="checks">
-            {#each sc.runtimeChecks as rc}
-              <li><strong>{rc.id}</strong> — {rc.description}</li>
+            {#each (checksResult?.perCheck ?? sc.runtimeChecks.map((rc) => ({ id: rc.id, description: rc.description, passed: false as boolean, expectations: [] as Array<{ output: string; actual: number; passed: boolean; reason?: string }>, error: undefined as string | undefined }))) as c (c.id)}
+              <li class="check" class:passed={c.passed} class:has-result={!!checksResult}>
+                <span class="check-dot" class:passed={c.passed}>{checksResult ? (c.passed ? '✓' : '✕') : '○'}</span>
+                <div class="check-body">
+                  <div class="check-title"><strong>{c.id}</strong> — {c.description}</div>
+                  {#if c.error}
+                    <div class="check-err">{c.error}</div>
+                  {:else if c.expectations.length > 0}
+                    <div class="check-exps">
+                      {#each c.expectations as exp}
+                        <div class="exp" class:passed={exp.passed}>
+                          <code>{exp.output}</code>
+                          {#if exp.passed}
+                            <span class="exp-val">= {exp.actual.toFixed(3)} ✓</span>
+                          {:else}
+                            <span class="exp-fail">{exp.reason}</span>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </li>
             {/each}
           </ul>
         </section>
@@ -411,26 +475,121 @@
     font-size: 0.7rem;
   }
 
+  .run-checks-btn {
+    background: #4a9eff;
+    color: white;
+    border: 0;
+    padding: 0.4rem 0.85rem;
+    border-radius: 5px;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.4rem;
+  }
+
+  .run-checks-btn:hover {
+    background: color-mix(in srgb, #4a9eff 88%, Canvas);
+  }
+
   .checks {
     list-style: none;
-    margin: 0;
+    margin: 0.55rem 0 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.4rem;
     font-size: 0.78rem;
   }
 
-  .checks li {
-    line-height: 1.4;
+  .check {
+    display: flex;
+    gap: 0.45rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 5px;
+    background: color-mix(in srgb, CanvasText 4%, transparent);
+    border-left: 3px solid color-mix(in srgb, CanvasText 25%, transparent);
   }
 
-  .checks li strong {
+  .check.has-result.passed {
+    background: color-mix(in srgb, #2ecc71 8%, transparent);
+    border-left-color: #2ecc71;
+  }
+
+  .check.has-result:not(.passed) {
+    background: color-mix(in srgb, #e74c3c 8%, transparent);
+    border-left-color: #e74c3c;
+  }
+
+  .check-dot {
+    flex-shrink: 0;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, CanvasText 12%, transparent);
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    font-size: 0.72rem;
+    line-height: 1.1rem;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  .check-dot.passed {
+    background: #2ecc71;
+    color: white;
+  }
+
+  .check-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .check-title {
+    line-height: 1.35;
+  }
+
+  .check-title strong {
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
     font-size: 0.72rem;
     color: color-mix(in srgb, #4a9eff 95%, CanvasText);
+  }
+
+  .check-err {
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
+  }
+
+  .check-exps {
+    margin-top: 0.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+
+  .exp {
+    font-size: 0.72rem;
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+  }
+
+  .exp code {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 80%, transparent);
+  }
+
+  .exp-val {
+    color: color-mix(in srgb, #2ecc71 95%, CanvasText);
+  }
+
+  .exp-fail {
+    color: color-mix(in srgb, #e74c3c 90%, CanvasText);
   }
 
   .done-banner {
