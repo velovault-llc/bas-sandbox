@@ -28,7 +28,7 @@
   } from './sim/sensorModels';
   import { importStore } from './canvasStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
-  import { openCli, programStore } from './cli/programStore.svelte';
+  import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import { runProgram, makeEnv, findControllerModel, type StEnv } from '@bas/core';
   import { onMount } from 'svelte';
@@ -704,7 +704,13 @@
       //     persists into config so subsequent ticks see it).
       // Anything else stays in the program's output map / VAR state.
       const userProgram = programStore.byId[target.controllerId];
-      if (userProgram?.compiled) {
+      // Gate ST execution to IEC-portable controllers — for everything else
+      // (JCI CCT, Niagara Wiresheet, PPCL, etc.), the sandbox doesn't pretend
+      // to run their native language, so we don't run ST against them either.
+      const ctrlNode = nodes.find((n) => n.id === target.controllerId);
+      const vendorModelId = (ctrlNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+      const stAllowed = !vendorModelId || (findControllerModel(vendorModelId)?.stPortable ?? true);
+      if (userProgram?.compiled && stAllowed) {
         // Inputs are read-only from the program's perspective. `actuator`
         // is exposed via the separate read-only name `pi_out` so users can
         // see what PI commanded this tick without colliding with the
@@ -2497,6 +2503,8 @@
           )}
           {@const isFocusedTarget = focusedTargetId === selectedController.id}
           {@const ctrlHasSensor = findConnectedSensor(selectedController.id) !== null}
+          {@const ctrlVendorId = (selectedController.data as { vendorModelId?: string } | undefined)?.vendorModelId}
+          {@const ctrlStPortable = !ctrlVendorId || (findControllerModel(ctrlVendorId)?.stPortable ?? true)}
           <Panel position="bottom-left">
             <div class="ctrl-panel inspector-panel">
               <div class="inspector-head">
@@ -2504,11 +2512,23 @@
                 <button
                   type="button"
                   class="inspector-terminal"
-                  title="Open Cisco-IOS-style terminal (program this controller in Structured Text)"
+                  title={ctrlStPortable
+                    ? 'Open Cisco-IOS-style terminal (program this controller in Structured Text)'
+                    : 'Open terminal (programming unavailable for this vendor — see show config)'}
                   onclick={() => openCli(selectedController.id, nodeLabel(selectedController))}
                 >
                   &gt;_ Terminal
                 </button>
+                {#if ctrlStPortable}
+                  <button
+                    type="button"
+                    class="inspector-diagram"
+                    title="Open block diagram editor (IEC 61131-3 FBD)"
+                    onclick={() => openFbd(selectedController.id, nodeLabel(selectedController))}
+                  >
+                    ▦ Diagram
+                  </button>
+                {/if}
                 <button
                   type="button"
                   class="inspector-delete"
@@ -4359,6 +4379,25 @@
   .inspector-terminal:hover {
     background: color-mix(in srgb, #4a9eff 14%, transparent);
     color: #4a9eff;
+  }
+
+  .inspector-diagram {
+    border: 1px solid color-mix(in srgb, #2ecc71 50%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, #2ecc71 90%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+    margin-right: 0.35rem;
+  }
+
+  .inspector-diagram:hover {
+    background: color-mix(in srgb, #2ecc71 14%, transparent);
+    color: #2ecc71;
   }
 
   .sensor-row {

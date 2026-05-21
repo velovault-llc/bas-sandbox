@@ -41,6 +41,17 @@ export type {
   ProgrammingLanguage,
   Protocol,
 } from './equipment/catalog.js';
+
+export { BLOCK_LIBRARY, compileFbd } from './fbd/index.js';
+export type {
+  BlockTypeDef,
+  BlockPort,
+  PortType,
+  FbdGraph,
+  FbdNode,
+  FbdEdge,
+  FbdCompileResult,
+} from './fbd/index.js';
 export type {
   CompileResult,
   Env as StEnv,

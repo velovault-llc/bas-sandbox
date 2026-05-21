@@ -7,6 +7,7 @@
   import BuildCanvas from './lib/BuildCanvas.svelte';
   import WeatherPanel from './lib/weather/WeatherPanel.svelte';
   import CLIPanel from './lib/cli/CLIPanel.svelte';
+  import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
   import VendorPalette from './lib/equipment/VendorPalette.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
@@ -340,6 +341,9 @@
           <BuildCanvas />
           {#if programStore.activeControllerId}
             <CLIPanel />
+          {/if}
+          {#if programStore.activeFbdControllerId}
+            <FBDCanvas />
           {/if}
           <button
             type="button"

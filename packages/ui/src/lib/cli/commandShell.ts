@@ -214,6 +214,20 @@ function configCmd(cmd: string, args: string[], state: ShellState, ctx: Controll
   if (cmd === 'set') return handleSet(args, state, ctx);
   if (cmd === 'no') return handleNo(args, state, ctx);
   if (cmd === 'program') {
+    // Gate: ST programming only on IEC-61131-3-portable controllers
+    // (Beckhoff + Wago in the catalog today). For everyone else, surface
+    // a clear "not available" message naming their native language.
+    const s = ctx.snapshot();
+    if (s.vendorModelId) {
+      const m = findControllerModel(s.vendorModelId);
+      if (m && !m.stPortable) {
+        return reply(state, [
+          `% Programming not available in this sandbox for ${m.vendor} ${m.model}.`,
+          `  Real ${m.vendor} hardware programs in ${m.programmingLanguage}.`,
+          `  Drag a Beckhoff CX or Wago PFC from the Catalog drawer to write ST.`,
+        ]);
+      }
+    }
     state.mode = 'program';
     state.programBuffer = '';
     return reply(state, [
