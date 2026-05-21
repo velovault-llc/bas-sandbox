@@ -224,9 +224,14 @@
           </ul>
         </section>
 
-        {#if allPassed}
+        {#if allPassed && checksResult?.allPassed && (checksResult.perCheck.length > 0)}
+          <div class="celebration-banner">
+            🎉 <strong>Scenario complete!</strong> Build, wiring, and program all validated against the spec.
+            Try the same scenario with different equipment, or pick a harder one from the Scenarios tab.
+          </div>
+        {:else if allPassed}
           <div class="done-banner">
-            ✓ All build steps passed. Click <strong>Run</strong> to validate the programming sequence at runtime.
+            ✓ All build steps passed. Click <strong>Load starter program</strong> (or write your own and <strong>Run checks now</strong>) to validate the sequence.
           </div>
         {/if}
       </div>
@@ -651,5 +656,34 @@
     border-radius: 6px;
     font-size: 0.85rem;
     text-align: center;
+  }
+
+  .celebration-banner {
+    padding: 0.85rem 1rem;
+    background: linear-gradient(135deg,
+      color-mix(in srgb, #2ecc71 25%, transparent),
+      color-mix(in srgb, #4a9eff 25%, transparent));
+    border: 1.5px solid color-mix(in srgb, #2ecc71 70%, transparent);
+    color: CanvasText;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    text-align: center;
+    line-height: 1.5;
+    box-shadow: 0 4px 12px color-mix(in srgb, #2ecc71 20%, transparent);
+    animation: celebratePulse 1.2s ease-out;
+  }
+
+  @keyframes celebratePulse {
+    0% {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.02);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 </style>

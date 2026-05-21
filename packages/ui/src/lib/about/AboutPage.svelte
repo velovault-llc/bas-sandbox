@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { VENDOR_CATALOG, formatPointBreakdown, type ControllerModel } from '@bas/core';
+  import { VENDOR_CATALOG, SCENARIO_LIBRARY, formatPointBreakdown, type ControllerModel } from '@bas/core';
 
   // Group catalog by vendor and compute a sandbox-support status.
   type SupportLevel = 'full' | 'partial' | 'planned';
@@ -110,6 +110,37 @@
       Not seeing your stack? The architecture is plugin-friendly — get in touch about adding your
       controller line.
     </p>
+  </section>
+
+  <section class="card">
+    <h2>Guided scenarios</h2>
+    <p class="muted">
+      Step-by-step BAS commissioning walkthroughs. Each scenario specifies the
+      equipment, wiring topology, and G36-style control sequence — with
+      automated validation at every step (build, wiring, program correctness).
+      Includes a verified starter FBD graph that passes every runtime check.
+    </p>
+    <ul class="scenario-summary">
+      {#each SCENARIO_LIBRARY as sc (sc.id)}
+        <li>
+          <div class="sc-head">
+            <strong>{sc.title}</strong>
+            <span class="sc-diff status-pill status-{sc.difficulty === 'apprentice' ? 'green' : sc.difficulty === 'tech' ? 'amber' : 'blue'}">
+              {sc.difficulty}
+            </span>
+            <span class="sc-time muted">~{sc.estimatedMinutes} min</span>
+          </div>
+          <p class="sc-tagline">{sc.tagline}</p>
+          {#if sc.reference}
+            <p class="sc-ref">Reference: <em>{sc.reference}</em></p>
+          {/if}
+          <div class="sc-stats muted">
+            {sc.equipment.length} equipment · {sc.wires.length} wires · {sc.runtimeChecks.length} runtime checks
+            {#if sc.program.starterGraph}<span class="starter-badge">✓ starter graph included</span>{/if}
+          </div>
+        </li>
+      {/each}
+    </ul>
   </section>
 
   <section class="card">
@@ -376,6 +407,70 @@
   .roadmap td:nth-child(2) {
     white-space: nowrap;
     width: 7rem;
+  }
+
+  .scenario-summary {
+    list-style: none;
+    margin: 0.55rem 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .scenario-summary li {
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    background: color-mix(in srgb, Canvas 92%, CanvasText 5%);
+    border-left: 3px solid #4a9eff;
+  }
+
+  .sc-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  .sc-head strong {
+    font-size: 0.92rem;
+  }
+
+  .sc-diff {
+    font-size: 0.68rem;
+    padding: 0.05rem 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .sc-time {
+    font-size: 0.72rem;
+    margin-left: auto;
+  }
+
+  .sc-tagline {
+    margin: 0.3rem 0 0.25rem !important;
+    font-size: 0.82rem !important;
+    line-height: 1.4;
+  }
+
+  .sc-ref {
+    font-size: 0.72rem !important;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    margin: 0 0 0.3rem !important;
+  }
+
+  .sc-stats {
+    font-size: 0.72rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .starter-badge {
+    color: color-mix(in srgb, #2ecc71 95%, CanvasText);
+    font-weight: 600;
+    margin-left: 0.35rem;
   }
 
   .cta {
