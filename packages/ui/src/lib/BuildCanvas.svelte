@@ -1708,40 +1708,9 @@
     const tgt = nodes.find((n) => n.id === connection.target);
     if (!src || !tgt) return;
 
-    // One-wire-per-terminal: real-world terminal blocks are single-input
-    // and single-source. Refuse a wire when either endpoint's specific
-    // handle already has a connection — this stops two sensors from
-    // sharing UI-1, or two outputs from being driven by the same BO. The
-    // network handles ("net-in" / "net-out") are exempted because trunks
-    // carry many devices on one physical run.
     const isTerminal = (h: string | null | undefined) =>
       !!h && h !== 'net-in' && h !== 'net-out';
-    if (connection.sourceHandle && isTerminal(connection.sourceHandle)) {
-      const exists = edges.find(
-        (e) => e.source === connection.source && e.sourceHandle === connection.sourceHandle,
-      );
-      if (exists) {
-        flashWireRefusal(
-          `Source terminal ${connection.sourceHandle} on ${nodeLabel(src)} is already wired. Disconnect that wire first — real terminals are single-source.`,
-        );
-        return;
-      }
-    }
-    if (connection.targetHandle && isTerminal(connection.targetHandle)) {
-      const exists = edges.find(
-        (e) => e.target === connection.target && e.targetHandle === connection.targetHandle,
-      );
-      if (exists) {
-        flashWireRefusal(
-          `Target terminal ${connection.targetHandle} on ${nodeLabel(tgt)} is already wired. Disconnect that wire first — real terminals are single-input.`,
-        );
-        return;
-      }
-    }
 
-    // Input/output direction check. Sensors and safeties are INPUT devices —
-    // they can only land on input terminals (UI / AI / BI). Trying to wire a
-    // sensor to BO-3 makes no electrical sense.
     function termKindOf(handle: string | null | undefined): 'UI' | 'AI' | 'BI' | 'UO' | 'AO' | 'BO' | null {
       if (!handle || !isTerminal(handle)) return null;
       const prefix = handle.split('-')[0];
@@ -1751,23 +1720,124 @@
       }
       return null;
     }
-    const OUTPUTS = new Set(['UO', 'AO', 'BO']);
-    function checkInputDevice(deviceNode: Node, handle: string | null | undefined, role: string): string | null {
-      const tk = termKindOf(handle);
-      if (tk && OUTPUTS.has(tk)) {
-        return `${nodeLabel(deviceNode)} is a ${role} — it produces a signal and must land on an INPUT terminal (UI / AI / BI). ${tk}-${handle?.split('-')[1] ?? '?'} is an output terminal that drives an actuator. Try a UI terminal instead.`;
+    const OUTPUTS = new Set(['UO', 'AO', 'BO'] as const);
+
+    /** Real BAS controllers expose terminals as IEC 61131-3 channels. UI is
+     *  a "universal" channel that can be configured AI or BI per-channel —
+     *  so a Pt1000 sensor lands on UI configured as RTD, a dry-contact lands
+     *  on UI configured as binary, etc. We treat UI as the universal home
+     *  for any input device when a more-specific terminal isn't free. */
+    function preferredInputKinds(role: 'sensor' | 'safety' | null): readonly ('UI' | 'AI' | 'BI')[] {
+      // Safeties are dry-contact → prefer BI, fall through UI.
+      if (role === 'safety') return ['BI', 'UI'];
+      // Sensors are analog by default → AI, then UI as fallback. (Binary
+      // sensors like OCC still work on UI because UI configures as BI.)
+      return ['AI', 'UI', 'BI'];
+    }
+
+    /** Find the first un-wired terminal on `node` matching one of `kinds`.
+     *  Returns the handle id (e.g. 'UI-3') or null if everything is taken. */
+    function nextFreeTerminal(
+      node: Node,
+      kinds: readonly ('UI' | 'AI' | 'BI' | 'UO' | 'AO' | 'BO')[],
+      direction: 'target' | 'source',
+    ): string | null {
+      const used = new Set<string>();
+      for (const e of edges) {
+        if (direction === 'target' && e.target === node.id && e.targetHandle) used.add(e.targetHandle);
+        if (direction === 'source' && e.source === node.id && e.sourceHandle) used.add(e.sourceHandle);
+      }
+      const points = (node.data as { points?: Record<string, number> } | undefined)?.points;
+      if (!points) return null;
+      for (const kind of kinds) {
+        const count = points[kind] ?? 0;
+        for (let i = 1; i <= count; i++) {
+          const h = `${kind}-${i}`;
+          if (!used.has(h)) return h;
+        }
       }
       return null;
     }
-    const srcKindEarly = nodeKind(src);
-    const tgtKindEarly = nodeKind(tgt);
-    if (srcKindEarly === 'sensor' || srcKindEarly === 'safety') {
-      const r = checkInputDevice(src, connection.targetHandle, srcKindEarly);
-      if (r) { flashWireRefusal(r); return; }
+
+    const srcKind = nodeKind(src);
+    const tgtKind = nodeKind(tgt);
+
+    // Auto-shift logic: if the user's wire landed on a controller terminal
+    // that's already wired (because handles snap by proximity and a busy
+    // controller has lots of taken terminals), find the next free terminal
+    // of an appropriate kind and quietly route there instead of refusing.
+    // We only auto-shift on the *controller* side — sensors/safeties have a
+    // single "q" port so their handle is correct by construction.
+    let resolvedSourceHandle = connection.sourceHandle ?? undefined;
+    let resolvedTargetHandle = connection.targetHandle ?? undefined;
+
+    // Case: sensor/safety → controller. Target is the controller's input terminal.
+    if ((srcKind === 'sensor' || srcKind === 'safety') && tgtKind === 'controller') {
+      const tgtTermKind = termKindOf(resolvedTargetHandle);
+      const targetIsOutput = !!tgtTermKind && OUTPUTS.has(tgtTermKind as 'UO' | 'AO' | 'BO');
+      const targetIsTaken = !!resolvedTargetHandle && edges.some(
+        (e) => e.target === tgt.id && e.targetHandle === resolvedTargetHandle,
+      );
+      if (targetIsOutput || targetIsTaken || !isTerminal(resolvedTargetHandle)) {
+        const next = nextFreeTerminal(tgt, preferredInputKinds(srcKind), 'target');
+        if (next) {
+          resolvedTargetHandle = next;
+        } else {
+          flashWireRefusal(
+            `${nodeLabel(tgt)} has no free input terminals left. All UI/AI/BI channels are used — disconnect a sensor or add an expansion module.`,
+          );
+          return;
+        }
+      }
     }
-    if (tgtKindEarly === 'sensor' || tgtKindEarly === 'safety') {
-      const r = checkInputDevice(tgt, connection.sourceHandle, tgtKindEarly);
-      if (r) { flashWireRefusal(r); return; }
+
+    // Mirror case: controller → sensor/safety (user dragged backwards).
+    if (srcKind === 'controller' && (tgtKind === 'sensor' || tgtKind === 'safety')) {
+      const srcTermKind = termKindOf(resolvedSourceHandle);
+      const sourceIsOutput = !!srcTermKind && OUTPUTS.has(srcTermKind as 'UO' | 'AO' | 'BO');
+      const sourceIsTaken = !!resolvedSourceHandle && edges.some(
+        (e) => e.source === src.id && e.sourceHandle === resolvedSourceHandle,
+      );
+      // For a backwards-drag, target the input side: pick a free UI/AI/BI on the controller.
+      if (sourceIsOutput || sourceIsTaken || !isTerminal(resolvedSourceHandle)) {
+        const next = nextFreeTerminal(src, preferredInputKinds(tgtKind), 'target');
+        if (next) {
+          resolvedSourceHandle = next;
+        } else {
+          flashWireRefusal(
+            `${nodeLabel(src)} has no free input terminals left. All UI/AI/BI channels are used — disconnect a sensor or add an expansion module.`,
+          );
+          return;
+        }
+      }
+    }
+
+    // One-wire-per-terminal: real terminal blocks are single-input and
+    // single-source. After auto-shift above, the picked terminal is free —
+    // but we still need to refuse if the user *deliberately* aimed at a
+    // taken terminal in a non-shiftable scenario (e.g., wiring between two
+    // controllers, or actuator→controller).
+    if (resolvedSourceHandle && isTerminal(resolvedSourceHandle)) {
+      const exists = edges.find(
+        (e) => e.source === connection.source && e.sourceHandle === resolvedSourceHandle,
+      );
+      if (exists) {
+        flashWireRefusal(
+          `Source terminal ${resolvedSourceHandle} on ${nodeLabel(src)} is already wired. Disconnect that wire first — real terminals are single-source.`,
+        );
+        return;
+      }
+    }
+    if (resolvedTargetHandle && isTerminal(resolvedTargetHandle)) {
+      const exists = edges.find(
+        (e) => e.target === connection.target && e.targetHandle === resolvedTargetHandle,
+      );
+      if (exists) {
+        flashWireRefusal(
+          `Target terminal ${resolvedTargetHandle} on ${nodeLabel(tgt)} is already wired. Disconnect that wire first — real terminals are single-input.`,
+        );
+        return;
+      }
     }
 
     const kind: WireKind =
@@ -1783,8 +1853,8 @@
       id: `e-${connection.source}-${connection.target}-${Date.now()}`,
       source: connection.source!,
       target: connection.target!,
-      sourceHandle: connection.sourceHandle ?? undefined,
-      targetHandle: connection.targetHandle ?? undefined,
+      sourceHandle: resolvedSourceHandle,
+      targetHandle: resolvedTargetHandle,
       data: { wireKind: kind },
     };
     edges = addEdge(withStyle(newEdge), edges);
