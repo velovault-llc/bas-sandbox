@@ -584,7 +584,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    width: 3rem;
+    width: 3.75rem;
     padding: 0.4rem 0;
     border-right: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
     background: color-mix(in srgb, CanvasText 4%, transparent);
@@ -625,8 +625,12 @@
 
   .rail-label {
     font-size: 0.6rem;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .rail-collapse {

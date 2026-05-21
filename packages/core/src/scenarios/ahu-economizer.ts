@@ -108,13 +108,13 @@ plug fan with a current-sensing run-status switch.`,
   ],
 
   wires: [
-    { fromTag: 'AHU-1', toTag: 'MA-T', wireKind: 'hardwired', note: 'MA-T → UI-1 (Pt1000 RTD)' },
-    { fromTag: 'AHU-1', toTag: 'DA-T', wireKind: 'hardwired', note: 'DA-T → UI-2 (Pt1000 RTD)' },
-    { fromTag: 'AHU-1', toTag: 'OA-T', wireKind: 'hardwired', note: 'OA-T → UI-3 (Pt1000 RTD)' },
-    { fromTag: 'AHU-1', toTag: 'RA-T', wireKind: 'hardwired', note: 'RA-T → UI-4 (Pt1000 RTD)' },
-    { fromTag: 'AHU-1', toTag: 'DS-P', wireKind: 'hardwired', note: 'DS-P → UI-5 (0–10V)' },
-    { fromTag: 'AHU-1', toTag: 'FREEZE', wireKind: 'hardwired', note: 'Freezestat → BO-3 in series with fan-start contactor (NC, fail-safe by wire break). For the sandbox: wire to a BI input that monitors the safety chain.' },
-    { fromTag: 'AHU-1', toTag: 'SMOKE', wireKind: 'hardwired', note: 'Smoke detector aux contact → another BI; trip drops fan + dampers in code AND breaks the hardware safety chain.' },
+    { fromTag: 'AHU-1', toTag: 'MA-T', wireKind: 'hardwired', note: 'MA-T → UI-1 (configured as Pt1000 RTD)' },
+    { fromTag: 'AHU-1', toTag: 'DA-T', wireKind: 'hardwired', note: 'DA-T → UI-2 (configured as Pt1000 RTD)' },
+    { fromTag: 'AHU-1', toTag: 'OA-T', wireKind: 'hardwired', note: 'OA-T → UI-3 (configured as Pt1000 RTD)' },
+    { fromTag: 'AHU-1', toTag: 'RA-T', wireKind: 'hardwired', note: 'RA-T → UI-4 (configured as Pt1000 RTD)' },
+    { fromTag: 'AHU-1', toTag: 'DS-P', wireKind: 'hardwired', note: 'DS-P → UI-5 (configured as 0-10V analog)' },
+    { fromTag: 'AHU-1', toTag: 'FREEZE', wireKind: 'hardwired', note: 'Freezestat → any unused UI (or a JCI NCE25 BI in production). Real install also lands in series with the fan-start contactor (NC, fail-safe by wire break).' },
+    { fromTag: 'AHU-1', toTag: 'SMOKE', wireKind: 'hardwired', note: 'Smoke detector aux contact → unused UI; trip drops fan + dampers in code AND breaks the hardware safety chain.' },
   ],
 
   program: {

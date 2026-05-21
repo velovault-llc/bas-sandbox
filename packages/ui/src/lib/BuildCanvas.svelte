@@ -173,6 +173,20 @@
     );
   }
 
+  /** Fully remove a wire from the canvas. Unlike Break (which keeps the
+   *  line and flips it red-dotted to simulate a comm fault), Delete makes
+   *  the line disappear and tears down any wiredTargets bookkeeping. */
+  function deleteEdge(edgeId: string): void {
+    const target = edges.find((edge) => edge.id === edgeId);
+    if (!target) return;
+    const srcNode = nodes.find((n) => n.id === target.source);
+    const tgtNode = nodes.find((n) => n.id === target.target);
+    const lbl = `${srcNode ? nodeLabel(srcNode) : target.source} ↔ ${tgtNode ? nodeLabel(tgtNode) : target.target}`;
+    logEvent(simSecondsElapsed, 'info', lbl, 'Wire removed from canvas.');
+    edges = edges.filter((edge) => edge.id !== edgeId);
+    onEdgesDelete([target]);
+  }
+
   // ============ Demo defaults + localStorage persistence ============
 
   const STORAGE_KEY = 'bas-sandbox:state-v1';
@@ -1725,6 +1739,37 @@
       }
     }
 
+    // Input/output direction check. Sensors and safeties are INPUT devices —
+    // they can only land on input terminals (UI / AI / BI). Trying to wire a
+    // sensor to BO-3 makes no electrical sense.
+    function termKindOf(handle: string | null | undefined): 'UI' | 'AI' | 'BI' | 'UO' | 'AO' | 'BO' | null {
+      if (!handle || !isTerminal(handle)) return null;
+      const prefix = handle.split('-')[0];
+      if (prefix === 'UI' || prefix === 'AI' || prefix === 'BI' ||
+          prefix === 'UO' || prefix === 'AO' || prefix === 'BO') {
+        return prefix;
+      }
+      return null;
+    }
+    const OUTPUTS = new Set(['UO', 'AO', 'BO']);
+    function checkInputDevice(deviceNode: Node, handle: string | null | undefined, role: string): string | null {
+      const tk = termKindOf(handle);
+      if (tk && OUTPUTS.has(tk)) {
+        return `${nodeLabel(deviceNode)} is a ${role} — it produces a signal and must land on an INPUT terminal (UI / AI / BI). ${tk}-${handle?.split('-')[1] ?? '?'} is an output terminal that drives an actuator. Try a UI terminal instead.`;
+      }
+      return null;
+    }
+    const srcKindEarly = nodeKind(src);
+    const tgtKindEarly = nodeKind(tgt);
+    if (srcKindEarly === 'sensor' || srcKindEarly === 'safety') {
+      const r = checkInputDevice(src, connection.targetHandle, srcKindEarly);
+      if (r) { flashWireRefusal(r); return; }
+    }
+    if (tgtKindEarly === 'sensor' || tgtKindEarly === 'safety') {
+      const r = checkInputDevice(tgt, connection.sourceHandle, tgtKindEarly);
+      if (r) { flashWireRefusal(r); return; }
+    }
+
     const kind: WireKind =
       selectedWireKind === 'auto'
         ? defaultWireKind(nodeKind(src), nodeKind(tgt))
@@ -2888,6 +2933,14 @@
                 onclick={() => setEdgeBroken(selectedEdge.id, !isBroken)}
               >
                 {isBroken ? '⟲ Restore trunk' : '✂ Break trunk'}
+              </button>
+              <button
+                type="button"
+                class="wire-delete"
+                title="Remove this wire from the canvas. (Break simulates a comm fault; Delete pulls the wire entirely.)"
+                onclick={() => deleteEdge(selectedEdge.id)}
+              >
+                ✕ Delete wire
               </button>
             </div>
           </Panel>
@@ -4939,6 +4992,26 @@
 
   .wire-break.broken:hover {
     background: color-mix(in srgb, #2ecc71 28%, transparent);
+  }
+
+  /* Delete is destructive — filled red so it's visually distinct from
+     Break (outlined red, which is a reversible toggle). */
+  .wire-delete {
+    border: 1px solid #b03a2e;
+    background: #c0392b;
+    color: white;
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .wire-delete:hover {
+    background: #a93226;
+    border-color: #922b21;
   }
 
   .wire-chip:disabled {

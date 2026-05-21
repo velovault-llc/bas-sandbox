@@ -67,9 +67,9 @@ upstream at the AHU.`,
   ],
 
   wires: [
-    { fromTag: 'VAV-1', toTag: 'ZN-T',   wireKind: 'hardwired', note: 'ZN-T → UI-1 (Pt1000 RTD)' },
-    { fromTag: 'VAV-1', toTag: 'OCC',    wireKind: 'hardwired', note: 'OCC → BI-1 (dry contact, 1 = occupied)' },
-    { fromTag: 'VAV-1', toTag: 'DMP-FB', wireKind: 'hardwired', note: 'DMP-FB → AI-1 (2-10V)' },
+    { fromTag: 'VAV-1', toTag: 'ZN-T',   wireKind: 'hardwired', note: 'ZN-T → UI-1 (configured as Pt1000 RTD)' },
+    { fromTag: 'VAV-1', toTag: 'OCC',    wireKind: 'hardwired', note: 'OCC → UI-2 (configured as binary dry-contact, 1 = occupied)' },
+    { fromTag: 'VAV-1', toTag: 'DMP-FB', wireKind: 'hardwired', note: 'DMP-FB → UI-3 (configured as 0-10V analog)' },
   ],
 
   program: {
