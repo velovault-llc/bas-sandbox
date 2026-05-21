@@ -3,6 +3,7 @@
 import type { ScenarioDefinition } from './types.js';
 import { AHU_ECONOMIZER } from './ahu-economizer.js';
 import { VAV_REHEAT } from './vav-reheat.js';
+import { BOILER_HW_LOOP } from './boiler-hw-loop.js';
 
 export type {
   ScenarioDefinition,
@@ -16,7 +17,11 @@ export type { WireKind } from './wire-kind.js';
 
 /** All shipping scenarios, ordered by intended progression difficulty.
  *  Apprentice → Tech → Commissioning Agent. */
-export const SCENARIO_LIBRARY: readonly ScenarioDefinition[] = [VAV_REHEAT, AHU_ECONOMIZER];
+export const SCENARIO_LIBRARY: readonly ScenarioDefinition[] = [
+  VAV_REHEAT,
+  AHU_ECONOMIZER,
+  BOILER_HW_LOOP,
+];
 
 export function findScenario(id: string): ScenarioDefinition | undefined {
   return SCENARIO_LIBRARY.find((s) => s.id === id);
