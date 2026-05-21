@@ -26,7 +26,7 @@
     DEFAULT_SENSOR_SIGNAL,
     type SensorSignal,
   } from './sim/sensorModels';
-  import { importStore, canvasActions, openModelPicker, selectionStore } from './canvasStore.svelte';
+  import { importStore, canvasActions, openModelPicker, selectionStore, canvasSnapshot } from './canvasStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import { openCli, openFbd, programStore } from './cli/programStore.svelte';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
@@ -1775,6 +1775,13 @@
     } else {
       selectionStore.selectedControllerVendor = null;
     }
+  });
+
+  // Publish nodes + edges so the scenario walkthrough can validate against
+  // canvas state without prop-drilling.
+  $effect(() => {
+    canvasSnapshot.nodes = nodes;
+    canvasSnapshot.edges = edges;
   });
 
   /** Rolling log of alarm transitions — each entry captures a fire or clear

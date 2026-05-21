@@ -79,6 +79,16 @@ export {
 } from './equipment/expansions.js';
 export type { ExpansionModule } from './equipment/expansions.js';
 
+export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';
+export type {
+  ScenarioDefinition,
+  EquipmentRequirement,
+  WireRequirement,
+  ProgramSpec,
+  RuntimeCheck,
+  ScenarioDifficulty,
+} from './scenarios/index.js';
+
 export { BLOCK_LIBRARY, compileFbd } from './fbd/index.js';
 export type {
   BlockTypeDef,

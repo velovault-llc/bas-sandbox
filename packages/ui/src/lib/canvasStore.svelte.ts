@@ -69,3 +69,17 @@ export const selectionStore = $state<{
 }>({
   selectedControllerVendor: null,
 });
+
+/**
+ * Snapshot broadcast — BuildCanvas writes its current nodes + edges here
+ * so other panels (the scenario walkthrough, future analytics) can read
+ * canvas state without prop-drilling through the component tree. Updated
+ * via $effect inside BuildCanvas any time nodes / edges change.
+ */
+export const canvasSnapshot = $state<{
+  nodes: Node[];
+  edges: Edge[];
+}>({
+  nodes: [],
+  edges: [],
+});

@@ -11,6 +11,8 @@
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
+  import ScenariosTab from './lib/scenarios/ScenariosTab.svelte';
+  import ScenarioPanel from './lib/scenarios/ScenarioPanel.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
@@ -29,7 +31,7 @@
     else if (window.location.hash === '#about') window.history.replaceState(null, '', window.location.pathname);
   });
 
-  type LeftDrawerTab = 'weather' | 'devices' | 'settings';
+  type LeftDrawerTab = 'weather' | 'devices' | 'scenarios' | 'settings';
   let leftDrawerOpen = $state(true);
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
@@ -356,6 +358,16 @@
           <button
             type="button"
             class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'scenarios'}
+            onclick={() => pickLeftDrawerTab('scenarios')}
+            title="Guided BAS-tech training scenarios"
+          >
+            <span class="rail-icon">▤</span>
+            <span class="rail-label">Scenarios</span>
+          </button>
+          <button
+            type="button"
+            class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'settings'}
             onclick={() => pickLeftDrawerTab('settings')}
             title="Settings"
@@ -379,6 +391,8 @@
             <WeatherPanel />
           {:else if leftDrawerTab === 'devices'}
             <DevicesPalette />
+          {:else if leftDrawerTab === 'scenarios'}
+            <ScenariosTab />
           {:else if leftDrawerTab === 'settings'}
             <div class="settings-placeholder">
               <h3>Settings</h3>
@@ -399,6 +413,7 @@
             <FBDCanvas />
           {/if}
           <ModelPickerModal />
+          <ScenarioPanel />
           <button
             type="button"
             class="dock-toggle"
