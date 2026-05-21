@@ -57,14 +57,49 @@ export const runtimeLog = $state<RuntimeLogStore>({
   offsetY: _initialPos.y,
 });
 
+/** Headroom (px) to keep the drag-handle inside the viewport. Anything
+ *  larger than (viewportHeight - this) would push the header above the
+ *  top of the screen and the panel becomes un-draggable. */
+const PANEL_MIN_HEADER_VISIBLE = 80;
+
 export function setPanelPosition(x: number, y: number): void {
-  runtimeLog.offsetX = x;
-  runtimeLog.offsetY = y;
+  const { cx, cy } = clampToViewport(x, y);
+  runtimeLog.offsetX = cx;
+  runtimeLog.offsetY = cy;
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(LS_POSITION, JSON.stringify({ x, y }));
+    localStorage.setItem(LS_POSITION, JSON.stringify({ x: cx, y: cy }));
   } catch {
     // ignore
+  }
+}
+
+/** Snap the panel back to the default bottom-right corner. Wired to a
+ *  button in the header so a stuck panel is always recoverable. */
+export function resetPanelPosition(): void {
+  setPanelPosition(0, 0);
+}
+
+/** Clamp x/y so the panel's header stays clickable on the current
+ *  viewport. Bottom-right anchored coords: bigger Y = further from
+ *  bottom = closer to top. */
+function clampToViewport(x: number, y: number): { cx: number; cy: number } {
+  if (typeof window === 'undefined') return { cx: Math.max(0, x), cy: Math.max(0, y) };
+  const maxY = Math.max(0, window.innerHeight - PANEL_MIN_HEADER_VISIBLE);
+  const maxX = Math.max(0, window.innerWidth - PANEL_MIN_HEADER_VISIBLE);
+  return {
+    cx: Math.min(maxX, Math.max(0, x)),
+    cy: Math.min(maxY, Math.max(0, y)),
+  };
+}
+
+/** Re-clamp the stored position to the current viewport. Call this on
+ *  app mount + on window resize so a saved-from-different-screen
+ *  position can't strand the panel off-screen. */
+export function rehydratePanelPosition(): void {
+  const { cx, cy } = clampToViewport(runtimeLog.offsetX, runtimeLog.offsetY);
+  if (cx !== runtimeLog.offsetX || cy !== runtimeLog.offsetY) {
+    setPanelPosition(cx, cy);
   }
 }
 

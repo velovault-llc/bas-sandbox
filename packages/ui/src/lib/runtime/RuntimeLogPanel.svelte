@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
     runtimeLog,
     clearLog,
@@ -6,9 +7,20 @@
     togglePaused,
     setFilter,
     setPanelPosition,
+    resetPanelPosition,
+    rehydratePanelPosition,
     visibleEntries,
     type LogLevel,
   } from './runtimeLogStore.svelte';
+
+  // Re-clamp on mount + on resize so a saved-from-different-screen
+  // position never strands the panel off-screen.
+  onMount(() => {
+    rehydratePanelPosition();
+    const onResize = () => rehydratePanelPosition();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  });
 
   const visible = $derived(visibleEntries());
   const counts = $derived.by(() => {
@@ -130,6 +142,12 @@
       {#if counts.warn > 0}<span class="count warn">{counts.warn}</span>{/if}
       <span class="count info">{counts.info}</span>
     </span>
+    <button
+      type="button"
+      class="snap-btn"
+      title="Snap panel back to bottom-right corner"
+      onclick={(e) => { e.stopPropagation(); resetPanelPosition(); }}
+    >⌐</button>
     <span class="toggle">{runtimeLog.panelOpen ? '▼' : '▲'}</span>
   </header>
 
@@ -215,6 +233,23 @@
 
   .runtime-log.dragging {
     transition: none;
+  }
+
+  .snap-btn {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    padding: 0 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    margin-left: auto;
+  }
+  .snap-btn:hover {
+    color: CanvasText;
+    border-color: color-mix(in srgb, CanvasText 45%, transparent);
   }
 
   .grip {
