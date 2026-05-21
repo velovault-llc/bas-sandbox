@@ -3,7 +3,7 @@
   import { canvasSnapshot, showInDevices } from '../canvasStore.svelte';
   import { validateScenario } from './validator';
   import { runRuntimeChecks, type RuntimeChecksResult } from './runtimeChecks';
-  import { programStore } from '../cli/programStore.svelte';
+  import { programStore, setProgramGraph } from '../cli/programStore.svelte';
 
   function tabForKind(kind: string): 'controllers' | 'sensors' | 'safeties' | 'expansions' {
     if (kind === 'controller') return 'controllers';
@@ -16,6 +16,31 @@
   // and automatically re-run when the program changes after a previous
   // run (so users see fresh results as they iterate).
   let checksResult = $state<RuntimeChecksResult | null>(null);
+
+  /** Install the scenario's starter FBD graph onto the user's resolved
+   *  controller. Useful when the user wants to skip the "build all 28
+   *  blocks by hand" phase and study/tweak the working sequence. */
+  function loadStarterProgram(): void {
+    if (!scenarioStore.active) return;
+    const sc = scenarioStore.active;
+    if (!sc.program.starterGraph) return;
+    const buildResult = validateScenario(sc, canvasSnapshot.nodes, canvasSnapshot.edges);
+    const primaryCtrl = sc.equipment.find((e) => e.kind === 'controller');
+    if (!primaryCtrl) return;
+    const nodeId = buildResult.tagToNodeId.get(primaryCtrl.tag);
+    if (!nodeId) {
+      // Surface the same notice mechanism as runChecks
+      checksResult = {
+        allPassed: false,
+        perCheck: [],
+        notice: `Place ${primaryCtrl.tag} on the canvas first, then try again.`,
+      };
+      return;
+    }
+    setProgramGraph(nodeId, sc.program.starterGraph);
+    // Auto-run checks so the user sees instant green
+    runChecks();
+  }
 
   function runChecks(): void {
     if (!scenarioStore.active) return;
@@ -142,6 +167,14 @@
           {/each}
           {#if sc.program.requiredBlocks}
             <p class="block-list">Required FBD blocks: <code>{sc.program.requiredBlocks.join(' · ')}</code></p>
+          {/if}
+          {#if sc.program.starterGraph}
+            <button type="button" class="load-starter-btn" onclick={loadStarterProgram}>
+              ⤓ Load starter program (skip to study/tweak)
+            </button>
+            <p class="muted" style="margin-top:0.3rem; font-size:0.7rem;">
+              Drops the pre-wired G36 block diagram onto your controller. Open ▦ Diagram on the controller to see the wiring.
+            </p>
           {/if}
         </section>
 
@@ -490,6 +523,24 @@
 
   .run-checks-btn:hover {
     background: color-mix(in srgb, #4a9eff 88%, Canvas);
+  }
+
+  .load-starter-btn {
+    width: 100%;
+    margin-top: 0.55rem;
+    background: color-mix(in srgb, #2ecc71 22%, transparent);
+    color: color-mix(in srgb, #2ecc71 100%, CanvasText);
+    border: 1px solid color-mix(in srgb, #2ecc71 50%, transparent);
+    padding: 0.45rem 0.7rem;
+    border-radius: 5px;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .load-starter-btn:hover {
+    background: color-mix(in srgb, #2ecc71 32%, transparent);
   }
 
   .checks {

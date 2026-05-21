@@ -14,6 +14,7 @@
 // step's predicate.
 
 import type { WireKind } from './wire-kind.js';
+import type { FbdGraph } from '../fbd/index.js';
 
 export type ScenarioDifficulty = 'apprentice' | 'tech' | 'commissioning-agent';
 
@@ -83,7 +84,7 @@ export interface ProgramSpec {
   /** When language = 'fbd', list of block types the user is expected to use. */
   readonly requiredBlocks?: readonly string[];
   /** Optional starter graph the user can load if they want to skip ahead. */
-  readonly starterGraph?: unknown; // FbdGraph
+  readonly starterGraph?: FbdGraph;
 }
 
 /** A run-time check applied after the user clicks Run.

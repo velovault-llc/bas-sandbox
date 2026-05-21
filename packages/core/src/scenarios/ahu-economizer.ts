@@ -119,7 +119,108 @@ plug fan with a current-sensing run-status switch.`,
 
   program: {
     language: 'fbd',
-    requiredBlocks: ['INPUT', 'OUTPUT', 'CONST', 'PID', 'SUB', 'AND', 'GT', 'LT', 'SEL', 'NOT'],
+    requiredBlocks: ['INPUT', 'OUTPUT', 'CONST', 'PID', 'SUB', 'AND', 'OR', 'LT', 'SEL', 'NOT'],
+    // Full G36 starter sequence — wired to pass every runtime check.
+    // Loading this drops the user straight to "now study + tweak", not
+    // "draw 28 blocks from scratch." Each block id is human-readable
+    // so the FBD canvas + ST source are both legible.
+    starterGraph: {
+      nodes: [
+        // ── Inputs ─────────────────────────────────────────────────
+        { id: 'in_sensed',   blockType: 'INPUT',  params: { source: 'sensed' } },
+        { id: 'in_setpoint', blockType: 'INPUT',  params: { source: 'setpoint' } },
+        { id: 'in_oat',      blockType: 'INPUT',  params: { source: 'oat' } },
+        { id: 'in_ra',       blockType: 'INPUT',  params: { source: 'ra' } },
+        { id: 'in_freeze',   blockType: 'INPUT',  params: { source: 'freeze' } },
+        { id: 'in_smoke',    blockType: 'INPUT',  params: { source: 'smoke' } },
+
+        // ── PID on DA-T error ──────────────────────────────────────
+        { id: 'err',         blockType: 'SUB' },
+        { id: 'pid',         blockType: 'PID',    params: { Kp: 0.3, Ki: 0.001, Kd: 0 } },
+
+        // ── Economizer enable logic ────────────────────────────────
+        { id: 'k_65',        blockType: 'CONST',  params: { value: 65 } },
+        { id: 'oa_low',      blockType: 'LT' },
+        { id: 'k_2',         blockType: 'CONST',  params: { value: 2 } },
+        { id: 'ra_minus_2',  blockType: 'SUB' },
+        { id: 'oa_below_ra', blockType: 'LT' },
+        { id: 'econ_logic',  blockType: 'AND' },
+
+        // ── Trip detection (freeze + smoke fail-safe NC) ───────────
+        { id: 'freeze_trip', blockType: 'NOT' },
+        { id: 'smoke_trip',  blockType: 'NOT' },
+        { id: 'any_trip',    blockType: 'OR' },
+
+        // ── Constants for SEL fallbacks ────────────────────────────
+        { id: 'k_0',         blockType: 'CONST',  params: { value: 0 } },
+        { id: 'k_1',         blockType: 'CONST',  params: { value: 1 } },
+        { id: 'k_02',        blockType: 'CONST',  params: { value: 0.2 } },
+
+        // ── Selectors gate every output on the trip signal ─────────
+        { id: 'sel_act',     blockType: 'SEL' },
+        { id: 'sel_fan',     blockType: 'SEL' },
+        { id: 'sel_damper',  blockType: 'SEL' },
+        { id: 'sel_econ',    blockType: 'SEL' },
+
+        // ── Outputs ────────────────────────────────────────────────
+        { id: 'out_act',     blockType: 'OUTPUT', params: { target: 'actuator' } },
+        { id: 'out_fan',     blockType: 'OUTPUT', params: { target: 'fan_cmd' } },
+        { id: 'out_damper',  blockType: 'OUTPUT', params: { target: 'oa_damper' } },
+        { id: 'out_econ',    blockType: 'OUTPUT', params: { target: 'econ_enable' } },
+      ],
+      edges: [
+        // err = sensed - setpoint
+        { from: { nodeId: 'in_sensed',   port: 'q' }, to: { nodeId: 'err', port: 'a' } },
+        { from: { nodeId: 'in_setpoint', port: 'q' }, to: { nodeId: 'err', port: 'b' } },
+        // pid = PID(err, Kp, Ki, Kd)
+        { from: { nodeId: 'err',         port: 'q' }, to: { nodeId: 'pid', port: 'error' } },
+
+        // oa_low = oat < 65
+        { from: { nodeId: 'in_oat',      port: 'q' }, to: { nodeId: 'oa_low', port: 'a' } },
+        { from: { nodeId: 'k_65',        port: 'q' }, to: { nodeId: 'oa_low', port: 'b' } },
+        // ra_minus_2 = ra - 2
+        { from: { nodeId: 'in_ra',       port: 'q' }, to: { nodeId: 'ra_minus_2', port: 'a' } },
+        { from: { nodeId: 'k_2',         port: 'q' }, to: { nodeId: 'ra_minus_2', port: 'b' } },
+        // oa_below_ra = oat < (ra - 2)
+        { from: { nodeId: 'in_oat',      port: 'q' }, to: { nodeId: 'oa_below_ra', port: 'a' } },
+        { from: { nodeId: 'ra_minus_2',  port: 'q' }, to: { nodeId: 'oa_below_ra', port: 'b' } },
+        // econ_logic = oa_low AND oa_below_ra
+        { from: { nodeId: 'oa_low',      port: 'q' }, to: { nodeId: 'econ_logic', port: 'a' } },
+        { from: { nodeId: 'oa_below_ra', port: 'q' }, to: { nodeId: 'econ_logic', port: 'b' } },
+
+        // freeze_trip = NOT freeze  (freeze=1 normal NC closed → 0 not tripped)
+        { from: { nodeId: 'in_freeze',   port: 'q' }, to: { nodeId: 'freeze_trip', port: 'in' } },
+        // smoke_trip = NOT smoke
+        { from: { nodeId: 'in_smoke',    port: 'q' }, to: { nodeId: 'smoke_trip', port: 'in' } },
+        // any_trip = freeze_trip OR smoke_trip
+        { from: { nodeId: 'freeze_trip', port: 'q' }, to: { nodeId: 'any_trip', port: 'a' } },
+        { from: { nodeId: 'smoke_trip',  port: 'q' }, to: { nodeId: 'any_trip', port: 'b' } },
+
+        // actuator = SEL(any_trip, 0, pid)
+        { from: { nodeId: 'any_trip',    port: 'q' }, to: { nodeId: 'sel_act', port: 'sel' } },
+        { from: { nodeId: 'k_0',         port: 'q' }, to: { nodeId: 'sel_act', port: 'a' } },
+        { from: { nodeId: 'pid',         port: 'q' }, to: { nodeId: 'sel_act', port: 'b' } },
+        { from: { nodeId: 'sel_act',     port: 'q' }, to: { nodeId: 'out_act', port: 'in' } },
+
+        // fan_cmd = SEL(any_trip, 0, 1)
+        { from: { nodeId: 'any_trip',    port: 'q' }, to: { nodeId: 'sel_fan', port: 'sel' } },
+        { from: { nodeId: 'k_0',         port: 'q' }, to: { nodeId: 'sel_fan', port: 'a' } },
+        { from: { nodeId: 'k_1',         port: 'q' }, to: { nodeId: 'sel_fan', port: 'b' } },
+        { from: { nodeId: 'sel_fan',     port: 'q' }, to: { nodeId: 'out_fan', port: 'in' } },
+
+        // oa_damper = SEL(any_trip, 0, 0.2)
+        { from: { nodeId: 'any_trip',    port: 'q' }, to: { nodeId: 'sel_damper', port: 'sel' } },
+        { from: { nodeId: 'k_0',         port: 'q' }, to: { nodeId: 'sel_damper', port: 'a' } },
+        { from: { nodeId: 'k_02',        port: 'q' }, to: { nodeId: 'sel_damper', port: 'b' } },
+        { from: { nodeId: 'sel_damper',  port: 'q' }, to: { nodeId: 'out_damper', port: 'in' } },
+
+        // econ_enable = SEL(any_trip, 0, econ_logic)
+        { from: { nodeId: 'any_trip',    port: 'q' }, to: { nodeId: 'sel_econ', port: 'sel' } },
+        { from: { nodeId: 'k_0',         port: 'q' }, to: { nodeId: 'sel_econ', port: 'a' } },
+        { from: { nodeId: 'econ_logic',  port: 'q' }, to: { nodeId: 'sel_econ', port: 'b' } },
+        { from: { nodeId: 'sel_econ',    port: 'q' }, to: { nodeId: 'out_econ', port: 'in' } },
+      ],
+    },
     sequence: [
       '1. Discharge-air temp control (DA-T → setpoint via PID)',
       '   Single PID loop chasing DA-T to setpoint (55°F cool / 90°F heat depending on mode).',
@@ -150,28 +251,39 @@ plug fan with a current-sensing run-status switch.`,
     {
       id: 'cooling-engages-hot-load',
       description: 'Cooling-coil valve opens when discharge temp is above setpoint under hot load.',
-      inputs: { sensed: 78, setpoint: 55, oat: 90 },
+      // freeze=1 = NC closed = healthy. ra=75 (typical return).
+      inputs: { sensed: 78, setpoint: 55, oat: 90, ra: 75, freeze: 1, smoke: 1 },
       expects: [{ output: 'actuator', min: 0.7, max: 1.0 }],
     },
     {
       id: 'cooling-disengages-met',
       description: 'Cooling-coil valve closes when discharge temp drops to setpoint.',
-      inputs: { sensed: 55, setpoint: 55, oat: 90 },
+      inputs: { sensed: 55, setpoint: 55, oat: 90, ra: 75, freeze: 1, smoke: 1 },
       expects: [{ output: 'actuator', min: 0, max: 0.15 }],
     },
     {
       id: 'economizer-enables-cool-out',
       description: 'Economizer enable goes true when OA-T < 65°F AND OA-T < RA-T - 2°F.',
-      inputs: { sensed: 55, setpoint: 55, oat: 50 },
+      inputs: { sensed: 55, setpoint: 55, oat: 50, ra: 72, freeze: 1, smoke: 1 },
       expects: [{ output: 'econ_enable', approx: 1, tolerance: 0.01 }],
     },
     {
       id: 'freeze-trip-shuts-fan',
-      description: 'Freezestat trip (BI low) drops fan and closes OA damper.',
-      inputs: { sensed: 33, setpoint: 55, oat: 28, freeze: 0 },
+      description: 'Freezestat trip (BI low → freeze=0) drops fan and closes OA damper.',
+      inputs: { sensed: 33, setpoint: 55, oat: 28, ra: 60, freeze: 0, smoke: 1 },
       expects: [
         { output: 'fan_cmd', approx: 0, tolerance: 0.01 },
         { output: 'oa_damper', approx: 0, tolerance: 0.05 },
+      ],
+    },
+    {
+      id: 'smoke-shutdown-all',
+      description: 'Smoke trip (BI low → smoke=0) drops fan, closes OA damper, closes all coil valves.',
+      inputs: { sensed: 55, setpoint: 55, oat: 70, ra: 72, freeze: 1, smoke: 0 },
+      expects: [
+        { output: 'fan_cmd', approx: 0, tolerance: 0.01 },
+        { output: 'oa_damper', approx: 0, tolerance: 0.05 },
+        { output: 'actuator', approx: 0, tolerance: 0.05 },
       ],
     },
   ],
