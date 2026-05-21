@@ -35,6 +35,8 @@ export {
   findControllerModel,
   controllerCatalogByVendor,
   totalPoints,
+  fixedOnboardPoints,
+  generateTerminals,
   formatPointBreakdown,
 } from './equipment/catalog.js';
 export type {
@@ -43,6 +45,7 @@ export type {
   ProgrammingLanguage,
   Protocol,
   PointCount,
+  TerminalLabel,
 } from './equipment/catalog.js';
 
 export {
@@ -67,6 +70,14 @@ export type {
   SafetyKind,
   SafetyResetBehavior,
 } from './equipment/safeties.js';
+
+export {
+  EXPANSION_CATALOG,
+  findExpansionModule,
+  expansionsByVendor,
+  expansionsForVendor,
+} from './equipment/expansions.js';
+export type { ExpansionModule } from './equipment/expansions.js';
 
 export { BLOCK_LIBRARY, compileFbd } from './fbd/index.js';
 export type {

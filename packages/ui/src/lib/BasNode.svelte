@@ -2,6 +2,12 @@
   import { getContext } from 'svelte';
   import { Handle, Position, type NodeProps } from '@xyflow/svelte';
   import { SENSOR_TEMPLATE_BY_ID, type SensorSignal } from './sim/sensorModels';
+  import { findControllerModel, generateTerminals, fixedOnboardPoints, type TerminalLabel } from '@bas/core';
+
+  /** Cap above which we abandon per-terminal handles and fall back to the
+   *  generic top/bottom pair. Beckhoff CX9020 (1024 bus terminals) would
+   *  otherwise paint an unreadable column of dots. */
+  const TERMINAL_HANDLE_CAP = 24;
 
   type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety';
 
@@ -63,6 +69,24 @@
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
   // and validate via the discriminated `kind` union on data.
   let { id, data }: NodeProps & { data: BasNodeData } = $props();
+
+  // Per-terminal handles: when this is a controller with a known vendor
+  // model and a small-enough fixed onboard point count, derive a handle
+  // for each terminal so wires land on UI-1, BO-3, AO-2 etc. like a real
+  // controller's terminal block. Above the cap, we keep the generic
+  // top/bottom handle pair (modular IPCs would otherwise show ~1000 dots).
+  const terminals = $derived.by((): { inputs: TerminalLabel[]; outputs: TerminalLabel[] } | null => {
+    if (data.kind !== 'controller' || !data.vendorModelId) return null;
+    const model = findControllerModel(data.vendorModelId);
+    if (!model || !model.points) return null;
+    if (fixedOnboardPoints(model.points) === 0) return null;
+    if (fixedOnboardPoints(model.points) > TERMINAL_HANDLE_CAP) return null;
+    const all = generateTerminals(model.points);
+    return {
+      inputs: all.filter((t) => t.direction === 'in'),
+      outputs: all.filter((t) => t.direction === 'out'),
+    };
+  });
 
   // Set of node ids that are wired to the physics sim (from BuildCanvas context).
   const getWiredIds = getContext<() => Set<string>>('basWiredIds');
@@ -143,7 +167,35 @@
   class:has-fault={!!data.fault && data.fault !== 'normal'}
   class:is-offline={isOffline}
 >
-  <Handle type="target" position={Position.Top} />
+  <!-- Network trunk in (always rendered). Controllers receive supervisor
+       traffic via the top edge; sensors/safeties receive their hardwired
+       cable from a controller's left/right terminal. -->
+  <Handle type="target" position={Position.Top} id="net-in" />
+
+  {#if terminals}
+    {#each terminals.inputs as t, i (t.id)}
+      {@const topPct = 18 + (i / Math.max(1, terminals.inputs.length - 1)) * 70}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id={t.id}
+        style="top: {topPct}%;"
+        class="term term-{t.kind}"
+      />
+      <span class="term-label term-label-left" style:top="{topPct}%">{t.id}</span>
+    {/each}
+    {#each terminals.outputs as t, i (t.id)}
+      {@const topPct = 18 + (i / Math.max(1, terminals.outputs.length - 1)) * 70}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={t.id}
+        style="top: {topPct}%;"
+        class="term term-{t.kind}"
+      />
+      <span class="term-label term-label-right" style:top="{topPct}%">{t.id}</span>
+    {/each}
+  {/if}
 
   <div class="header">
     <span class="icon">{ICONS[data.kind]}</span>
@@ -222,7 +274,9 @@
     </div>
   {/if}
 
-  <Handle type="source" position={Position.Bottom} />
+  <!-- Network trunk out — downstream MS/TP or hardwired cable from this
+       controller to downstream devices (sensors, sub-controllers). -->
+  <Handle type="source" position={Position.Bottom} id="net-out" />
 </div>
 
 <style>
@@ -245,6 +299,7 @@
     min-width: 10rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
     transition: box-shadow 200ms ease;
+    position: relative;
     /* Lift nodes above the edge layer so wires never appear to cross through. */
     position: relative;
     z-index: 2;
@@ -497,5 +552,58 @@
     height: 8px;
     background: var(--accent);
     border: 2px solid Canvas;
+  }
+  /* Per-terminal handles + their tiny terminal labels. When the controller
+     has fixed onboard I/O (FEC2611's 7 UI + 4 BI + 2 AO + 4 BO), the node
+     paints them down the left/right edges like a real controller's
+     terminal block. Color-coded by ASHRAE point type. */
+  :global(.bas-node .term) {
+    width: 9px !important;
+    height: 9px !important;
+    border: 1.5px solid color-mix(in srgb, CanvasText 35%, transparent) !important;
+    background: Canvas !important;
+  }
+
+  :global(.bas-node .term-UI),
+  :global(.bas-node .term-UO) {
+    border-color: #4a9eff !important;
+    background: color-mix(in srgb, #4a9eff 25%, Canvas) !important;
+  }
+
+  :global(.bas-node .term-AI),
+  :global(.bas-node .term-AO) {
+    border-color: #f39c12 !important;
+    background: color-mix(in srgb, #f39c12 25%, Canvas) !important;
+  }
+
+  :global(.bas-node .term-BI),
+  :global(.bas-node .term-BO) {
+    border-color: #2ecc71 !important;
+    background: color-mix(in srgb, #2ecc71 25%, Canvas) !important;
+  }
+
+  .term-label {
+    position: absolute;
+    font-size: 0.58rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    pointer-events: none;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    line-height: 1;
+  }
+
+  .term-label-left {
+    left: -2.6rem;
+    text-align: right;
+    width: 2.3rem;
+  }
+
+  .term-label-right {
+    right: -2.6rem;
+    text-align: left;
+    width: 2.3rem;
   }
 </style>

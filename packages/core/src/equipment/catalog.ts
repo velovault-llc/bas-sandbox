@@ -92,6 +92,47 @@ export function totalPoints(p: PointCount | undefined): number {
   return (p.UI ?? 0) + (p.AI ?? 0) + (p.BI ?? 0) + (p.UO ?? 0) + (p.AO ?? 0) + (p.BO ?? 0) + (p.expansion ?? 0);
 }
 
+/** Total FIXED onboard points (excludes `expansion`). The terminal-handle UI
+ *  only renders dots for these; expansion points are accessed via separate
+ *  expansion-module nodes. */
+export function fixedOnboardPoints(p: PointCount | undefined): number {
+  if (!p) return 0;
+  return (p.UI ?? 0) + (p.AI ?? 0) + (p.BI ?? 0) + (p.UO ?? 0) + (p.AO ?? 0) + (p.BO ?? 0);
+}
+
+/** Generate the list of per-point terminal labels for a controller. The
+ *  caller decides whether to render them — if the count is large the UI
+ *  falls back to a single generic handle. */
+export interface TerminalLabel {
+  /** Terminal id like "UI-1", "BO-3". */
+  readonly id: string;
+  /** Type tag for grouping. */
+  readonly kind: 'UI' | 'AI' | 'BI' | 'UO' | 'AO' | 'BO';
+  /** 1-indexed channel number within the kind. */
+  readonly n: number;
+  /** Whether this is an input or output on the node side. */
+  readonly direction: 'in' | 'out';
+}
+
+export function generateTerminals(p: PointCount | undefined): TerminalLabel[] {
+  if (!p) return [];
+  const out: TerminalLabel[] = [];
+  const kinds: { kind: TerminalLabel['kind']; count: number; direction: 'in' | 'out' }[] = [
+    { kind: 'UI', count: p.UI ?? 0, direction: 'in' },
+    { kind: 'AI', count: p.AI ?? 0, direction: 'in' },
+    { kind: 'BI', count: p.BI ?? 0, direction: 'in' },
+    { kind: 'UO', count: p.UO ?? 0, direction: 'out' },
+    { kind: 'AO', count: p.AO ?? 0, direction: 'out' },
+    { kind: 'BO', count: p.BO ?? 0, direction: 'out' },
+  ];
+  for (const k of kinds) {
+    for (let n = 1; n <= k.count; n++) {
+      out.push({ id: `${k.kind}-${n}`, kind: k.kind, n, direction: k.direction });
+    }
+  }
+  return out;
+}
+
 /** Single-line "12 UI · 4 BO · 2 AO" summary for inspector + CLI surfaces. */
 export function formatPointBreakdown(p: PointCount | undefined): string {
   if (!p) return '';

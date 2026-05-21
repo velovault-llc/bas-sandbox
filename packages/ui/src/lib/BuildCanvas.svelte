@@ -1594,6 +1594,31 @@
     }
   }
 
+  /** Standard BACnet MS/TP / N2 baud rate options. 'auto' = use the default
+   *  for the wire kind (38400 for MS/TP, 9600 for N2). */
+  const BAUD_RATES: readonly (number | 'auto')[] = ['auto', 9600, 19200, 38400, 76800, 115200];
+
+  function defaultBaudForKind(kind: WireKind): number | undefined {
+    if (kind === 'mstp') return 38400;
+    if (kind === 'n2') return 9600;
+    return undefined;
+  }
+
+  function setEdgeBaud(edgeId: string, baud: number | 'auto'): void {
+    edges = edges.map((e) => {
+      if (e.id !== edgeId) return e;
+      const data = { ...((e.data as Record<string, unknown>) ?? {}) };
+      if (baud === 'auto') {
+        delete data.baud;
+        data.baudAuto = true;
+      } else {
+        data.baud = baud;
+        delete data.baudAuto;
+      }
+      return { ...e, data };
+    });
+  }
+
   function setEdgeKind(edgeId: string, kind: WireKind) {
     edges = edges.map((e) =>
       e.id === edgeId ? withStyle({ ...e, data: { ...(e.data ?? {}), wireKind: kind } }) : e,
@@ -2549,10 +2574,25 @@
                   </button>
                 {/each}
               </div>
-              {#if baud}
-                <span class="wire-baud" title="Baud rate pulled from the trunk's JCI property 426">
-                  {baud >= 1000 ? `${(baud / 1000).toFixed(baud % 1000 === 0 ? 0 : 1)}k` : baud} baud
-                </span>
+              {#if currentKind === 'mstp' || currentKind === 'n2'}
+                {@const effectiveBaud = baud ?? defaultBaudForKind(currentKind)}
+                {@const isAuto = (selectedEdge.data?.baudAuto as boolean | undefined) === true || !baud}
+                <label class="wire-baud-edit" title="MS/TP / N2 trunks: pick the segment baud. All devices on the same trunk must match — mismatch = token errors in the next session's packet simulator.">
+                  <span class="wire-baud-label">baud</span>
+                  <select
+                    onchange={(e) => {
+                      const v = (e.currentTarget as HTMLSelectElement).value;
+                      setEdgeBaud(selectedEdge.id, v === 'auto' ? 'auto' : Number(v));
+                    }}
+                  >
+                    {#each BAUD_RATES as opt}
+                      {@const isSelected = opt === 'auto' ? isAuto : opt === effectiveBaud && !isAuto}
+                      <option value={opt} selected={isSelected}>
+                        {opt === 'auto' ? `auto (${defaultBaudForKind(currentKind)})` : opt >= 1000 ? `${(opt / 1000).toFixed(opt % 1000 === 0 ? 0 : 1)}k` : opt}
+                      </option>
+                    {/each}
+                  </select>
+                </label>
               {/if}
               <button
                 type="button"
@@ -4473,6 +4513,36 @@
     color: color-mix(in srgb, CanvasText 85%, transparent);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  .wire-baud-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    padding: 0.05rem 0.4rem;
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    border-radius: 10px;
+  }
+
+  .wire-baud-label {
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+
+  .wire-baud-edit select {
+    background: Canvas;
+    color: inherit;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.05rem 0.3rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
   }
 
   .wire-break {
