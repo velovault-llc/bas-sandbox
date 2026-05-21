@@ -8,6 +8,7 @@
   import WeatherPanel from './lib/weather/WeatherPanel.svelte';
   import CLIPanel from './lib/cli/CLIPanel.svelte';
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
+  import AboutPage from './lib/about/AboutPage.svelte';
   import VendorPalette from './lib/equipment/VendorPalette.svelte';
   import { importStore } from './lib/canvasStore.svelte';
   import { topologyToCanvas } from './lib/topologyImport';
@@ -19,8 +20,13 @@
 
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
-  type Mode = 'view' | 'build';
-  let mode = $state<Mode>('build');
+  type Mode = 'view' | 'build' | 'about';
+  let mode = $state<Mode>(window.location.hash === '#about' ? 'about' : 'build');
+
+  $effect(() => {
+    if (mode === 'about') window.location.hash = 'about';
+    else if (window.location.hash === '#about') window.history.replaceState(null, '', window.location.pathname);
+  });
 
   type LeftDrawerTab = 'weather' | 'catalog' | 'settings';
   let leftDrawerOpen = $state(true);
@@ -201,10 +207,23 @@
       >
         dbexport tool
       </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'about'}
+        class:active={mode === 'about'}
+        onclick={() => (mode = 'about')}
+      >
+        About
+      </button>
     </div>
   </header>
 
-  {#if mode === 'view'}
+  {#if mode === 'about'}
+    <main class="about-main">
+      <AboutPage />
+    </main>
+  {:else if mode === 'view'}
     <main class="view">
       <p class="lede">
         Vendor-neutral simulator for building automation systems. Drag-and-drop topology, real
