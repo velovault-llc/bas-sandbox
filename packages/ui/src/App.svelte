@@ -14,6 +14,26 @@
   type Mode = 'view' | 'build';
   let mode = $state<Mode>('build');
 
+  type LeftDrawerTab = 'weather' | 'settings';
+  let leftDrawerOpen = $state(true);
+  let leftDrawerTab = $state<LeftDrawerTab>('weather');
+  let bottomDockOpen = $state(true);
+
+  function toggleLeftDrawer(): void {
+    leftDrawerOpen = !leftDrawerOpen;
+  }
+  function pickLeftDrawerTab(tab: LeftDrawerTab): void {
+    if (leftDrawerTab === tab && leftDrawerOpen) {
+      leftDrawerOpen = false;
+    } else {
+      leftDrawerTab = tab;
+      leftDrawerOpen = true;
+    }
+  }
+  function toggleBottomDock(): void {
+    bottomDockOpen = !bottomDockOpen;
+  }
+
   let dragOver = $state(false);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -115,7 +135,7 @@
   }
 </script>
 
-<div class="layout" class:wide={mode === 'build' || !!result}>
+<div class="layout" class:wide={mode === 'build' || !!result} class:full-bleed={mode === 'build'}>
   <header class="app-header">
     <div class="brand">
       <h1>bas-sandbox</h1>
@@ -251,17 +271,64 @@
     </main>
   {:else}
     <main class="build">
-      <p class="lede">
-        Build a BAS network from scratch. Drag equipment from the palette onto the canvas, wire them
-        by dragging between handles, then hit <strong>Run</strong> to see synthetic state propagate across
-        the topology. The dbexport tool tab parses real Metasys archives.
-      </p>
-      <div class="build-grid">
-        <aside class="build-side">
-          <WeatherPanel />
+      <div class="build-shell">
+        <nav class="drawer-rail" aria-label="Left drawer">
+          <button
+            type="button"
+            class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'weather'}
+            onclick={() => pickLeftDrawerTab('weather')}
+            title="Weather drive"
+          >
+            <span class="rail-icon">☀</span>
+            <span class="rail-label">Weather</span>
+          </button>
+          <button
+            type="button"
+            class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'settings'}
+            onclick={() => pickLeftDrawerTab('settings')}
+            title="Settings"
+          >
+            <span class="rail-icon">⚙</span>
+            <span class="rail-label">Settings</span>
+          </button>
+          <button
+            type="button"
+            class="rail-collapse"
+            onclick={toggleLeftDrawer}
+            title={leftDrawerOpen ? 'Collapse drawer' : 'Expand drawer'}
+            aria-expanded={leftDrawerOpen}
+          >
+            {leftDrawerOpen ? '◀' : '▶'}
+          </button>
+        </nav>
+
+        <aside class="left-drawer" class:open={leftDrawerOpen} aria-hidden={!leftDrawerOpen}>
+          {#if leftDrawerTab === 'weather'}
+            <WeatherPanel />
+          {:else if leftDrawerTab === 'settings'}
+            <div class="settings-placeholder">
+              <h3>Settings</h3>
+              <p class="muted">
+                Sim cadence, theme, and units controls will land here. For now the simulator runs
+                at 60 sim-seconds per tick (= 1 sim-minute per real second) and inherits OS theme.
+              </p>
+            </div>
+          {/if}
         </aside>
-        <div class="build-main">
+
+        <div class="canvas-area" class:drawer-open={leftDrawerOpen} class:dock-open={bottomDockOpen}>
           <BuildCanvas />
+          <button
+            type="button"
+            class="dock-toggle"
+            onclick={toggleBottomDock}
+            title={bottomDockOpen ? 'Hide equipment dock' : 'Show equipment dock'}
+            aria-expanded={bottomDockOpen}
+          >
+            {bottomDockOpen ? '▼ Hide dock' : '▲ Equipment / Wires'}
+          </button>
         </div>
       </div>
     </main>
@@ -287,6 +354,12 @@
 
   .layout.wide {
     max-width: 1200px;
+  }
+
+  .layout.full-bleed {
+    max-width: none;
+    padding: 0 1rem;
+    margin: 1rem auto;
   }
 
   .app-header {
@@ -347,28 +420,246 @@
     margin: 0 0 1.5rem 0;
   }
 
-  .build-grid {
-    display: grid;
-    grid-template-columns: minmax(260px, 320px) 1fr;
-    gap: 1rem;
-    align-items: start;
+  /* ── Build mode shell: full-bleed canvas with left drawer rail ── */
+
+  .build-shell {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    /* Header sits above; subtract its approximate height plus margins so the
+       canvas fills the rest of the viewport. */
+    height: calc(100vh - 6.5rem);
+    min-height: 32rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, Canvas 96%, CanvasText 2%);
   }
 
-  .build-side {
-    position: sticky;
-    top: 1rem;
+  .drawer-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 3rem;
+    padding: 0.4rem 0;
+    border-right: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+    background: color-mix(in srgb, CanvasText 4%, transparent);
+    flex-shrink: 0;
+    z-index: 2;
   }
 
-  .build-main {
+  .rail-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.5rem 0.1rem;
+    background: transparent;
+    border: 0;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    cursor: pointer;
+    font-size: 0.6rem;
+    border-left: 2px solid transparent;
+    transition: background 100ms ease, color 100ms ease;
+  }
+
+  .rail-tab:hover {
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+    color: inherit;
+  }
+
+  .rail-tab.active {
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+    color: inherit;
+    border-left-color: #4a9eff;
+  }
+
+  .rail-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .rail-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .rail-collapse {
+    margin-top: auto;
+    background: transparent;
+    border: 0;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    cursor: pointer;
+    padding: 0.5rem 0;
+    font-size: 0.85rem;
+  }
+
+  .rail-collapse:hover {
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+    color: inherit;
+  }
+
+  .left-drawer {
+    width: 0;
+    overflow: hidden;
+    transition: width 180ms ease;
+    border-right: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+    background: color-mix(in srgb, Canvas 94%, CanvasText 3%);
+    flex-shrink: 0;
+  }
+
+  .left-drawer.open {
+    width: 22rem;
+    overflow-y: auto;
+    padding: 0.75rem;
+  }
+
+  .settings-placeholder {
+    padding: 0.5rem;
+  }
+
+  .settings-placeholder h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.95rem;
+  }
+
+  .settings-placeholder .muted {
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+
+  .canvas-area {
+    flex: 1;
     min-width: 0;
+    position: relative;
+    overflow: hidden;
   }
 
-  @media (max-width: 900px) {
-    .build-grid {
-      grid-template-columns: 1fr;
+  /* BuildCanvas's root `.build` div has a fixed 72vh — override it to fill
+     the shell instead. */
+  .canvas-area :global(.build) {
+    height: 100% !important;
+    border: 0;
+    border-radius: 0;
+  }
+
+  /* Bottom-dock layout: flip BuildCanvas's `16rem | 1fr` grid to `1fr` rows
+     with the palette pinned to the bottom. The palette children were
+     authored for a vertical sidebar — we override the inner layout to a
+     horizontal ribbon. */
+  .canvas-area.dock-open :global(.build) {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr 12rem !important;
+  }
+
+  .canvas-area.dock-open :global(.palette) {
+    order: 2;
+    flex-direction: row !important;
+    align-items: flex-start;
+    gap: 1rem;
+    border-right: 0 !important;
+    border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    padding: 0.65rem 1rem !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .canvas-area.dock-open :global(.palette > .palette-head) {
+    flex-shrink: 0;
+    max-width: 9rem;
+  }
+
+  .canvas-area.dock-open :global(.palette > .palette-head .hint) {
+    display: none;
+  }
+
+  .canvas-area.dock-open :global(.palette > .items) {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 0.5rem !important;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  .canvas-area.dock-open :global(.palette > .items > li) {
+    min-width: 9.5rem;
+  }
+
+  .canvas-area.dock-open :global(.palette > .wires-section) {
+    flex-shrink: 0;
+    border-left: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+    padding-left: 1rem;
+    margin-left: 0.25rem;
+    max-width: 18rem;
+  }
+
+  .canvas-area.dock-open :global(.palette > .wires-section .hint) {
+    display: none;
+  }
+
+  .canvas-area.dock-open :global(.palette > .wires-section .wire-palette) {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .canvas-area.dock-open :global(.palette > .palette-foot) {
+    flex-shrink: 1;
+    margin-left: auto;
+    border-left: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+    padding-left: 1rem;
+    max-width: 24rem;
+    max-height: calc(12rem - 1rem);
+    overflow-y: auto;
+  }
+
+  /* Collapsed dock: hide the palette entirely and let the canvas fill */
+  .canvas-area:not(.dock-open) :global(.build) {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+  }
+
+  .canvas-area:not(.dock-open) :global(.palette) {
+    display: none !important;
+  }
+
+  /* Floating toggle button — sits at the bottom edge of the canvas area,
+     toggles the dock. */
+  .dock-toggle {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 1rem;
+    z-index: 5;
+    background: color-mix(in srgb, Canvas 90%, CanvasText 8%);
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    color: inherit;
+    padding: 0.3rem 0.7rem;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  }
+
+  .dock-toggle:hover {
+    background: color-mix(in srgb, CanvasText 12%, Canvas);
+  }
+
+  /* When dock is open, lift the toggle above the dock so it stays visible */
+  .canvas-area.dock-open .dock-toggle {
+    bottom: 12.5rem;
+  }
+
+  @media (max-width: 720px) {
+    .build-shell {
+      height: calc(100vh - 5rem);
     }
-    .build-side {
-      position: static;
+    .left-drawer.open {
+      width: 18rem;
     }
   }
 

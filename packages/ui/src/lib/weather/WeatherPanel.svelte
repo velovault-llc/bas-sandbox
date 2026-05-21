@@ -16,6 +16,7 @@
     type WeatherMode,
   } from './weatherStore.svelte';
   import { WEATHER_PRESETS } from './presets';
+  import { CITY_GROUPS, cityId, ALL_CITIES } from './cities';
 
   type Tab = 'live' | 'historical' | 'preset';
   const TABS: readonly { id: Tab; label: string }[] = [
@@ -33,6 +34,20 @@
   let historicalStart = $state(defaultHistoricalStart());
   let historicalEnd = $state(defaultHistoricalEnd());
   let presetId = $state(WEATHER_PRESETS[0].id);
+  let selectedCityId = $state('');
+
+  async function onPickMajorCity(): Promise<void> {
+    if (!selectedCityId) return;
+    const loc = ALL_CITIES.find((c) => cityId(c) === selectedCityId);
+    if (!loc) return;
+    query = formatLocationLabel(loc);
+    searchResults = [];
+    if (activeTab === 'historical') {
+      await loadHistorical(loc, historicalStart, historicalEnd);
+    } else {
+      await loadLive(loc);
+    }
+  }
 
   // Seed from localStorage so a returning user finds their last city pre-filled.
   $effect(() => {
@@ -188,7 +203,20 @@
   {#if activeTab === 'live'}
     <div class="tab-body">
       <label class="field">
-        <span>City</span>
+        <span>Quick pick</span>
+        <select bind:value={selectedCityId} onchange={onPickMajorCity}>
+          <option value="">— major city —</option>
+          {#each CITY_GROUPS as group}
+            <optgroup label={group.label}>
+              {#each group.cities as c (cityId(c))}
+                <option value={cityId(c)}>{c.name}{c.admin1 ? `, ${c.admin1}` : ''}</option>
+              {/each}
+            </optgroup>
+          {/each}
+        </select>
+      </label>
+      <label class="field">
+        <span>Or search any city</span>
         <input
           type="text"
           placeholder="Chicago, Phoenix, Tokyo…"
@@ -222,7 +250,20 @@
   {#if activeTab === 'historical'}
     <div class="tab-body">
       <label class="field">
-        <span>City</span>
+        <span>Quick pick</span>
+        <select bind:value={selectedCityId} onchange={onPickMajorCity}>
+          <option value="">— major city —</option>
+          {#each CITY_GROUPS as group}
+            <optgroup label={group.label}>
+              {#each group.cities as c (cityId(c))}
+                <option value={cityId(c)}>{c.name}{c.admin1 ? `, ${c.admin1}` : ''}</option>
+              {/each}
+            </optgroup>
+          {/each}
+        </select>
+      </label>
+      <label class="field">
+        <span>Or search any city</span>
         <input
           type="text"
           placeholder="Chicago, Phoenix, Tokyo…"
