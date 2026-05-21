@@ -5,6 +5,7 @@
     togglePanel,
     togglePaused,
     setFilter,
+    setPanelPosition,
     visibleEntries,
     type LogLevel,
   } from './runtimeLogStore.svelte';
@@ -46,11 +47,58 @@
     if (l === 'warn') return '⚠';
     return '•';
   }
+
+  // Drag-to-reposition. The header acts as the grab handle. We track the
+  // mouse origin + the panel's offset at grab time, then translate the
+  // panel by the delta on mousemove. On mouseup we persist via the store.
+  let dragging = $state(false);
+  let dragStart = { x: 0, y: 0, originX: 0, originY: 0 };
+
+  function startDrag(e: MouseEvent): void {
+    // Only start drag on the header's bare area — not on a button inside.
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragging = true;
+    dragStart = {
+      x: e.clientX,
+      y: e.clientY,
+      originX: runtimeLog.offsetX,
+      originY: runtimeLog.offsetY,
+    };
+    window.addEventListener('mousemove', onDragMove);
+    window.addEventListener('mouseup', endDrag);
+    e.preventDefault();
+  }
+
+  function onDragMove(e: MouseEvent): void {
+    if (!dragging) return;
+    // offset is from the bottom-right anchor; dragging right/down should
+    // SHRINK both offsets (panel moves toward the corner), dragging
+    // left/up should grow them. So invert deltas.
+    const dx = dragStart.x - e.clientX;
+    const dy = dragStart.y - e.clientY;
+    runtimeLog.offsetX = Math.max(0, dragStart.originX + dx);
+    runtimeLog.offsetY = Math.max(0, dragStart.originY + dy);
+  }
+
+  function endDrag(): void {
+    dragging = false;
+    setPanelPosition(runtimeLog.offsetX, runtimeLog.offsetY);
+    window.removeEventListener('mousemove', onDragMove);
+    window.removeEventListener('mouseup', endDrag);
+  }
 </script>
 
-<aside class="runtime-log" class:open={runtimeLog.panelOpen} role="log" aria-label="Runtime event log">
-  <header class="head" onclick={togglePanel}>
-    <span class="glyph">📋</span>
+<aside
+  class="runtime-log"
+  class:open={runtimeLog.panelOpen}
+  class:dragging
+  role="log"
+  aria-label="Runtime event log"
+  style:right="{1 + runtimeLog.offsetX / 16}rem"
+  style:bottom="{0.75 + runtimeLog.offsetY / 16}rem"
+>
+  <header class="head" onmousedown={startDrag} onclick={(e) => { if (!dragging && !(e.target as HTMLElement).closest('button')) togglePanel(); }} title="Drag to reposition · click to collapse">
+    <span class="glyph grip">⠿</span>
     <strong>Runtime log</strong>
     <span class="counts">
       {#if counts.critical > 0}<span class="count crit">{counts.critical}</span>{/if}
@@ -133,8 +181,22 @@
     padding: 0.45rem 0.7rem;
     background: color-mix(in srgb, Canvas 88%, CanvasText 6%);
     border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
-    cursor: pointer;
+    cursor: grab;
     user-select: none;
+  }
+
+  .runtime-log.dragging .head {
+    cursor: grabbing;
+  }
+
+  .runtime-log.dragging {
+    transition: none;
+  }
+
+  .grip {
+    color: color-mix(in srgb, CanvasText 45%, transparent);
+    font-size: 0.95rem;
+    letter-spacing: -0.1em;
   }
 
   .head strong {

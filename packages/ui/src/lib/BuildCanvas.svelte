@@ -575,6 +575,17 @@
     renamingNodeId = null;
   });
 
+  /** Inline rename used by inspector panels — direct write-through. */
+  function renameNode(id: string, newLabel: string): void {
+    const trimmed = newLabel.trim();
+    if (!trimmed) return;
+    nodes = nodes.map((n) => {
+      if (n.id !== id) return n;
+      const data = n.data as Record<string, unknown>;
+      return { ...n, data: { ...data, label: trimmed } };
+    });
+  }
+
   function onNodeDoubleClick({ node }: { node: Node }) {
     renamingNodeId = node.id;
   }
@@ -2811,7 +2822,22 @@
           <Panel position="bottom-left">
             <div class="sensor-panel inspector-panel">
               <div class="inspector-head">
-                <span class="sensor-title">Sensor — {nodeLabel(selectedSensor)}</span>
+                <span class="sensor-title">Sensor —</span>
+                <input
+                  class="rename-input"
+                  type="text"
+                  value={nodeLabel(selectedSensor)}
+                  onblur={(e) => renameNode(selectedSensor.id, (e.currentTarget as HTMLInputElement).value)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                    if (e.key === 'Escape') {
+                      (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedSensor);
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  title="Rename this sensor — e.g. MA-T, DA-T, OAT"
+                  aria-label="Sensor name"
+                />
                 <button
                   type="button"
                   class="inspector-delete"
@@ -2878,7 +2904,22 @@
           <Panel position="bottom-left">
             <div class="ctrl-panel inspector-panel">
               <div class="inspector-head">
-                <span class="ctrl-title">Controller — {nodeLabel(selectedController)}</span>
+                <span class="ctrl-title">Controller —</span>
+                <input
+                  class="rename-input"
+                  type="text"
+                  value={nodeLabel(selectedController)}
+                  onblur={(e) => renameNode(selectedController.id, (e.currentTarget as HTMLInputElement).value)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                    if (e.key === 'Escape') {
+                      (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedController);
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  title="Rename this controller — e.g. AHU-1, VAV-204"
+                  aria-label="Controller name"
+                />
                 <button
                   type="button"
                   class="inspector-terminal"
@@ -4949,6 +4990,27 @@
   .inspector-terminal:hover {
     background: color-mix(in srgb, #4a9eff 14%, transparent);
     color: #4a9eff;
+  }
+
+  .rename-input {
+    flex: 1;
+    min-width: 7rem;
+    background: color-mix(in srgb, Canvas 92%, CanvasText 3%);
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    color: CanvasText;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+
+  .rename-input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, #4a9eff 60%, transparent);
+    background: Canvas;
   }
 
   .inspector-diagram {

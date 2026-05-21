@@ -20,6 +20,7 @@ export interface LogEntry {
 }
 
 const MAX_ENTRIES = 500;
+const LS_POSITION = 'bas-sandbox.runtime-log.position';
 
 interface RuntimeLogStore {
   entries: LogEntry[];
@@ -27,14 +28,45 @@ interface RuntimeLogStore {
   /** Level filter — show entries at this level or higher severity. */
   filter: LogLevel | 'all';
   paused: boolean;
+  /** Offset from the bottom-right of canvas-area (pixels). User-draggable. */
+  offsetX: number;
+  offsetY: number;
 }
+
+function loadStoredPosition(): { x: number; y: number } {
+  if (typeof localStorage === 'undefined') return { x: 0, y: 0 };
+  try {
+    const raw = localStorage.getItem(LS_POSITION);
+    if (!raw) return { x: 0, y: 0 };
+    const parsed = JSON.parse(raw) as { x: number; y: number };
+    if (typeof parsed.x === 'number' && typeof parsed.y === 'number') return parsed;
+  } catch {
+    // ignore
+  }
+  return { x: 0, y: 0 };
+}
+
+const _initialPos = loadStoredPosition();
 
 export const runtimeLog = $state<RuntimeLogStore>({
   entries: [],
   panelOpen: true,
   filter: 'all',
   paused: false,
+  offsetX: _initialPos.x,
+  offsetY: _initialPos.y,
 });
+
+export function setPanelPosition(x: number, y: number): void {
+  runtimeLog.offsetX = x;
+  runtimeLog.offsetY = y;
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_POSITION, JSON.stringify({ x, y }));
+  } catch {
+    // ignore
+  }
+}
 
 let nextId = 1;
 
