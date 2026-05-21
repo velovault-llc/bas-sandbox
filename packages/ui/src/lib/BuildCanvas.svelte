@@ -1793,6 +1793,22 @@
 
   /** New wires drawn between handles use the currently-pinned trunk kind. */
   function onConnect(connection: Connection) {
+    // SvelteFlow's `bind:edges` auto-adds an edge with the raw drop handles
+    // BEFORE this handler runs. Strip that auto-added edge so our own
+    // validation + auto-shift logic ends up with exactly one edge using
+    // the resolved handles + correct wire kind. Without this, every drag
+    // creates two edges — the auto-added one with the raw target handle,
+    // and our own with the (possibly auto-shifted) resolved handle.
+    edges = edges.filter(
+      (e) =>
+        !(
+          e.source === connection.source &&
+          e.target === connection.target &&
+          e.sourceHandle === connection.sourceHandle &&
+          e.targetHandle === connection.targetHandle
+        ),
+    );
+
     const src = nodes.find((n) => n.id === connection.source);
     const tgt = nodes.find((n) => n.id === connection.target);
     if (!src || !tgt) return;
