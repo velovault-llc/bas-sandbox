@@ -60,7 +60,7 @@ importers:
         version: link:../core
       '@velovault/dbexport-parser':
         specifier: github:velovault-llc/dbexport-parser#main
-        version: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/cef14d412bb5a20ac225cc8932e5bdad5a0fd7ac
+        version: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -82,7 +82,7 @@ importers:
         version: link:../ingest-dbexport
       '@velovault/dbexport-parser':
         specifier: github:velovault-llc/dbexport-parser
-        version: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/cef14d412bb5a20ac225cc8932e5bdad5a0fd7ac
+        version: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f
       '@xyflow/svelte':
         specifier: ^1.5.2
         version: 1.5.2(svelte@5.55.7)
@@ -623,9 +623,9 @@ packages:
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
-  '@velovault/dbexport-parser@https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/cef14d412bb5a20ac225cc8932e5bdad5a0fd7ac':
-    resolution: {gitHosted: true, integrity: sha512-3ieYg5nHCxkcGTS3eiZq20QOkx8WY0OOs+5W8GnROkXQfjXhTSWMOcUoeX6FwOWxSFo+egRYOiw0LyQCtx7ptw==, tarball: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/cef14d412bb5a20ac225cc8932e5bdad5a0fd7ac}
-    version: 0.1.0
+  '@velovault/dbexport-parser@https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f':
+    resolution: {gitHosted: true, integrity: sha512-6ywqHB7Kxqz7078DSEFHJBnbQ8nLkYS5fzD6GGL3O/cBX5EAcd9rfeoc/T0vKlX7/a0HjyhlL3CjcEao3UhDoQ==, tarball: https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f}
+    version: 0.2.0
     engines: {node: '>=22'}
 
   '@vitest/expect@2.1.9':
@@ -1440,7 +1440,7 @@ snapshots:
 
   '@types/trusted-types@2.0.7': {}
 
-  '@velovault/dbexport-parser@https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/cef14d412bb5a20ac225cc8932e5bdad5a0fd7ac':
+  '@velovault/dbexport-parser@https://codeload.github.com/velovault-llc/dbexport-parser/tar.gz/0c228b20d8d01af46ab6a61215bdadab4ad1623f':
     dependencies:
       jszip: 3.10.1
 
