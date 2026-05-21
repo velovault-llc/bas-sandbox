@@ -39,7 +39,7 @@
 //     During program mode the prompt is `CTRL(config-prog)# `.
 
 import type { ControllerProgram } from './programStore.svelte';
-import { findControllerModel } from '@bas/core';
+import { findControllerModel, formatPointBreakdown } from '@bas/core';
 
 export type ShellMode = 'user' | 'privileged' | 'config' | 'program';
 
@@ -269,6 +269,8 @@ function handleShow(args: string[], state: ShellState, ctx: ControllerContext): 
         lines.push(`  language   : ${m.programmingLanguage}`);
         lines.push(`  protocols  : ${m.protocols.join(', ')}`);
         lines.push(`  capacity   : ${m.maxPoints} points`);
+        const breakdown = formatPointBreakdown(m.points);
+        if (breakdown) lines.push(`               (${breakdown})`);
         if (!m.stPortable) {
           lines.push('');
           lines.push(`  ! ST programs on this controller are simulated only —`);

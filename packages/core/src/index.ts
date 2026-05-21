@@ -34,12 +34,15 @@ export {
   VENDOR_CATALOG,
   findControllerModel,
   controllerCatalogByVendor,
+  totalPoints,
+  formatPointBreakdown,
 } from './equipment/catalog.js';
 export type {
   ControllerModel,
   ControllerRole,
   ProgrammingLanguage,
   Protocol,
+  PointCount,
 } from './equipment/catalog.js';
 
 export {

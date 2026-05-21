@@ -1448,14 +1448,85 @@
    */
   let selectedWireKind = $state<WireKind | 'auto'>(_initialState.selectedWireKind);
 
+  /** Latest wire-compatibility refusal so the UI can show a banner. */
+  let wireRefusal = $state<{ reason: string; ts: number } | null>(null);
+  let wireRefusalTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function flashWireRefusal(reason: string): void {
+    wireRefusal = { reason, ts: Date.now() };
+    if (wireRefusalTimer) clearTimeout(wireRefusalTimer);
+    wireRefusalTimer = setTimeout(() => {
+      wireRefusal = null;
+      wireRefusalTimer = null;
+    }, 6000);
+  }
+
+  /**
+   * Validate that a proposed wire is realistic given both endpoints' real-
+   * world capabilities. Returns null when OK, or a human-readable reason
+   * string when the connection should be refused.
+   *
+   * Rules (kept conservative for now):
+   *  - Sensor / safety endpoints only accept "hardwired" (or no-vendor
+   *    sensor implies hardwired). Network protocols (BACnet/IP, MS/TP,
+   *    N2, LON) require both endpoints to advertise that protocol.
+   *  - Controllers must support the chosen network protocol per their
+   *    vendor catalog `protocols[]` list. Generic (no-vendor) controllers
+   *    are assumed to support anything.
+   */
+  function validateWireCompat(srcN: Node, tgtN: Node, kind: WireKind): string | null {
+    const srcKind = nodeKind(srcN);
+    const tgtKind = nodeKind(tgtN);
+    // Sensor / safety endpoints: only hardwired makes physical sense in
+    // most real installs (intelligent BACnet sensors exist but the
+    // sandbox doesn't model them yet).
+    if (srcKind === 'sensor' || srcKind === 'safety' || tgtKind === 'sensor' || tgtKind === 'safety') {
+      if (kind !== 'hardwired') {
+        return `${kind} can't connect to a ${srcKind === 'sensor' || tgtKind === 'sensor' ? 'sensor' : 'safety device'} — use "Hardwired" (or pick a BACnet-MS/TP smart sensor in a future release).`;
+      }
+      return null;
+    }
+
+    // Network-protocol wires (BACnet/IP, MS/TP, N2, LON) require the
+    // matching protocol on both endpoint controllers.
+    const protocolForKind: Record<WireKind, string | null> = {
+      'bacnet-ip': 'BACnet/IP',
+      'mstp': 'BACnet MS/TP',
+      'n2': 'N2',
+      'lon': 'LON',
+      'hardwired': null,
+    };
+    const need = protocolForKind[kind];
+    if (!need) return null;
+
+    const srcVendorId = (srcN.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+    const tgtVendorId = (tgtN.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+    const srcModel = srcVendorId ? findControllerModel(srcVendorId) : null;
+    const tgtModel = tgtVendorId ? findControllerModel(tgtVendorId) : null;
+
+    if (srcModel && !srcModel.protocols.includes(need as never)) {
+      return `${srcModel.vendor} ${srcModel.model} doesn't speak ${need} (supports: ${srcModel.protocols.join(', ')}).`;
+    }
+    if (tgtModel && !tgtModel.protocols.includes(need as never)) {
+      return `${tgtModel.vendor} ${tgtModel.model} doesn't speak ${need} (supports: ${tgtModel.protocols.join(', ')}).`;
+    }
+    return null;
+  }
+
   /** New wires drawn between handles use the currently-pinned trunk kind. */
   function onConnect(connection: Connection) {
     const src = nodes.find((n) => n.id === connection.source);
     const tgt = nodes.find((n) => n.id === connection.target);
+    if (!src || !tgt) return;
     const kind: WireKind =
       selectedWireKind === 'auto'
-        ? defaultWireKind(nodeKind(src!), nodeKind(tgt!))
+        ? defaultWireKind(nodeKind(src), nodeKind(tgt))
         : selectedWireKind;
+    const refusal = validateWireCompat(src, tgt, kind);
+    if (refusal) {
+      flashWireRefusal(refusal);
+      return;
+    }
     const newEdge: Edge = {
       id: `e-${connection.source}-${connection.target}-${Date.now()}`,
       source: connection.source!,
@@ -3048,6 +3119,16 @@
           </Panel>
         {/if}
 
+        {#if wireRefusal}
+          <Panel position="top-center">
+            <div class="wire-refusal" role="alert">
+              <span class="wire-refusal-glyph">⚠</span>
+              <span class="wire-refusal-text">{wireRefusal.reason}</span>
+              <button type="button" class="wire-refusal-close" onclick={() => (wireRefusal = null)} aria-label="Dismiss">✕</button>
+            </div>
+          </Panel>
+        {/if}
+
         <Panel position="top-left">
           <div class="canvas-actions">
             <button
@@ -3894,6 +3975,42 @@
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
     font-size: 0.82rem;
+  }
+
+  .wire-refusal {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    max-width: 36rem;
+    padding: 0.55rem 0.85rem;
+    background: color-mix(in srgb, #e74c3c 14%, Canvas);
+    border: 1px solid color-mix(in srgb, #e74c3c 60%, transparent);
+    color: color-mix(in srgb, #e74c3c 100%, CanvasText);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.25);
+  }
+
+  .wire-refusal-glyph {
+    font-size: 1.1rem;
+  }
+
+  .wire-refusal-text {
+    flex: 1;
+  }
+
+  .wire-refusal-close {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.9rem;
+    opacity: 0.7;
+  }
+
+  .wire-refusal-close:hover {
+    opacity: 1;
   }
 
   /* Floating canvas-actions cluster — top-left of the canvas, mirrors the

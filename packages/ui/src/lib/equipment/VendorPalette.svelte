@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     controllerCatalogByVendor,
+    formatPointBreakdown,
     type ControllerModel,
   } from '@bas/core';
 
@@ -66,6 +67,9 @@
               </span>
               <span class="pts">{model.maxPoints} pts</span>
             </div>
+            {#if model.points && formatPointBreakdown(model.points)}
+              <div class="point-breakdown">{formatPointBreakdown(model.points)}</div>
+            {/if}
             <div class="proto-row">
               {#each model.protocols as p}
                 <span class="proto">{p}</span>
@@ -216,6 +220,15 @@
     color: color-mix(in srgb, CanvasText 55%, transparent);
     font-variant-numeric: tabular-nums;
     margin-left: auto;
+  }
+
+  .point-breakdown {
+    margin-top: 0.2rem;
+    font-size: 0.62rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
   }
 
   .proto-row {

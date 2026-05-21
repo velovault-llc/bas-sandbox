@@ -31,6 +31,31 @@ export type Protocol = 'BACnet/IP' | 'BACnet MS/TP' | 'BACnet SC' | 'N2' | 'LON'
 
 export type ControllerRole = 'supervisor' | 'field' | 'plant' | 'unitary';
 
+/**
+ * Breakdown of onboard I/O points by ASHRAE point-type convention.
+ * UI = Universal Input (configurable: AI or BI per channel)
+ * AI = Analog Input (fixed)
+ * BI = Binary Input (fixed)
+ * UO = Universal Output (configurable: AO or BO)
+ * AO = Analog Output (fixed)
+ * BO = Binary Output (fixed, relay or triac)
+ *
+ * `expansion` counts the additional points reachable via vendor expansion
+ * modules (Beckhoff bus terminals, JCI XPM extensions, etc.). On a
+ * field-controller with FIXED onboard I/O, `expansion` is typically 0.
+ * On a modular IPC (Beckhoff CX, Wago PFC) the onboard UI/AI/etc. are 0
+ * and `expansion` carries the bus-capacity number.
+ */
+export interface PointCount {
+  readonly UI?: number;
+  readonly AI?: number;
+  readonly BI?: number;
+  readonly UO?: number;
+  readonly AO?: number;
+  readonly BO?: number;
+  readonly expansion?: number;
+}
+
 export interface ControllerModel {
   /** Stable id for palette / scenarios. */
   readonly id: string;
@@ -48,12 +73,37 @@ export interface ControllerModel {
    *  considered "portable" to this controller (true for IEC-native gear;
    *  false for block-graph / proprietary stacks where ST is non-native). */
   readonly stPortable: boolean;
-  /** Hard point capacity (vendor-published max universal I/O + extensions). */
+  /** Hard point capacity (vendor-published max universal I/O + extensions).
+   *  Headline number used when the breakdown isn't useful (supervisors). */
   readonly maxPoints: number;
+  /** Onboard I/O breakdown by point type. Optional — supervisors typically
+   *  omit and rely on maxPoints as the total via downstream field
+   *  controllers. */
+  readonly points?: PointCount;
   /** Protocols the controller speaks natively. */
   readonly protocols: readonly Protocol[];
   /** Short marketing-grade description. */
   readonly notes: string;
+}
+
+/** Total onboard points (UI + AI + BI + UO + AO + BO + expansion). */
+export function totalPoints(p: PointCount | undefined): number {
+  if (!p) return 0;
+  return (p.UI ?? 0) + (p.AI ?? 0) + (p.BI ?? 0) + (p.UO ?? 0) + (p.AO ?? 0) + (p.BO ?? 0) + (p.expansion ?? 0);
+}
+
+/** Single-line "12 UI · 4 BO · 2 AO" summary for inspector + CLI surfaces. */
+export function formatPointBreakdown(p: PointCount | undefined): string {
+  if (!p) return '';
+  const parts: string[] = [];
+  if (p.UI) parts.push(`${p.UI} UI`);
+  if (p.AI) parts.push(`${p.AI} AI`);
+  if (p.BI) parts.push(`${p.BI} BI`);
+  if (p.UO) parts.push(`${p.UO} UO`);
+  if (p.AO) parts.push(`${p.AO} AO`);
+  if (p.BO) parts.push(`${p.BO} BO`);
+  if (p.expansion) parts.push(`${p.expansion} via expansion`);
+  return parts.join(' · ');
 }
 
 export const VENDOR_CATALOG: readonly ControllerModel[] = [
@@ -66,7 +116,8 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     role: 'field',
     programmingLanguage: 'JCI CCT (block graph)',
     stPortable: false,
-    maxPoints: 32,
+    maxPoints: 17,
+    points: { UI: 7, BI: 4, AO: 2, BO: 4 },
     protocols: ['BACnet MS/TP'],
     notes: 'Generic field equipment controller; common AHU/VAV duty. Programs in CCT block-graph (the .caf format).',
   },
@@ -79,6 +130,7 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'JCI CCT (block graph)',
     stPortable: false,
     maxPoints: 33,
+    points: { UI: 10, BI: 8, AO: 4, BO: 4, expansion: 7 },
     protocols: ['BACnet/IP', 'BACnet MS/TP'],
     notes: 'Network Control Engine — combo engine + onboard I/O for small plant rooms.',
   },
@@ -91,8 +143,9 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'JCI CCT (block graph)',
     stPortable: false,
     maxPoints: 1500,
+    points: { expansion: 1500 },
     protocols: ['BACnet/IP', 'BACnet MS/TP', 'BACnet SC', 'N2'],
-    notes: 'Smart Network Engine — site supervisor, BACnet/IP + MS/TP, hosts FEC trunks.',
+    notes: 'Smart Network Engine — site supervisor, BACnet/IP + MS/TP, hosts FEC trunks. Points are reachable via downstream field controllers (no native onboard I/O).',
   },
 
   // ── Tridium / Niagara ──────────────────────────────────────────────────
@@ -105,8 +158,9 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'Niagara Wiresheet',
     stPortable: false,
     maxPoints: 5000,
+    points: { expansion: 5000 },
     protocols: ['BACnet/IP', 'BACnet MS/TP', 'Modbus TCP', 'Niagara Fox'],
-    notes: 'Java Application Control Engine — the supervisor running the Niagara framework. Programs in Wiresheet (graphical FBD).',
+    notes: 'Java Application Control Engine — the supervisor running the Niagara framework. No onboard I/O; points reachable via JENEsys IO modules + downstream field controllers.',
   },
   {
     id: 'tridium-spyder-econ-t19',
@@ -117,6 +171,7 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'Niagara Wiresheet + Sedona',
     stPortable: false,
     maxPoints: 19,
+    points: { UI: 8, BI: 3, AO: 4, BO: 4 },
     protocols: ['BACnet MS/TP'],
     notes: 'Honeywell field controller running Niagara/Sedona under the hood; 19 onboard points.',
   },
@@ -131,8 +186,9 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'IEC-61131-3 (ST + LD + FBD)',
     stPortable: true,
     maxPoints: 1024,
+    points: { expansion: 1024 },
     protocols: ['BACnet/IP', 'Modbus TCP', 'EtherCAT', 'KNX'],
-    notes: 'DIN-rail IPC running TwinCAT 3. Full IEC 61131-3 — ST programs from this sandbox transfer cleanly.',
+    notes: 'DIN-rail IPC running TwinCAT 3. No fixed onboard I/O — uses Beckhoff bus terminals (KL/EL series) clipped on to the right side. Full IEC 61131-3 — ST programs from this sandbox transfer cleanly.',
   },
   {
     id: 'beckhoff-cx5230',
@@ -143,8 +199,9 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'IEC-61131-3 (ST + LD + FBD)',
     stPortable: true,
     maxPoints: 4096,
+    points: { expansion: 4096 },
     protocols: ['BACnet/IP', 'Modbus TCP', 'EtherCAT', 'KNX', 'Niagara Fox'],
-    notes: 'Atom x6-class IPC, larger plant duty. Runs TwinCAT 3 + can host Niagara Framework as a guest.',
+    notes: 'Atom x6-class IPC, larger plant duty. No fixed onboard I/O — modular via bus terminals. Runs TwinCAT 3 + can host Niagara Framework as a guest.',
   },
 
   // ── Wago / Phoenix Contact (open IEC) ──────────────────────────────────
@@ -157,8 +214,9 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'IEC-61131-3 ST',
     stPortable: true,
     maxPoints: 250,
+    points: { expansion: 250 },
     protocols: ['BACnet/IP', 'Modbus TCP', 'KNX'],
-    notes: 'Compact open-PLC field controller. Programmed in e!COCKPIT (Codesys 3.5) — pure ST.',
+    notes: 'Compact open-PLC field controller. No fixed onboard I/O — uses Wago 750-series modules. Programmed in e!COCKPIT (Codesys 3.5) — pure ST.',
   },
 
   // ── Siemens Apogee ─────────────────────────────────────────────────────
@@ -171,6 +229,7 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'Siemens PPCL',
     stPortable: false,
     maxPoints: 100,
+    points: { UI: 12, BI: 8, AO: 6, BO: 6, expansion: 68 },
     protocols: ['BACnet MS/TP', 'BACnet/IP'],
     notes: 'Apogee field panel. Programs in Powers Process Control Language — BASIC-flavored text, not ST.',
   },
@@ -183,6 +242,7 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'Siemens PPCL',
     stPortable: false,
     maxPoints: 480,
+    points: { expansion: 480 },
     protocols: ['BACnet/IP', 'BACnet MS/TP', 'LON'],
     notes: 'Modular Apogee panel for medium plant rooms. PPCL programming.',
   },
@@ -197,6 +257,7 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'Distech GFX + ECx',
     stPortable: false,
     maxPoints: 10,
+    points: { UI: 5, AO: 2, BO: 3 },
     protocols: ['BACnet MS/TP'],
     notes: 'Single-duct VAV unitary controller. Programs in EC-gfxProgram (GFX block graph) + ECx scripting.',
   },
@@ -211,6 +272,7 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     programmingLanguage: 'Reliable GCL+',
     stPortable: false,
     maxPoints: 1024,
+    points: { UI: 16, AO: 4, BO: 4, expansion: 1000 },
     protocols: ['BACnet/IP', 'BACnet MS/TP'],
     notes: 'Site supervisor, IP + MS/TP. Programs in GCL+ — a vendor-specific scripting language.',
   },

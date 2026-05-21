@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { VENDOR_CATALOG, type ControllerModel } from '@bas/core';
+  import { VENDOR_CATALOG, formatPointBreakdown, type ControllerModel } from '@bas/core';
 
   // Group catalog by vendor and compute a sandbox-support status.
   type SupportLevel = 'full' | 'partial' | 'planned';
@@ -96,7 +96,7 @@
                 <span class="dot">·</span>
                 <span class="protos">{m.protocols.join(', ')}</span>
                 <span class="dot">·</span>
-                <span class="pts">{m.maxPoints} pts</span>
+                <span class="pts">{m.maxPoints} pts{m.points && formatPointBreakdown(m.points) ? ` (${formatPointBreakdown(m.points)})` : ''}</span>
               </div>
               <p class="model-notes">{m.notes}</p>
               <p class="model-support">{supportLabel(level)}</p>

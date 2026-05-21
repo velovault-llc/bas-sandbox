@@ -3,6 +3,7 @@
     VENDOR_CATALOG,
     SENSOR_CATALOG,
     SAFETY_CATALOG,
+    formatPointBreakdown,
     type ControllerModel,
     type SensorModel,
     type SafetyDevice,
@@ -103,7 +104,7 @@
             </div>
             <div class="row-meta">
               <span class="pill lang" class:portable={it.m.stPortable}>{it.m.programmingLanguage}</span>
-              <span class="pts">{it.m.maxPoints} pts</span>
+              <span class="pts">{it.m.maxPoints} pts{it.m.points && formatPointBreakdown(it.m.points) ? ` · ${formatPointBreakdown(it.m.points)}` : ''}</span>
               <span class="muted">{it.m.protocols.join(', ')}</span>
             </div>
           </button>
