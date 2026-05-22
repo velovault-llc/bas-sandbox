@@ -36,9 +36,15 @@
     if (typeof window === 'undefined') return { x: Math.max(0, x), y: Math.max(0, y) };
     const panelH = panelEl?.offsetHeight ?? 80;
     const panelW = panelEl?.offsetWidth ?? 320;
+    // Use the panel's POSITIONED ANCESTOR height — `bottom`/`left`
+    // resolve relative to that ancestor, not the window. See the matching
+    // comment in RuntimeLogPanel.svelte for the full reasoning.
+    const parent = panelEl?.offsetParent as HTMLElement | null;
+    const parentH = parent?.clientHeight ?? window.innerHeight;
+    const parentW = parent?.clientWidth ?? window.innerWidth;
     const margin = 12;
-    const maxY = Math.max(0, window.innerHeight - panelH - margin);
-    const maxX = Math.max(0, window.innerWidth - panelW - margin);
+    const maxY = Math.max(0, parentH - panelH - margin);
+    const maxX = Math.max(0, parentW - panelW - margin);
     return {
       x: Math.min(maxX, Math.max(0, x)),
       y: Math.min(maxY, Math.max(0, y)),

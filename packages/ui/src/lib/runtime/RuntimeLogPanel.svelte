@@ -27,9 +27,16 @@
     if (typeof window === 'undefined') return { x: Math.max(0, x), y: Math.max(0, y) };
     const panelH = panelEl?.offsetHeight ?? 80;
     const panelW = panelEl?.offsetWidth ?? 320;
+    // CRITICAL: the panel is positioned `bottom: <y>rem` relative to its
+    // POSITIONED ANCESTOR (the canvas-area div), not the window. Using
+    // window.innerHeight here lets the panel drift up into the page's
+    // top header zone. parent.clientHeight gives the real ceiling.
+    const parent = panelEl?.offsetParent as HTMLElement | null;
+    const parentH = parent?.clientHeight ?? window.innerHeight;
+    const parentW = parent?.clientWidth ?? window.innerWidth;
     const margin = 12;
-    const maxY = Math.max(0, window.innerHeight - panelH - margin);
-    const maxX = Math.max(0, window.innerWidth - panelW - margin);
+    const maxY = Math.max(0, parentH - panelH - margin);
+    const maxX = Math.max(0, parentW - panelW - margin);
     return {
       x: Math.min(maxX, Math.max(0, x)),
       y: Math.min(maxY, Math.max(0, y)),

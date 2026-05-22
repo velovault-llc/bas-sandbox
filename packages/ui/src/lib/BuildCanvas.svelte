@@ -3803,6 +3803,21 @@
     for (const n of nodes) {
       // Supervisors themselves never count as "offline" — they're the root.
       if (nodeKind(n) === 'supervisor') continue;
+      // Subnet zones are visual containers, not devices — never offline.
+      if (isSubnetZone(n)) continue;
+      // Routers + BBMD appliances are independent network gear. A
+      // freshly-dropped router/BBMD that hasn't been wired yet
+      // shouldn't be flagged as "stale comm" — it's just not deployed
+      // into the topology yet. They only go offline when they sit
+      // BEHIND a broken trunk.
+      const k = nodeKind(n);
+      if (k === 'router' || k === 'bbmd') {
+        // Only mark offline if the node has wires but a broken-trunk
+        // partition cuts it off. A completely unwired router/BBMD is
+        // simply "not yet deployed."
+        const hasAnyEdge = edges.some((e) => e.source === n.id || e.target === n.id);
+        if (!hasAnyEdge) continue;
+      }
       if (!reached.has(n.id)) offline.add(n.id);
     }
     return offline;
@@ -3961,18 +3976,62 @@
     });
   }
 
-  /** Update the BDT for a node. `peersCsv` is a comma- or newline-separated
-   *  list of dotted-quads. We split, trim, and drop blanks. */
-  function setBdtFromCsv(nodeId: string, peersCsv: string): void {
-    const peers = peersCsv
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  /** Append a single peer IP to a BBMD's BDT (no-op if already present). */
+  function addBdtPeer(nodeId: string, peerIp: string): void {
+    const trimmed = peerIp.trim();
+    if (!trimmed) return;
     nodes = nodes.map((n) => {
       if (n.id !== nodeId) return n;
-      const d = n.data as Record<string, unknown>;
-      return { ...n, data: { ...d, bdtPeers: peers } };
+      const d = n.data as { bdtPeers?: string[] } & Record<string, unknown>;
+      const existing = d.bdtPeers ?? [];
+      if (existing.includes(trimmed)) return n;
+      return { ...n, data: { ...d, bdtPeers: [...existing, trimmed] } };
     });
+  }
+
+  /** Remove a peer IP from a BBMD's BDT. */
+  function removeBdtPeer(nodeId: string, peerIp: string): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const d = n.data as { bdtPeers?: string[] } & Record<string, unknown>;
+      const filtered = (d.bdtPeers ?? []).filter((p) => p !== peerIp);
+      return { ...n, data: { ...d, bdtPeers: filtered } };
+    });
+  }
+
+  /** Visible to the BDT picker: every other device on the canvas that
+   *  could legitimately be a BDT peer (dedicated BBMD appliance, OR a
+   *  supervisor/controller running BBMD service) with a known IP. */
+  function bbmdCandidatesFor(currentNodeId: string): Array<{ id: string; label: string; ip: string; kind: string }> {
+    const out: Array<{ id: string; label: string; ip: string; kind: string }> = [];
+    for (const n of nodes) {
+      if (n.id === currentNodeId) continue;
+      const d = n.data as { kind?: string; isBBMD?: boolean; ipAddress?: string; label?: string };
+      const isBbmdCapable = d.kind === 'bbmd' || d.isBBMD === true;
+      if (!isBbmdCapable) continue;
+      if (!d.ipAddress) continue;
+      out.push({ id: n.id, label: d.label ?? n.id, ip: d.ipAddress, kind: d.kind ?? '' });
+    }
+    return out;
+  }
+
+  /** Local UI state for the BDT picker popover — which node it's open
+   *  for (null = closed) + the manual-entry text. */
+  let bdtPickerOpenFor = $state<string | null>(null);
+  let bdtPickerManualText = $state('');
+
+  function openBdtPicker(nodeId: string): void {
+    bdtPickerOpenFor = nodeId;
+    bdtPickerManualText = '';
+  }
+  function closeBdtPicker(): void {
+    bdtPickerOpenFor = null;
+    bdtPickerManualText = '';
+  }
+  function commitBdtManual(nodeId: string): void {
+    const v = bdtPickerManualText.trim();
+    if (v) addBdtPeer(nodeId, v);
+    bdtPickerManualText = '';
   }
 
   /** Update a single zoneConfig field on the selected zone. Live — the
@@ -5176,18 +5235,85 @@
                 <span>{bbmdToggleDisabled ? 'BBMD appliance' : 'Run BBMD service'}</span>
               </label>
               {#if isBb}
-                <label class="bdt-field" title="Broadcast Distribution Table — comma-separated IPs of peer BBMDs on remote subnets. Each peer must list this BBMD back, or broadcasts only flow one direction.">
-                  <span>BDT peers</span>
-                  <input
-                    class="bdt-input"
-                    type="text"
-                    value={(ipData.bdtPeers ?? []).join(', ')}
-                    placeholder="10.0.2.10, 10.0.3.10"
-                    oninput={(e) => setBdtFromCsv(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).value)}
-                    spellcheck="false"
-                    autocapitalize="off"
-                  />
-                </label>
+                {@const peers = ipData.bdtPeers ?? []}
+                {@const pickerOpen = bdtPickerOpenFor === selectedIpDevice.id}
+                {@const candidates = bbmdCandidatesFor(selectedIpDevice.id).filter(c => !peers.includes(c.ip))}
+                <div class="bdt-field" title="Broadcast Distribution Table — peer BBMDs on remote subnets. Each peer must list this BBMD back, or broadcasts only flow one direction.">
+                  <span class="bdt-label">BDT peers</span>
+                  <div class="bdt-chips">
+                    {#each peers as peer (peer)}
+                      <span class="bdt-chip">
+                        <span class="bdt-chip-ip">{peer}</span>
+                        <button
+                          type="button"
+                          class="bdt-chip-del"
+                          title="Remove {peer} from BDT"
+                          onclick={() => removeBdtPeer(selectedIpDevice.id, peer)}
+                        >✕</button>
+                      </span>
+                    {/each}
+                    <button
+                      type="button"
+                      class="bdt-add"
+                      class:open={pickerOpen}
+                      onclick={() => pickerOpen ? closeBdtPicker() : openBdtPicker(selectedIpDevice.id)}
+                      title="Add a peer BBMD to this BDT — pick from BBMD-capable devices on the canvas, or type a custom IP for a peer that isn't deployed yet."
+                    >
+                      + peer
+                    </button>
+                  </div>
+                  {#if pickerOpen}
+                    <div class="bdt-picker" role="dialog" aria-label="Add BDT peer">
+                      {#if candidates.length > 0}
+                        <div class="bdt-picker-section">
+                          <span class="bdt-picker-hint">BBMD-capable on canvas:</span>
+                          <div class="bdt-picker-options">
+                            {#each candidates as c (c.id)}
+                              <button
+                                type="button"
+                                class="bdt-picker-option"
+                                onclick={() => { addBdtPeer(selectedIpDevice.id, c.ip); closeBdtPicker(); }}
+                                title="Add {c.label} ({c.ip}) to this BBMD's BDT."
+                              >
+                                <span class="bdt-picker-icon">{c.kind === 'bbmd' ? '◫' : '◉'}</span>
+                                <span class="bdt-picker-label">{c.label}</span>
+                                <span class="bdt-picker-ip">{c.ip}</span>
+                              </button>
+                            {/each}
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="bdt-picker-section">
+                          <span class="bdt-picker-hint muted">No other BBMD-capable devices on the canvas — drop one from the Network tab, or type a custom IP below for a peer that isn't here yet.</span>
+                        </div>
+                      {/if}
+                      <div class="bdt-picker-section">
+                        <span class="bdt-picker-hint">Or custom IP:</span>
+                        <div class="bdt-picker-manual">
+                          <input
+                            class="ip-input"
+                            type="text"
+                            placeholder="10.0.99.10"
+                            value={bdtPickerManualText}
+                            oninput={(e) => (bdtPickerManualText = (e.currentTarget as HTMLInputElement).value)}
+                            onkeydown={(e) => {
+                              if (e.key === 'Enter') { commitBdtManual(selectedIpDevice.id); closeBdtPicker(); }
+                              if (e.key === 'Escape') closeBdtPicker();
+                            }}
+                            spellcheck="false"
+                            autocapitalize="off"
+                          />
+                          <button
+                            type="button"
+                            class="bdt-picker-add"
+                            onclick={() => { commitBdtManual(selectedIpDevice.id); closeBdtPicker(); }}
+                            disabled={!bdtPickerManualText.trim()}
+                          >Add</button>
+                        </div>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
               {/if}
               <span class="ip-divider"></span>
               <button
@@ -7578,6 +7704,176 @@
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
+  }
+
+  /* Chip-style BDT picker (Net.2 UX revision). The CSV input was hard
+     to use — users had to remember IPs. Picker offers a one-click
+     select-from-canvas affordance plus a free-text fallback for peers
+     that haven't been deployed yet. */
+  .bdt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    position: relative;
+    flex: 1 1 18rem;
+    min-width: 14rem;
+  }
+  .bdt-label {
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+  .bdt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+  }
+  .bdt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.15rem 0.1rem 0.45rem;
+    background: color-mix(in srgb, #06b6d4 18%, transparent);
+    border: 1px solid color-mix(in srgb, #06b6d4 50%, transparent);
+    border-radius: 10px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.72rem;
+    color: #06b6d4;
+  }
+  .bdt-chip-ip {
+    line-height: 1.1;
+  }
+  .bdt-chip-del {
+    font: inherit;
+    font-size: 0.6rem;
+    background: transparent;
+    color: inherit;
+    border: none;
+    padding: 0 0.2rem;
+    cursor: pointer;
+    line-height: 1;
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+  .bdt-chip-del:hover {
+    opacity: 1;
+    background: color-mix(in srgb, #06b6d4 30%, transparent);
+  }
+  .bdt-add {
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    border: 1px dashed color-mix(in srgb, CanvasText 35%, transparent);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .bdt-add:hover,
+  .bdt-add.open {
+    border-style: solid;
+    border-color: #06b6d4;
+    color: #06b6d4;
+    background: color-mix(in srgb, #06b6d4 8%, transparent);
+  }
+  .bdt-picker {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 20;
+    min-width: 18rem;
+    max-width: 24rem;
+    background: Canvas;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+    box-shadow: 0 4px 12px color-mix(in srgb, CanvasText 18%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .bdt-picker-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .bdt-picker-hint {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+  }
+  .bdt-picker-hint.muted {
+    text-transform: none;
+    letter-spacing: 0;
+    font-style: italic;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    line-height: 1.35;
+  }
+  .bdt-picker-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-height: 12rem;
+    overflow-y: auto;
+  }
+  .bdt-picker-option {
+    display: grid;
+    grid-template-columns: 1.4rem 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.45rem;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .bdt-picker-option:hover {
+    background: color-mix(in srgb, #06b6d4 10%, transparent);
+    border-color: #06b6d4;
+  }
+  .bdt-picker-icon {
+    font-size: 0.95rem;
+    color: #06b6d4;
+    text-align: center;
+  }
+  .bdt-picker-label {
+    font-size: 0.78rem;
+    font-weight: 500;
+  }
+  .bdt-picker-ip {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+  }
+  .bdt-picker-manual {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .bdt-picker-manual .ip-input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+  .bdt-picker-add {
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.2rem 0.55rem;
+    background: #06b6d4;
+    color: white;
+    border: 1px solid #06b6d4;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .bdt-picker-add:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   /* Net.3 — router-interfaces editor. Same chrome family as the IP /
