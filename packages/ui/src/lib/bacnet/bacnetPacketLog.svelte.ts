@@ -28,7 +28,13 @@ export type BacnetService =
   | 'ReadProperty'
   | 'ReadProperty-ACK'
   | 'WriteProperty'
-  | 'WriteProperty-ACK';
+  | 'WriteProperty-ACK'
+  // Change-of-Value: the production pattern. Supervisor subscribes once,
+  // controller pushes a notification only when the subscribed value
+  // crosses its deadband. Idle bus until something actually moves.
+  | 'SubscribeCOV'
+  | 'SubscribeCOV-ACK'
+  | 'ConfirmedCOVNotification';
 
 export interface BacnetPacket {
   readonly id: number;

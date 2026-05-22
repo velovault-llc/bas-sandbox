@@ -766,10 +766,12 @@
   // it will hit next (round-robin). Keyed by trunk edge id; this is a
   // *display* concern, not part of the MstpTrunkState in core.
   let bacnetPollSchedule = new Map<string, { nextSimSec: number; nextChildIdx: number }>();
-  // Per-trunk poll cadence (sim-seconds). At 5s, a 4-child trunk gets
-  // each child polled every 20s — matches what a typical Niagara supervisor
-  // does on a healthy FEC bus.
-  const APP_LAYER_POLL_CADENCE_S = 5;
+  // Per-trunk poll cadence (sim-seconds). Real supervisors use a SLOW
+  // poll as a heartbeat/redundancy on top of COV subscriptions — if a
+  // value drifts without firing a CoV (e.g. the deadband never gets
+  // crossed but the value gradually walks), the periodic ReadProperty
+  // catches it. 30s matches a typical Niagara JACE heartbeat poll.
+  const APP_LAYER_POLL_CADENCE_S = 30;
   // MS/TP validation findings keyed by trunk id. Recomputed each tick
   // from the trunk membership; we de-dup against the previous tick so the
   // runtime log only logs new fault transitions, not the same warning
@@ -786,6 +788,33 @@
   // sim-speed a 32-device trunk would emit hundreds of hops per tick;
   // capping keeps the log readable and the buffer from churning.
   const MAX_TOKEN_HOPS_PER_TICK_PER_TRUNK = 8;
+
+  // ── BACnet COV (Change-of-Value) subscription state ─────────────────
+  // The production pattern: instead of polling each child every N seconds
+  // for a value that rarely changes, the supervisor sends one SubscribeCOV
+  // request at startup. The controller then tracks last-reported value per
+  // subscribed object and pushes a ConfirmedCOVNotification ONLY when the
+  // value moves past its deadband. Bus stays idle when nothing's changing.
+  //
+  // Subscription key: `${trunkId}|${childNodeId}|${objectId}`
+  type CovSubscription = {
+    trunkId: string;
+    trunkLabel: string;
+    childNodeId: string;
+    childLabel: string;
+    childMac: number;
+    /** BACnet object reference, e.g. "AI:1". */
+    objectId: string;
+    /** Deadband in the object's native units (°F for AI, etc.). */
+    deadband: number;
+    /** Last reported value — the controller "remembers" this so it knows
+     *  when to fire the next notification. Updated on every emit. */
+    lastReportedValue: number | boolean | null;
+  };
+  let covSubscriptions = new Map<string, CovSubscription>();
+  // Default deadband: 0.5°F is the industry-standard zone-temp deadband.
+  // For non-temperature objects we fall back to a relative 1% movement.
+  const COV_DEADBAND_DEFAULT = 0.5;
 
   let showAdvanced = $state(false);
 
@@ -1770,6 +1799,64 @@
               layer: 'app',
             });
           }
+          // After discovery, the supervisor subscribes to each child's
+          // first AI for change-of-value notifications. One SubscribeCOV
+          // per child + an ACK. Real supervisors subscribe to multiple
+          // objects per device; we pick AI:1 as a representative for
+          // demo legibility, but the mechanism scales.
+          for (const d of devices) {
+            if (d.nodeId === initiator.nodeId) continue;
+            const childNode = nodes.find((n) => n.id === d.nodeId);
+            const vendorModelId = (childNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+            const childProg = programStore.byId[d.nodeId];
+            const childObjects = synthesizeBacnetObjects({
+              vendorModelId,
+              bindings: childProg?.bindings,
+              envInputs: controllerBridge.envInputsByCtrl.get(d.nodeId),
+              envOutputs: controllerBridge.envOutputsByCtrl.get(d.nodeId),
+            });
+            const aiObj = childObjects.find((o) => o.type === 'analog-input');
+            if (!aiObj) continue;
+            // Subscribe-COV request.
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel: trunkLabelStr,
+              srcMac: initiator.mac,
+              dstMac: d.mac,
+              service: 'SubscribeCOV',
+              objectId: aiObj.id,
+              summary: `${initiator.label} → ${d.label}: SubscribeCOV ${aiObj.id} (deadband ${COV_DEADBAND_DEFAULT}°F)`,
+              layer: 'app',
+            });
+            // ACK from the controller — confirms it'll start pushing.
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel: trunkLabelStr,
+              srcMac: d.mac,
+              dstMac: initiator.mac,
+              service: 'SubscribeCOV-ACK',
+              objectId: aiObj.id,
+              summary: `${d.label} → ${initiator.label}: SubscribeCOV-ACK ${aiObj.id} accepted`,
+              layer: 'app',
+            });
+            // Seed the subscription with the current value so the next
+            // tick doesn't fire a spurious notification.
+            const seedValue = typeof aiObj.presentValue === 'boolean'
+              ? aiObj.presentValue
+              : aiObj.presentValue;
+            covSubscriptions.set(`${trunkEdge.id}|${d.nodeId}|${aiObj.id}`, {
+              trunkId: trunkEdge.id,
+              trunkLabel: trunkLabelStr,
+              childNodeId: d.nodeId,
+              childLabel: d.label,
+              childMac: d.mac,
+              objectId: aiObj.id,
+              deadband: COV_DEADBAND_DEFAULT,
+              lastReportedValue: seedValue,
+            });
+          }
         }
 
         // ── Emit Token-Pass packets for each hop the token made this tick.
@@ -1891,6 +1978,73 @@
       // can re-render against live values without reaching back into
       // BuildCanvas. Cheap — both maps share the same MstpTrunkState objs.
       publishTrunkStates(nextStates);
+
+      // ── COV change-detection pass ────────────────────────────────────
+      // Walk every active subscription, resolve its current value via the
+      // controller's synthesized objects, and emit a notification when the
+      // delta exceeds the deadband. Cap notifications per tick so a
+      // 300×-speed run doesn't flood the log.
+      let covEmitsThisTick = 0;
+      const MAX_COV_EMITS_PER_TICK = 8;
+      // Membership index: every "trunkId|childNodeId" still on a trunk.
+      const liveChildKeys = new Set<string>();
+      for (const [trunkId, ts] of nextStates) {
+        for (const child of ts.devices) {
+          if (child.mac === 0) continue;
+          liveChildKeys.add(`${trunkId}|${child.nodeId}`);
+        }
+      }
+      // Drop subscriptions whose child has been removed (offline / membership change).
+      for (const [subKey, sub] of covSubscriptions) {
+        if (!liveChildKeys.has(`${sub.trunkId}|${sub.childNodeId}`)) {
+          covSubscriptions.delete(subKey);
+        }
+      }
+      // Now evaluate each live subscription.
+      for (const sub of covSubscriptions.values()) {
+        if (covEmitsThisTick >= MAX_COV_EMITS_PER_TICK) break;
+        const childNode = nodes.find((n) => n.id === sub.childNodeId);
+        if (!childNode) continue;
+        const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+        const childProg = programStore.byId[sub.childNodeId];
+        const childObjects = synthesizeBacnetObjects({
+          vendorModelId,
+          bindings: childProg?.bindings,
+          envInputs: controllerBridge.envInputsByCtrl.get(sub.childNodeId),
+          envOutputs: controllerBridge.envOutputsByCtrl.get(sub.childNodeId),
+        });
+        const obj = childObjects.find((o) => o.id === sub.objectId);
+        if (!obj) continue;
+        const cur = obj.presentValue;
+        const last = sub.lastReportedValue;
+        let crossedDeadband = false;
+        if (typeof cur === 'boolean' || typeof last === 'boolean') {
+          // Binary: any state change is a notification.
+          crossedDeadband = cur !== last;
+        } else if (last === null) {
+          // First sample after subscription seeded — never fire on
+          // first comparison; let the next tick do real delta math.
+          crossedDeadband = false;
+        } else {
+          crossedDeadband = Math.abs(cur - last) >= sub.deadband;
+        }
+        if (!crossedDeadband) continue;
+        logBacnetPacket({
+          simSec: simSecondsElapsed,
+          trunkId: sub.trunkId,
+          trunkLabel: sub.trunkLabel,
+          srcMac: sub.childMac,
+          dstMac: 0,
+          service: 'ConfirmedCOVNotification',
+          objectId: sub.objectId,
+          value: typeof cur === 'boolean' ? (cur ? 1 : 0) : cur,
+          summary: `${sub.childLabel} → MAC 0: COV ${sub.objectId} = ${typeof cur === 'number' ? cur.toFixed(2) : String(cur)}${typeof last === 'number' && typeof cur === 'number' ? ` (Δ ${(cur - last >= 0 ? '+' : '')}${(cur - last).toFixed(2)})` : ''}`,
+          layer: 'app',
+        });
+        sub.lastReportedValue = cur;
+        covEmitsThisTick += 1;
+      }
+      void covEmitsThisTick;
 
       // ── MS/TP config validation. Run every tick (cheap — pure
       // function over a small device list), but only log NEW findings to
