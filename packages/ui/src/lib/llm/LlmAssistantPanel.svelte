@@ -88,12 +88,18 @@
   // ── Quick actions: Explain Program + Diagnose Controller ─────────────
 
   function explainSelectedProgram(): void {
-    // Pick whichever controller has a programming surface open. Falls
-    // back to "no controller selected" if nothing's active.
+    // Same detection priority as diagnoseSelectedController — programming
+    // surface first, then canvas click, then refuse.
+    const selectedOnCanvas = canvasSnapshot.nodes.find(
+      (n) =>
+        n.selected &&
+        (n.data as { kind?: string } | undefined)?.kind === 'controller',
+    )?.id ?? null;
     const ctrlId =
       programStore.activeSpecLangControllerId ??
       programStore.activeFbdControllerId ??
-      programStore.activeControllerId;
+      programStore.activeControllerId ??
+      selectedOnCanvas;
     if (!ctrlId) {
       // Local panel notice — NOT a chat message. We don't want the model
       // to dutifully answer "no program currently open" as if it were a
@@ -126,13 +132,25 @@
   }
 
   function diagnoseSelectedController(): void {
+    // Detection priority:
+    //   1. A programming surface is open (CLI / BACnet inspector / SpecLang
+    //      / FBD) — that's the explicit focus signal
+    //   2. The user clicked a controller node on the canvas (sets
+    //      n.selected via SvelteFlow) — a more casual focus signal
+    //   3. Otherwise refuse — we don't know what they want diagnosed
+    const selectedOnCanvas = canvasSnapshot.nodes.find(
+      (n) =>
+        n.selected &&
+        (n.data as { kind?: string } | undefined)?.kind === 'controller',
+    )?.id ?? null;
     const ctrlId =
       programStore.activeControllerId ??
       programStore.activeBacnetControllerId ??
       programStore.activeSpecLangControllerId ??
-      programStore.activeFbdControllerId;
+      programStore.activeFbdControllerId ??
+      selectedOnCanvas;
     if (!ctrlId) {
-      appendLocalAssistantNotice('Open a controller first (click one on the canvas, or open its CLI) so I know which device to diagnose.');
+      appendLocalAssistantNotice('Select a controller first (click one on the canvas, or open its CLI/BACnet inspector) so I know which device to diagnose.');
       return;
     }
     const node = canvasSnapshot.nodes.find((n) => n.id === ctrlId);

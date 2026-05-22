@@ -65,8 +65,10 @@ export function streamChat(
       // Bigger contexts (32K+) are model-dependent; we'd need to expose
       // this as a per-model setting later.
       num_ctx: 4096,
-      // Mild temperature — factual answers, not creative writing.
-      temperature: 0.3,
+      // Low temperature — we want it to stick to the system-prompt rules
+      // and the few-shot voice. Higher temps make small local models
+      // drift back toward their training-distribution textbook voice.
+      temperature: 0.15,
     },
     system,
   };
