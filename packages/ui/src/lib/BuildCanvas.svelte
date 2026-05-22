@@ -65,6 +65,8 @@
     validateMstpTrunks,
     validateBacnetIpNetwork,
     validateIpZones,
+    parseIpv4 as parseIpv4FromUiCanvas,
+    formatIpv4 as formatIpv4FromUiCanvas,
     type StEnv,
     type MstpFinding,
     type BacnetIpDevice,
@@ -107,6 +109,26 @@
 
   function isSubnetZone(n: Node): boolean {
     return (n.data as { kind?: string } | undefined)?.kind === 'subnet-zone';
+  }
+
+  // ============ Net.5 — broadcast routing trace ============
+  /** Sim-seconds between successive broadcast-trace emissions. Real
+   *  BACnet Who-Is broadcasts go out continuously on a busy bus, but
+   *  for teaching purposes we emit a snapshot every 30 sim-seconds so
+   *  the packet log doesn't drown the user. */
+  const BROADCAST_TRACE_PERIOD = 30;
+  let lastBroadcastTraceSec = -BROADCAST_TRACE_PERIOD;
+
+  /** Count the 1-bits in a 32-bit unsigned integer. Used to convert a
+   *  dotted-quad mask to a CIDR prefix length for trace labels. */
+  function bitCount(n: number): number {
+    let c = 0;
+    let m = n >>> 0;
+    while (m) {
+      c += m & 1;
+      m >>>= 1;
+    }
+    return c;
   }
 
   /** Center (in flow coords) of a node. xyflow stores top-left as
@@ -192,7 +214,7 @@
     nodes = nodes.filter((n) => n.id !== zoneId);
   }
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -259,9 +281,9 @@
    */
   function defaultWireKind(sourceKind: Kind | undefined, targetKind: Kind | undefined): WireKind {
     const involves = (k: Kind) => sourceKind === k || targetKind === k;
-    // Anything touching a router is BACnet/IP — routers live on the IP
-    // backbone, not on field-level RS-485.
-    if (involves('router')) return 'bacnet-ip';
+    // Anything touching a router or a BBMD is BACnet/IP — they live on
+    // the IP backbone, not on field-level RS-485.
+    if (involves('router') || involves('bbmd')) return 'bacnet-ip';
     // Hardwired covers the entire physical-cable-from-terminal-block category:
     //   - sensor / safety devices land on hardwired AI / BI terminals
     //   - expansion modules clip onto their parent controller via a vendor
@@ -468,6 +490,13 @@
       defaultName: 'RTR-1',
       icon: '◆',
       description: 'Network-layer (L3) router bridging two or more subnets. A BACnet/IP edge between devices on different subnets routes through the router for UNICAST traffic. Broadcasts (Who-Is/I-Am) still require BBMDs.',
+    },
+    {
+      kind: 'bbmd',
+      label: 'BBMD',
+      defaultName: 'BBMD-1',
+      icon: '◫',
+      description: 'BACnet Broadcast Management Device — dedicated bridge for BACnet broadcasts (Who-Is / I-Am) across IP subnets. Drop one per subnet; populate the BDT with peer BBMD IPs. Models a Contemporary Controls BAS Router, a JACE BBMD service, or a Cimetrics Eapi.',
     },
   ];
 
@@ -705,6 +734,14 @@
         { ip: '', cidr: '' },
       ];
       data.subtitle = '2 interfaces — configure CIDRs to enable routing';
+    }
+    // Net.4 — a fresh BBMD lands pre-flagged so the validator picks it
+    // up immediately. Empty BDT so a 'bbmd-empty-bdt' warning fires
+    // until the user populates peers — that's the teaching moment.
+    if (paletteKind === 'bbmd') {
+      data.isBBMD = true;
+      data.bdtPeers = [];
+      data.subtitle = 'Dedicated BBMD — set IP, mask, and BDT peers below';
     }
     nodes = [
       ...nodes,
@@ -2461,6 +2498,117 @@
         if (!liveKeys.has(k)) announcedIpv4Findings.delete(k);
       }
       publishIpv4Findings(findings);
+
+      // ── Net.5 — broadcast routing trace ──────────────────────────
+      // Every BROADCAST_TRACE_PERIOD sim-seconds, synthesize a Who-Is
+      // broadcast from each supervisor (or BBMD) and log one packet
+      // per (source → destination subnet) pair showing the routing
+      // outcome: "reaches via BBMD-A/BBMD-B" or "DROPPED at boundary."
+      // Teaches the IT/OT split: routers carry unicast, BBMDs carry
+      // broadcast, and missing either one is a silent failure mode.
+      if (
+        ipDevices.length >= 2 &&
+        simSecondsElapsed - lastBroadcastTraceSec >= BROADCAST_TRACE_PERIOD
+      ) {
+        lastBroadcastTraceSec = simSecondsElapsed;
+        // Index devices by subnet (network address). Also pull BBMD info.
+        type IpInfo = {
+          dev: BacnetIpDevice;
+          ip: number;
+          net: number;
+          maskBits: number;
+        };
+        const parsedDevs: IpInfo[] = [];
+        const subnetSet = new Set<number>();
+        for (const d of ipDevices) {
+          const ip = d.ipAddress ? parseIpv4FromUiCanvas(d.ipAddress) : null;
+          const mask = d.subnetMask ? parseIpv4FromUiCanvas(d.subnetMask) : null;
+          if (ip === null || mask === null) continue;
+          const net = (ip & mask) >>> 0;
+          parsedDevs.push({ dev: d, ip, net, maskBits: bitCount(mask) });
+          subnetSet.add(net);
+        }
+        // Build BBMD adjacency: subnet A reaches subnet B iff there's a
+        // BBMD on each side AND each has the other in its BDT.
+        function subnetsAreBridged(netA: number, netB: number): { via: string[] } | null {
+          if (netA === netB) return { via: [] }; // local broadcast — trivially reachable
+          const bbmdsA = parsedDevs.filter((p) => p.net === netA && p.dev.isBBMD);
+          const bbmdsB = parsedDevs.filter((p) => p.net === netB && p.dev.isBBMD);
+          if (bbmdsA.length === 0 || bbmdsB.length === 0) return null;
+          // For each pair (a, b), check that a has b's IP in its BDT and vice versa.
+          for (const a of bbmdsA) {
+            const aPeerIps = (a.dev.bdtPeers ?? [])
+              .map(parseIpv4FromUiCanvas)
+              .filter((v): v is number => v !== null);
+            for (const b of bbmdsB) {
+              if (!aPeerIps.includes(b.ip)) continue;
+              const bPeerIps = (b.dev.bdtPeers ?? [])
+                .map(parseIpv4FromUiCanvas)
+                .filter((v): v is number => v !== null);
+              if (!bPeerIps.includes(a.ip)) continue;
+              return { via: [a.dev.label, b.dev.label] };
+            }
+          }
+          return null;
+        }
+        // Emit one trace per source supervisor/bbmd (skip controllers; in
+        // the field, Who-Is is the supervisor's job not a leaf VAV's).
+        // We use the underlying canvas node to find the wire that anchors
+        // the broadcast (best-guess: the first bacnet-ip edge the device
+        // is on). If none, synthesize a virtual trunk id by subnet.
+        for (const p of parsedDevs) {
+          const nodeKindHere = (nodes.find((n) => n.id === p.dev.nodeId)?.data as { kind?: string } | undefined)?.kind;
+          if (nodeKindHere !== 'supervisor' && nodeKindHere !== 'bbmd') continue;
+          const trunkEdge = edges.find(
+            (e) =>
+              (e.data?.wireKind as string) === 'bacnet-ip' &&
+              (e.source === p.dev.nodeId || e.target === p.dev.nodeId),
+          );
+          const trunkId = trunkEdge?.id ?? `bcast:${formatIpv4FromUiCanvas(p.net)}/${p.maskBits}`;
+          const trunkLabel = `IP broadcast · ${formatIpv4FromUiCanvas(p.net)}/${p.maskBits}`;
+          for (const otherNet of subnetSet) {
+            // Skip same-subnet (already implicit local broadcast — emit
+            // once, summarized, to avoid spam).
+            if (otherNet === p.net) continue;
+            const peerLabel = `${formatIpv4FromUiCanvas(otherNet)}/${p.maskBits}`;
+            const bridge = subnetsAreBridged(p.net, otherNet);
+            if (bridge) {
+              logBacnetPacket({
+                simSec: simSecondsElapsed,
+                trunkId,
+                trunkLabel,
+                srcMac: 0,
+                dstMac: undefined,
+                service: 'Who-Is',
+                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → reaches ${peerLabel} via ${bridge.via.join(' → ')}`,
+                layer: 'app',
+              });
+            } else {
+              logBacnetPacket({
+                simSec: simSecondsElapsed,
+                trunkId,
+                trunkLabel,
+                srcMac: 0,
+                dstMac: undefined,
+                service: 'Who-Is',
+                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → DROPPED at ${peerLabel} boundary (no BBMD bridge)`,
+                layer: 'app',
+              });
+            }
+          }
+          // One "local broadcast" line so the user sees the source side too.
+          logBacnetPacket({
+            simSec: simSecondsElapsed,
+            trunkId,
+            trunkLabel,
+            srcMac: 0,
+            dstMac: undefined,
+            service: 'Who-Is',
+            summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → local on ${formatIpv4FromUiCanvas(p.net)}/${p.maskBits}`,
+            layer: 'app',
+          });
+        }
+      }
     }
 
     // ── Yoke sensor T_sensed to the linked zone ───────────────────────
@@ -2678,6 +2826,9 @@
     // internal simSeconds starts here too so occupancy schedules see the
     // right hour-of-day from tick 0.
     simSecondsElapsed = 0;
+    // Reset broadcast trace clock so a fresh run fires the first trace
+    // immediately rather than waiting for BROADCAST_TRACE_PERIOD.
+    lastBroadcastTraceSec = -BROADCAST_TRACE_PERIOD;
     const startSeconds = simStartHour * 3600;
     const systems = new Map<string, SingleZoneSystem>();
     const samples = new Map<string, Sample[]>();
@@ -3694,7 +3845,7 @@
   const selectedIpDevice = $derived.by(() => {
     if (!selectedNode) return null;
     const k = nodeKind(selectedNode);
-    if (k !== 'supervisor' && k !== 'controller') return null;
+    if (k !== 'supervisor' && k !== 'controller' && k !== 'bbmd') return null;
     return selectedNode;
   });
 

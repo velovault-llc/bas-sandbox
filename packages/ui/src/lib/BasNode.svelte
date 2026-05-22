@@ -15,7 +15,7 @@
    *  otherwise paint an unreadable column of dots. */
   const TERMINAL_HANDLE_CAP = 24;
 
-  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router';
+  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router' | 'bbmd';
 
   type BasNodeData = {
     label: string;
@@ -156,6 +156,7 @@
     safety: '⚠',
     expansion: '⊞',
     router: '◆',
+    bbmd: '◫',
   };
 
   const KIND_LABEL: Record<BasNodeKind, string> = {
@@ -165,6 +166,7 @@
     safety: 'Safety',
     expansion: 'Expansion',
     router: 'IP Router',
+    bbmd: 'BBMD',
   };
 
   /** Subtitle for a sensor — prefers any import-supplied subtitle (mac / instance
@@ -521,6 +523,11 @@
      L3 device immediately (Net.3). */
   .kind-router {
     --accent: #f59e0b;
+  }
+  /* BBMD — cyan accent so a standalone BBMD reads as a network device
+     distinct from a generic supervisor (Net.4). */
+  .kind-bbmd {
+    --accent: #06b6d4;
   }
 
   .router-ifaces {
