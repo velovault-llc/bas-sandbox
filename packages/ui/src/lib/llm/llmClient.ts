@@ -69,6 +69,13 @@ export function streamChat(
       // and the few-shot voice. Higher temps make small local models
       // drift back toward their training-distribution textbook voice.
       temperature: 0.15,
+      // Hard cap on response length — small instruction-tuned models
+      // (7-14B class) are RLHF'd to produce thorough, structured output
+      // even when prompted for brevity. Capping num_predict forces them
+      // to compress: 220 tokens ≈ 160-180 words ≈ 2-3 tight paragraphs.
+      // Real fix is structured/JSON output where the UI controls format;
+      // this is the band-aid until we ship that.
+      num_predict: 220,
     },
     system,
   };
