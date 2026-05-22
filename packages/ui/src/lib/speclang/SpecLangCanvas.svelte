@@ -32,7 +32,6 @@
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && programStore.activeSpecLangControllerId) {
-        console.log('[SpecLang] Escape pressed — closing');
         closeSpecLang();
       }
     };
@@ -69,15 +68,27 @@
   let showCompiled = $state(false);
 
   // Re-hydrate from store when the active controller changes.
+  // CRITICAL: compute `nextRules` once and assign both `rules` and
+  // `activeRuleId` from it. Reading `rules` after writing it inside the
+  // effect would add it as a tracked dep — then writing to it would
+  // re-fire the effect forever (Svelte throws effect_update_depth_exceeded
+  // and locks up reactivity, which silently breaks every click handler
+  // including the close button).
+  let loadedForCtrl = $state<string | null>(null);
   $effect(() => {
-    if (!ctrlId) return;
-    const existing = programStore.byId[ctrlId];
-    if (existing?.specProgram) {
-      rules = existing.specProgram.rules.map((r) => ({ ...r, tiles: [...r.tiles] }));
-    } else {
-      rules = [];
+    const id = ctrlId;
+    if (!id) {
+      loadedForCtrl = null;
+      return;
     }
-    activeRuleId = rules[0]?.id ?? null;
+    if (id === loadedForCtrl) return;
+    loadedForCtrl = id;
+    const existing = programStore.byId[id];
+    const nextRules: SpecRule[] = existing?.specProgram
+      ? existing.specProgram.rules.map((r) => ({ ...r, tiles: [...r.tiles] }))
+      : [];
+    rules = nextRules;
+    activeRuleId = nextRules[0]?.id ?? null;
   });
 
   const program = $derived<SpecProgram>({ rules });
@@ -139,16 +150,6 @@
     setProgramSpec(ctrlId, { rules });
   }
 
-  // ── debug instrumentation (remove once click-blocking is resolved) ──
-  function debugCloseClick(): void {
-    console.log('[SpecLang] close button clicked — calling closeSpecLang');
-    closeSpecLang();
-    console.log('[SpecLang] after closeSpecLang, activeId =', programStore.activeSpecLangControllerId);
-  }
-  function debugPaletteClick(t: TileTemplate): void {
-    console.log('[SpecLang] palette tile clicked:', t.token, 'activeRule:', activeRuleId);
-    appendTile(t);
-  }
 
   function renderTileLabel(tile: Tile): string {
     if (tile.kind === 'value') {
@@ -165,7 +166,6 @@
     onclick={(e) => {
       // Click on the backdrop (but not inside the overlay) → close
       if (e.target === e.currentTarget) {
-        console.log('[SpecLang] backdrop clicked — closing');
         closeSpecLang();
       }
     }}
@@ -188,7 +188,7 @@
         <button type="button" class="deploy" onclick={deployToController} disabled={!compileResult.ok} title={compileResult.ok ? 'Push this program to the controller runtime' : 'Fix the rule errors first'}>
           ⤓ Download to controller
         </button>
-        <button type="button" class="close" onclick={debugCloseClick} title="Close editor (program kept)">
+        <button type="button" class="close" onclick={closeSpecLang} title="Close editor (program kept)">
           ✕
         </button>
       </div>
@@ -207,7 +207,7 @@
                     type="button"
                     class="tile pal kind-{kind}"
                     title={t.description}
-                    onclick={() => debugPaletteClick(t)}
+                    onclick={() => appendTile(t)}
                   >
                     {t.display}
                   </button>
