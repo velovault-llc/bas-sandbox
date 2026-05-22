@@ -11,6 +11,7 @@
   import SpecLangCanvas from './lib/speclang/SpecLangCanvas.svelte';
   import BacnetInspector from './lib/bacnet/BacnetInspector.svelte';
   import BacnetPacketLogPanel from './lib/bacnet/BacnetPacketLogPanel.svelte';
+  import TrunkInspector from './lib/bacnet/TrunkInspector.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
@@ -431,6 +432,7 @@
           {#if programStore.activeBacnetControllerId}
             <BacnetInspector />
           {/if}
+          <TrunkInspector />
           <ModelPickerModal />
           <ScenarioPanel />
           <RuntimeLogPanel />

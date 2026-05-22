@@ -3,6 +3,7 @@ import {
   initMstpTrunkState,
   stepMstpToken,
   tokenHoldSeconds,
+  defaultDeviceInstance,
   type MstpDevice,
 } from '../src/bacnet/mstp.js';
 
@@ -59,5 +60,22 @@ describe('MS/TP token cycling', () => {
     let s = initMstpTrunkState(solo);
     s = stepMstpToken(s, 100);
     expect(s.tokenIndex).toBe(0);
+  });
+
+  it('defaultDeviceInstance: deterministic, distinct per MAC', () => {
+    expect(defaultDeviceInstance(0)).toBe(1000);
+    expect(defaultDeviceInstance(1)).toBe(1001);
+    expect(defaultDeviceInstance(127)).toBe(1127);
+    // distinct
+    const ids = new Set([0, 1, 2, 5, 17].map(defaultDeviceInstance));
+    expect(ids.size).toBe(5);
+  });
+
+  it('MstpDevice accepts optional deviceInstance field', () => {
+    const d: MstpDevice = { nodeId: 'n', mac: 5, label: 'FEC-1', deviceInstance: 5005 };
+    expect(d.deviceInstance).toBe(5005);
+    // omitting deviceInstance still typechecks (optional field)
+    const d2: MstpDevice = { nodeId: 'n2', mac: 6, label: 'FEC-2' };
+    expect(d2.deviceInstance).toBeUndefined();
   });
 });

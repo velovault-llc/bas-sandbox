@@ -34,6 +34,7 @@
   import { validateScenario } from './scenarios/validator';
   import { registerBridge, controllerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import { logPacket as logBacnetPacket } from './bacnet/bacnetPacketLog.svelte';
+  import { openTrunkInspector, publishTrunkStates } from './bacnet/trunkInspectorStore.svelte';
   import {
     runProgram,
     makeEnv,
@@ -58,6 +59,7 @@
     DEFAULT_ZONE_CONFIG,
     stepMstpToken,
     initMstpTrunkState,
+    defaultDeviceInstance,
     type StEnv,
     type LoopState,
     type ZoneState,
@@ -1681,12 +1683,19 @@
           .map((nid) => nodes.find((n) => n.id === nid))
           .filter((n): n is NonNullable<typeof n> => !!n)
           .sort((a, b) => (nodeLabel(a) || a.id).localeCompare(nodeLabel(b) || b.id))
-          .map((n, idx) => ({
-            nodeId: n.id,
-            // Supervisors get MAC 0, others get sequential MACs (1-127).
-            mac: nodeKind(n) === 'supervisor' ? 0 : idx + 1,
-            label: nodeLabel(n) || n.id,
-          }));
+          .map((n, idx) => {
+            const mac = nodeKind(n) === 'supervisor' ? 0 : idx + 1;
+            return {
+              nodeId: n.id,
+              // Supervisors get MAC 0, others get sequential MACs (1-127).
+              mac,
+              label: nodeLabel(n) || n.id,
+              // Network-wide BACnet Device Instance — distinct from MAC,
+              // which is link-layer only. Default scheme (1000 + mac) is
+              // arbitrary but deterministic across renders.
+              deviceInstance: defaultDeviceInstance(mac),
+            };
+          });
         // Re-sort by MAC so the token ring matches the convention.
         devices.sort((a, b) => a.mac - b.mac);
         const prev = mstpTrunkStates.get(trunkEdge.id);
@@ -1699,6 +1708,46 @@
         const stepped = stepMstpToken(start, dtSeconds);
         nextStates.set(trunkEdge.id, stepped);
 
+        const trunkLabelStr = devices.length > 0
+          ? `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`
+          : `trunk @ ${baud}`;
+
+        // ── Trunk-up / membership-change discovery: when the trunk is
+        // fresh (no prior state) OR the device list changed, emit the
+        // bootup discovery sequence — Who-Is broadcast from the
+        // supervisor (or, if no supervisor present, from the lowest MAC)
+        // followed by an I-Am from every other device carrying its
+        // Device Instance. This is what a tech sees on the bus the
+        // moment they power up a new FEC or plug into a fresh trunk.
+        if (!sameMembers && devices.length > 0) {
+          const initiator = devices.find((d) => d.mac === 0) ?? devices[0];
+          logBacnetPacket({
+            simSec: simSecondsElapsed,
+            trunkId: trunkEdge.id,
+            trunkLabel: trunkLabelStr,
+            srcMac: initiator.mac,
+            // Broadcast — no specific dst.
+            dstMac: undefined,
+            service: 'Who-Is',
+            summary: `${initiator.label} (MAC ${initiator.mac}) Who-Is broadcast (discover devices on this trunk)`,
+            layer: 'app',
+          });
+          for (const d of devices) {
+            if (d.nodeId === initiator.nodeId) continue;
+            const inst = d.deviceInstance ?? defaultDeviceInstance(d.mac);
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel: trunkLabelStr,
+              srcMac: d.mac,
+              dstMac: initiator.mac,
+              service: 'I-Am',
+              summary: `${d.label} (MAC ${d.mac}) I-Am — Device Instance ${inst}`,
+              layer: 'app',
+            });
+          }
+        }
+
         // ── Emit Token-Pass packets for each hop the token made this tick.
         // Hop count = rotationsDelta * N + (newIdx - oldIdx). At very fast
         // sim speeds we cap emission to MAX_TOKEN_HOPS_PER_TICK_PER_TRUNK
@@ -1708,7 +1757,7 @@
         if (N > 1 && sameMembers) {
           const rotationsDelta = stepped.rotations - start.rotations;
           const hopCount = rotationsDelta * N + (stepped.tokenIndex - start.tokenIndex);
-          const trunkLabel = `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`;
+          const trunkLabel = trunkLabelStr;
           const emit = Math.min(hopCount, MAX_TOKEN_HOPS_PER_TICK_PER_TRUNK);
           for (let i = 0; i < emit; i++) {
             const srcIdx = (start.tokenIndex + i) % N;
@@ -1776,7 +1825,7 @@
                   ? (targetObj.presentValue ? 1 : 0)
                   : targetObj.presentValue)
               : 0;
-            const trunkLabel = `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`;
+            const trunkLabel = trunkLabelStr;
             logBacnetPacket({
               simSec: simSecondsElapsed,
               trunkId: trunkEdge.id,
@@ -1814,6 +1863,10 @@
       }
       mstpTrunkStates = nextStates;
       bacnetPollSchedule = nextPollSchedule;
+      // Mirror the trunk-state map into the inspector store so the modal
+      // can re-render against live values without reaching back into
+      // BuildCanvas. Cheap — both maps share the same MstpTrunkState objs.
+      publishTrunkStates(nextStates);
     }
 
     // ── Yoke sensor T_sensed to the linked zone ───────────────────────
@@ -3605,10 +3658,62 @@
         if (key === 'mode') {
           if (value !== 'cool' && value !== 'heat') return `mode must be cool|heat`;
           cfg.mode = value;
-          return null;
+        } else {
+          if (typeof value !== 'number') return `${key} expects a number`;
+          cfg[key] = value;
         }
-        if (typeof value !== 'number') return `${key} expects a number`;
-        cfg[key] = value;
+        // ── Emit a BACnet WriteProperty packet so the user sees the CLI
+        // command land on the bus. We map the CLI keys to BACnet object
+        // refs the supervisor would actually write:
+        //   - setpoint → AV:1 (Cooling/Heating Setpoint)
+        //   - Kp / Ki → AV:2 / AV:3 (tuning constants exposed as AVs)
+        //   - mode → MSV:1 (multistate-value, 1=cool 2=heat)
+        // The packet only fires if the controller sits on an MS/TP trunk
+        // (otherwise there's no bus to write across — it'd be over BACnet/IP).
+        const trunkForCtrl = (() => {
+          for (const [tid, state] of mstpTrunkStates) {
+            const dev = state.devices.find((d) => d.nodeId === controllerId);
+            if (dev) return { trunkId: tid, mac: dev.mac, label: dev.label, devices: state.devices };
+          }
+          return null;
+        })();
+        if (trunkForCtrl) {
+          const trunkLabelStr = trunkForCtrl.devices.length > 0
+            ? `${trunkForCtrl.devices[0].label} → ${trunkForCtrl.devices[trunkForCtrl.devices.length - 1].label}`
+            : 'trunk';
+          let objectId = 'AV:1';
+          if (key === 'Kp') objectId = 'AV:2';
+          else if (key === 'Ki') objectId = 'AV:3';
+          else if (key === 'mode') objectId = 'MSV:1';
+          const writeVal: number | boolean =
+            key === 'mode'
+              ? (value === 'heat' ? 2 : 1)
+              : (typeof value === 'number' ? value : 0);
+          logBacnetPacket({
+            simSec: simSecondsElapsed,
+            trunkId: trunkForCtrl.trunkId,
+            trunkLabel: trunkLabelStr,
+            srcMac: 0,
+            dstMac: trunkForCtrl.mac,
+            service: 'WriteProperty',
+            objectId,
+            value: writeVal,
+            summary: `MAC 0 → ${trunkForCtrl.label}: WriteProperty ${objectId} = ${typeof writeVal === 'number' ? writeVal.toFixed(2) : writeVal} (CLI set ${key})`,
+            layer: 'app',
+          });
+          logBacnetPacket({
+            simSec: simSecondsElapsed,
+            trunkId: trunkForCtrl.trunkId,
+            trunkLabel: trunkLabelStr,
+            srcMac: trunkForCtrl.mac,
+            dstMac: 0,
+            service: 'WriteProperty-ACK',
+            objectId,
+            value: writeVal,
+            summary: `${trunkForCtrl.label} → MAC 0: WriteProperty-ACK ${objectId} OK`,
+            layer: 'app',
+          });
+        }
         return null;
       },
     });
@@ -4018,6 +4123,16 @@
                     {/each}
                   </select>
                 </label>
+              {/if}
+              {#if currentKind === 'mstp' && mstpTrunkStates.has(selectedEdge.id)}
+                <button
+                  type="button"
+                  class="wire-trunk-inspect"
+                  title="Open the Trunk Inspector — see every device on this MS/TP segment, its MAC, Device Instance, and current token state."
+                  onclick={() => openTrunkInspector(selectedEdge.id)}
+                >
+                  🔍 Trunk inspector
+                </button>
               {/if}
               <button
                 type="button"
@@ -6228,6 +6343,24 @@
     cursor: pointer;
     line-height: 1.2;
     white-space: nowrap;
+  }
+
+  .wire-trunk-inspect {
+    border: 1px solid color-mix(in srgb, #06b6d4 55%, transparent);
+    background: color-mix(in srgb, #06b6d4 10%, transparent);
+    color: color-mix(in srgb, #06b6d4 92%, CanvasText);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .wire-trunk-inspect:hover {
+    background: color-mix(in srgb, #06b6d4 22%, transparent);
+    color: #06b6d4;
   }
 
   .wire-break:hover {

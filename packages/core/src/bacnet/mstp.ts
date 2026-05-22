@@ -26,6 +26,17 @@ export interface MstpDevice {
   readonly mac: number;
   /** Display label — node name for the panel. */
   readonly label: string;
+  /** BACnet Device Instance number (0-4194302). Distinct from the MAC:
+   *  the MAC routes link-layer frames on this trunk, but the device
+   *  instance is the network-wide identifier returned in an I-Am and
+   *  used by upstream supervisors to address this device across BBMDs.
+   *  When omitted we synthesize a default of `1000 + mac` for display. */
+  readonly deviceInstance?: number;
+}
+
+/** Convenience for the default device-instance scheme. */
+export function defaultDeviceInstance(mac: number): number {
+  return 1000 + mac;
 }
 
 export interface MstpTrunkState {

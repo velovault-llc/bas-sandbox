@@ -151,6 +151,7 @@ export {
   initMstpTrunkState,
   tokenHoldSeconds,
   formatMstpDevice,
+  defaultDeviceInstance,
 } from './bacnet/index.js';
 export type {
   BacnetObject,

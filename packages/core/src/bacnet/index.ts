@@ -13,5 +13,6 @@ export {
   initMstpTrunkState,
   tokenHoldSeconds,
   formatMstpDevice,
+  defaultDeviceInstance,
 } from './mstp.js';
 export type { MstpDevice, MstpTrunkState } from './mstp.js';
