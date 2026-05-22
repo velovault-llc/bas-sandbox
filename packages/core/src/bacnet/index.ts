@@ -29,15 +29,22 @@ export type { MstpFinding, MstpFindingId, MstpTrunkSnapshot } from './validate.j
 
 export {
   validateBacnetIpNetwork,
+  validateIpZones,
   parseIpv4,
   formatIpv4,
   networkAddress,
   isContiguousMask,
   isPrivateIpv4,
+  parseCidr,
+  ipInCidr,
+  formatCidr,
 } from './ipv4.js';
 export type {
   BacnetIpDevice,
   BacnetIpEdge,
   Ipv4Finding,
   Ipv4FindingId,
+  ParsedCidr,
+  PlacedBacnetIpDevice,
+  SubnetZone,
 } from './ipv4.js';

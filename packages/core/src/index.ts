@@ -159,11 +159,15 @@ export {
   MSTP_MAC_MIN,
   MSTP_MAC_MAX,
   validateBacnetIpNetwork,
+  validateIpZones,
   parseIpv4,
   formatIpv4,
   networkAddress,
   isContiguousMask,
   isPrivateIpv4,
+  parseCidr,
+  ipInCidr,
+  formatCidr,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
@@ -178,6 +182,9 @@ export type {
   BacnetIpEdge,
   Ipv4Finding,
   Ipv4FindingId,
+  ParsedCidr,
+  PlacedBacnetIpDevice,
+  SubnetZone,
 } from './bacnet/index.js';
 
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';

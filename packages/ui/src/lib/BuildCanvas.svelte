@@ -12,6 +12,7 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import BasNode from './BasNode.svelte';
+  import SubnetZone from './SubnetZone.svelte';
   import MiniChart, { type ChartSeries } from './MiniChart.svelte';
   import {
     SingleZoneSystem,
@@ -63,10 +64,13 @@
     mstpServiceLatencySeconds,
     validateMstpTrunks,
     validateBacnetIpNetwork,
+    validateIpZones,
     type StEnv,
     type MstpFinding,
     type BacnetIpDevice,
     type BacnetIpEdge,
+    type PlacedBacnetIpDevice,
+    type SubnetZone as SubnetZoneSpec,
     type LoopState,
     type ZoneState,
     type MstpDevice,
@@ -76,7 +80,116 @@
   import type { BasScenarioV1 } from './scenario';
   import { DEMOS } from './demoScenarios';
 
-  const nodeTypes = { bas: BasNode };
+  const nodeTypes = { bas: BasNode, subnet: SubnetZone };
+
+  // ============ Subnet zones (Net.1) ============
+  //
+  // A subnet zone is a labeled, resizable rectangle behind the regular
+  // nodes that names a VLAN / IP subnet. It lives in `nodes[]` as a
+  // SvelteFlow node with `type: 'subnet'` and `data.kind: 'subnet-zone'`.
+  // Membership is geometric — a node "belongs" iff its position lies
+  // inside the rect — and the IP validator (in the per-tick loop below)
+  // cross-checks each contained device's IP against the zone's CIDR.
+
+  type SubnetZoneData = {
+    kind: 'subnet-zone';
+    label: string;
+    cidr: string;
+    color: string;
+  };
+
+  /** Color palette for new zones — cycled in order so successive zones
+   *  read as visually distinct. Pulled from the existing wire-color
+   *  palette so the canvas stays internally consistent. */
+  const ZONE_COLORS = ['#4a9eff', '#9c8cff', '#2ecc71', '#fb923c', '#f59e0b', '#ec4899'] as const;
+  let zoneColorIndex = 0;
+
+  function isSubnetZone(n: Node): boolean {
+    return (n.data as { kind?: string } | undefined)?.kind === 'subnet-zone';
+  }
+
+  /** Center (in flow coords) of a node. xyflow stores top-left as
+   *  `position` and rendered size on `measured.width/height`; before the
+   *  first measure pass we fall back to a reasonable default so the
+   *  validator doesn't go silent on a fresh drop. */
+  function nodeCenter(n: Node): { x: number; y: number } {
+    const w = (n as { measured?: { width?: number } }).measured?.width ?? n.width ?? 160;
+    const h = (n as { measured?: { height?: number } }).measured?.height ?? n.height ?? 60;
+    return { x: n.position.x + w / 2, y: n.position.y + h / 2 };
+  }
+
+  function createSubnetZone(): void {
+    const color = ZONE_COLORS[zoneColorIndex % ZONE_COLORS.length];
+    zoneColorIndex++;
+    // Place the new zone near the center of the current viewport so the
+    // user sees it land without having to pan. We measure the flow rect
+    // off the .flow wrapper and back out the current transform.
+    const flowEl = document.querySelector('.flow') as HTMLElement | null;
+    let cx = 200;
+    let cy = 200;
+    if (flowEl) {
+      const rect = flowEl.getBoundingClientRect();
+      const viewport = flowEl.querySelector('.svelte-flow__viewport') as HTMLElement | null;
+      let tx = 0,
+        ty = 0,
+        zoom = 1;
+      if (viewport) {
+        const m = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
+        tx = m.e;
+        ty = m.f;
+        zoom = m.a || 1;
+      }
+      cx = (rect.width / 2 - tx) / zoom;
+      cy = (rect.height / 2 - ty) / zoom;
+    }
+    const w = 360;
+    const h = 240;
+    const id = `zone-${nextId++}`;
+    // Suggest a default CIDR that increments per zone so the first three
+    // zones land on distinct /24s and the user has to pick the right one
+    // rather than every zone fighting over 10.0.1.0/24.
+    const defaultCidr = `10.0.${zoneColorIndex}.0/24`;
+    const newZone: Node = {
+      id,
+      type: 'subnet',
+      position: { x: cx - w / 2, y: cy - h / 2 },
+      width: w,
+      height: h,
+      // SvelteFlow renders nodes in DOM order. Put zones first by setting
+      // a negative zIndex so regular nodes always draw on top.
+      zIndex: -1,
+      // Don't pull a zone into the selection set when the user is just
+      // trying to click through to a device behind it; selection is via
+      // the label chip on the zone itself.
+      selectable: true,
+      draggable: true,
+      data: {
+        kind: 'subnet-zone',
+        label: `VLAN ${zoneColorIndex}`,
+        cidr: defaultCidr,
+        color,
+      } satisfies SubnetZoneData,
+    };
+    nodes = [newZone, ...nodes];
+    logEvent(
+      simSecondsElapsed,
+      'info',
+      'subnet',
+      `Added subnet zone "${defaultCidr}" — drop devices inside it to model the VLAN they live on.`,
+    );
+  }
+
+  function updateZoneField(zoneId: string, field: keyof SubnetZoneData, value: string): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== zoneId) return n;
+      const d = n.data as SubnetZoneData;
+      return { ...n, data: { ...d, [field]: value } };
+    });
+  }
+
+  function deleteZone(zoneId: string): void {
+    nodes = nodes.filter((n) => n.id !== zoneId);
+  }
 
   type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone';
 
@@ -2225,6 +2338,7 @@
     // announcements the same way we do for MS/TP.
     {
       const ipDevices: BacnetIpDevice[] = nodes
+        .filter((n) => !isSubnetZone(n))
         .filter((n) => {
           const d = n.data as { ipAddress?: string; subnetMask?: string; gateway?: string };
           return !!d.ipAddress || !!d.subnetMask || !!d.gateway;
@@ -2243,6 +2357,42 @@
         .filter((e) => (e.data?.wireKind as string) === 'bacnet-ip')
         .map((e) => ({ edgeId: e.id, aNodeId: e.source, bNodeId: e.target }));
       const findings = validateBacnetIpNetwork(ipDevices, ipEdges);
+
+      // Net.1 — subnet-zone validator: cross-check each placed device's
+      // IP against the CIDR of the zone it geometrically sits inside.
+      // Builds on the same finding shape so the network-health pill and
+      // runtime-log de-dupe paths below pick it up for free.
+      const zoneNodes = nodes.filter(isSubnetZone);
+      if (zoneNodes.length > 0) {
+        const zones: SubnetZoneSpec[] = zoneNodes.map((zn) => {
+          const d = zn.data as SubnetZoneData;
+          return {
+            zoneId: zn.id,
+            label: d.label,
+            cidr: d.cidr,
+            x: zn.position.x,
+            y: zn.position.y,
+            w: (zn.width as number | undefined) ?? 360,
+            h: (zn.height as number | undefined) ?? 240,
+          };
+        });
+        const placed: PlacedBacnetIpDevice[] = nodes
+          .filter((n) => !isSubnetZone(n))
+          .map((n) => {
+            const d = n.data as { ipAddress?: string; subnetMask?: string; gateway?: string };
+            const c = nodeCenter(n);
+            return {
+              nodeId: n.id,
+              label: nodeLabel(n) || n.id,
+              ipAddress: d.ipAddress,
+              subnetMask: d.subnetMask,
+              gateway: d.gateway,
+              x: c.x,
+              y: c.y,
+            };
+          });
+        for (const zf of validateIpZones(placed, zones)) findings.push(zf);
+      }
       // Announce-once for the runtime log; finding key combines id +
       // the nodes/edges it touches so re-emerging faults re-fire.
       const liveKeys = new Set<string>();
@@ -3480,6 +3630,13 @@
     return selectedNode;
   });
 
+  /** Single-selection subnet zone — drives the CIDR / label edit panel. */
+  const selectedSubnetZone = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (!isSubnetZone(selectedNode)) return null;
+    return selectedNode;
+  });
+
   /** Update a single zoneConfig field on the selected zone. Live — the
    *  next sim tick picks it up. */
   function updateZoneConfig(zoneId: string, field: string, value: number): void {
@@ -4475,6 +4632,53 @@
       >
         <Background />
 
+        {#if selectedSubnetZone}
+          {@const zoneData = selectedSubnetZone.data as SubnetZoneData}
+          <Panel position="top-center">
+            <div class="subnet-edit-panel">
+              <span class="subnet-edit-title" style:color={zoneData.color}>Subnet zone</span>
+              <label class="subnet-edit-field" title="Friendly label that appears on the zone (e.g. 'BMS VLAN', 'Corp', 'DMZ').">
+                <span>label</span>
+                <input
+                  type="text"
+                  value={zoneData.label}
+                  oninput={(e) => updateZoneField(selectedSubnetZone.id, 'label', (e.currentTarget as HTMLInputElement).value)}
+                  placeholder="VLAN name"
+                />
+              </label>
+              <label class="subnet-edit-field" title="CIDR notation — e.g. 10.0.1.0/24. Devices dropped inside this zone must have IPs that fall in this range.">
+                <span>CIDR</span>
+                <input
+                  class="cidr-input"
+                  type="text"
+                  value={zoneData.cidr}
+                  oninput={(e) => updateZoneField(selectedSubnetZone.id, 'cidr', (e.currentTarget as HTMLInputElement).value)}
+                  placeholder="10.0.1.0/24"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off"
+                />
+              </label>
+              <label class="subnet-edit-color" title="Border + fill color for this zone.">
+                <span>color</span>
+                <input
+                  type="color"
+                  value={zoneData.color}
+                  oninput={(e) => updateZoneField(selectedSubnetZone.id, 'color', (e.currentTarget as HTMLInputElement).value)}
+                />
+              </label>
+              <button
+                type="button"
+                class="subnet-edit-delete"
+                onclick={() => deleteZone(selectedSubnetZone.id)}
+                title="Delete this subnet zone (devices inside it stay where they are)."
+              >
+                ✕ Delete zone
+              </button>
+            </div>
+          </Panel>
+        {/if}
+
         {#if selectedEdge}
           {@const currentKind = (selectedEdge.data?.wireKind as WireKind) ?? 'mstp'}
           {@const baud = selectedEdge.data?.baud as number | undefined}
@@ -5268,6 +5472,14 @@
               title="Download the canvas as a .bas-scenario JSON file"
             >
               💾 Save
+            </button>
+            <button
+              type="button"
+              class="ca-btn"
+              onclick={createSubnetZone}
+              title="Add a subnet zone — a labeled, resizable rectangle that names the VLAN / IP subnet underneath. Drop devices inside it; the validator will flag IP-vs-zone mismatches."
+            >
+              ▢ + Subnet
             </button>
             <button
               type="button"
@@ -6652,6 +6864,78 @@
     backdrop-filter: blur(4px);
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
+  }
+
+  /* Subnet zone edit panel (Net.1) — sits in the same top-center slot as
+     the trunk inspector chrome so the user has a single place to look
+     when configuring whatever's selected. */
+  .subnet-edit-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+  }
+  .subnet-edit-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .subnet-edit-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+  .subnet-edit-field input {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    width: 9rem;
+  }
+  .subnet-edit-field .cidr-input {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    width: 8.5rem;
+  }
+  .subnet-edit-color {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+  .subnet-edit-color input[type='color'] {
+    width: 1.6rem;
+    height: 1.4rem;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 4px;
+    background: Canvas;
+    cursor: pointer;
+  }
+  .subnet-edit-delete {
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.55rem;
+    background: transparent;
+    color: #e74c3c;
+    border: 1px solid color-mix(in srgb, #e74c3c 60%, transparent);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .subnet-edit-delete:hover {
+    background: color-mix(in srgb, #e74c3c 15%, transparent);
   }
 
   .wire-title {

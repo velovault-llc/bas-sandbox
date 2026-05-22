@@ -48,7 +48,10 @@ export type Ipv4FindingId =
   | 'ipv4.gateway-not-in-subnet'
   | 'ipv4.invalid-ip'
   | 'ipv4.invalid-mask'
-  | 'ipv4.private-public-mix';
+  | 'ipv4.private-public-mix'
+  | 'ipv4.zone-cidr-mismatch'
+  | 'ipv4.zone-invalid-cidr'
+  | 'ipv4.outside-any-zone';
 
 export interface Ipv4Finding {
   readonly id: Ipv4FindingId;
@@ -263,4 +266,140 @@ function maskToCidr(mask: number): number {
     m >>>= 1;
   }
   return count;
+}
+
+// ── CIDR helpers + subnet-zone validator (Net.1) ─────────────────────
+//
+// A "subnet zone" is a visual container on the canvas (a drawn rectangle
+// with its own CIDR + label). Net.1 introduces the visual model; this
+// module owns the parsing + geometric-membership-vs-IP-membership check
+// so the same fact a tech learns in the field — "the IP says one network,
+// the patch panel says another" — surfaces as a validator finding.
+
+export interface ParsedCidr {
+  /** Network address (32-bit unsigned) — already masked. */
+  readonly network: number;
+  /** Prefix length 0..32. */
+  readonly prefix: number;
+}
+
+/** Parse "10.0.1.0/24" or "192.168.1.5/16" — returns the network address
+ *  (masked) and prefix length. Returns null on malformed input. Accepts
+ *  host bits in the IP portion (we mask them off rather than rejecting). */
+export function parseCidr(s: string | undefined): ParsedCidr | null {
+  if (!s) return null;
+  const trimmed = s.trim();
+  const slash = trimmed.indexOf('/');
+  if (slash < 0) return null;
+  const ipPart = trimmed.slice(0, slash);
+  const prefixPart = trimmed.slice(slash + 1);
+  const ip = parseIpv4(ipPart);
+  if (ip === null) return null;
+  if (!/^[0-9]+$/.test(prefixPart)) return null;
+  const prefix = Number(prefixPart);
+  if (prefix < 0 || prefix > 32) return null;
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return { network: (ip & mask) >>> 0, prefix };
+}
+
+/** True iff `ip` lies within `cidr`. */
+export function ipInCidr(ip: number, cidr: ParsedCidr): boolean {
+  const mask = cidr.prefix === 0 ? 0 : (0xffffffff << (32 - cidr.prefix)) >>> 0;
+  return ((ip & mask) >>> 0) === cidr.network;
+}
+
+/** Pretty-print a CIDR back to "a.b.c.d/N". */
+export function formatCidr(cidr: ParsedCidr): string {
+  return `${formatIpv4(cidr.network)}/${cidr.prefix}`;
+}
+
+/** A drawn subnet zone on the canvas. Membership is geometric (whether a
+ *  node's center sits inside the rectangle); the CIDR is the policy the
+ *  zone claims to enforce, and we flag mismatches. */
+export interface SubnetZone {
+  readonly zoneId: string;
+  readonly label: string;
+  readonly cidr: string;
+  /** Rectangle in canvas coords. */
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** A device positioned on the canvas — same shape as BacnetIpDevice plus a
+ *  center point so the zone check is geometric. */
+export interface PlacedBacnetIpDevice extends BacnetIpDevice {
+  /** Center of the node's rendered rect, in canvas coords. */
+  readonly x: number;
+  readonly y: number;
+}
+
+function pointInRect(px: number, py: number, z: SubnetZone): boolean {
+  return px >= z.x && px <= z.x + z.w && py >= z.y && py <= z.y + z.h;
+}
+
+/** Validate subnet zones against placed devices.
+ *
+ *  Findings:
+ *   - ipv4.zone-invalid-cidr: a zone's CIDR string doesn't parse.
+ *   - ipv4.zone-cidr-mismatch: a device sits geometrically inside a zone
+ *     but its IP is outside that zone's CIDR (the "you put it on this VLAN
+ *     but its IP says otherwise" mistake).
+ *   - ipv4.outside-any-zone: a device has an IP but isn't inside any drawn
+ *     zone. Informational — only fires when at least one zone exists, so
+ *     a canvas with no zones doesn't drown the user in noise. */
+export function validateIpZones(
+  devices: readonly PlacedBacnetIpDevice[],
+  zones: readonly SubnetZone[],
+): Ipv4Finding[] {
+  const findings: Ipv4Finding[] = [];
+  // Pre-parse every zone CIDR; flag the invalid ones up front.
+  const parsedZones: Array<{ zone: SubnetZone; cidr: ParsedCidr | null }> = [];
+  for (const z of zones) {
+    const cidr = parseCidr(z.cidr);
+    if (cidr === null) {
+      findings.push({
+        id: 'ipv4.zone-invalid-cidr',
+        severity: 'error',
+        title: `Invalid CIDR "${z.cidr}" on zone ${z.label}`,
+        description: `A subnet zone needs a valid CIDR like 10.0.1.0/24. Fix the zone's CIDR or delete it.`,
+      });
+    }
+    parsedZones.push({ zone: z, cidr });
+  }
+  if (zones.length === 0) return findings;
+
+  for (const d of devices) {
+    const ip = parseIpv4(d.ipAddress);
+    if (ip === null) continue; // no IP, nothing to compare
+    let containingZone: { zone: SubnetZone; cidr: ParsedCidr | null } | null = null;
+    for (const pz of parsedZones) {
+      if (pointInRect(d.x, d.y, pz.zone)) {
+        containingZone = pz;
+        break; // first hit wins; overlapping zones are an authoring problem
+      }
+    }
+    if (!containingZone) {
+      findings.push({
+        id: 'ipv4.outside-any-zone',
+        severity: 'info',
+        title: `${d.label} (${d.ipAddress}) isn't in any subnet zone`,
+        description: `Drop a subnet zone around this device to model the VLAN/subnet it actually lives on. (Geometric containment only — not a config error by itself.)`,
+        nodeIds: [d.nodeId],
+      });
+      continue;
+    }
+    if (containingZone.cidr === null) continue; // already flagged above
+    if (!ipInCidr(ip, containingZone.cidr)) {
+      findings.push({
+        id: 'ipv4.zone-cidr-mismatch',
+        severity: 'error',
+        title: `${d.label} (${d.ipAddress}) is on zone ${containingZone.zone.label} but its IP is outside ${containingZone.zone.cidr}`,
+        description: `The device is drawn inside the ${containingZone.zone.label} subnet zone, but ${d.ipAddress} doesn't fall in ${containingZone.zone.cidr}. Either move the device to the correct zone or re-IP it so it actually belongs.`,
+        nodeIds: [d.nodeId],
+      });
+    }
+  }
+  return findings;
 }
