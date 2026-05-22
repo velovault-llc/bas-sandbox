@@ -69,6 +69,7 @@
     type MstpFinding,
     type BacnetIpDevice,
     type BacnetIpEdge,
+    type BacnetIpRouter,
     type PlacedBacnetIpDevice,
     type SubnetZone as SubnetZoneSpec,
     type LoopState,
@@ -191,7 +192,7 @@
     nodes = nodes.filter((n) => n.id !== zoneId);
   }
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -258,6 +259,9 @@
    */
   function defaultWireKind(sourceKind: Kind | undefined, targetKind: Kind | undefined): WireKind {
     const involves = (k: Kind) => sourceKind === k || targetKind === k;
+    // Anything touching a router is BACnet/IP — routers live on the IP
+    // backbone, not on field-level RS-485.
+    if (involves('router')) return 'bacnet-ip';
     // Hardwired covers the entire physical-cable-from-terminal-block category:
     //   - sensor / safety devices land on hardwired AI / BI terminals
     //   - expansion modules clip onto their parent controller via a vendor
@@ -457,6 +461,13 @@
       defaultName: 'ZONE-1',
       icon: '▢',
       description: 'A physical room or open area. Has thermal mass, internal loads (people / lights / equipment), and an envelope to OAT. The thing the BAS is ultimately trying to keep comfortable.',
+    },
+    {
+      kind: 'router',
+      label: 'IP Router',
+      defaultName: 'RTR-1',
+      icon: '◆',
+      description: 'Network-layer (L3) router bridging two or more subnets. A BACnet/IP edge between devices on different subnets routes through the router for UNICAST traffic. Broadcasts (Who-Is/I-Am) still require BBMDs.',
     },
   ];
 
@@ -685,6 +696,15 @@
     if (equipmentModel) {
       data.equipmentModelId = equipmentModel.id;
       data.subtitle = `${equipmentModel.vendor} · ${equipmentModel.category} · ${equipmentModel.capacity}`;
+    }
+    // Net.3 — a fresh router lands with two empty interfaces so the
+    // editor isn't blank. User fills in CIDRs to enable bridging.
+    if (paletteKind === 'router') {
+      data.routerInterfaces = [
+        { ip: '', cidr: '' },
+        { ip: '', cidr: '' },
+      ];
+      data.subtitle = '2 interfaces — configure CIDRs to enable routing';
     }
     nodes = [
       ...nodes,
@@ -2372,7 +2392,22 @@
       const ipEdges: BacnetIpEdge[] = edges
         .filter((e) => (e.data?.wireKind as string) === 'bacnet-ip')
         .map((e) => ({ edgeId: e.id, aNodeId: e.source, bNodeId: e.target }));
-      const findings = validateBacnetIpNetwork(ipDevices, ipEdges);
+      // Net.3 — collect routers from the canvas. Each router-kind node
+      // contributes its interface list to the validator's L3 bridging
+      // check (cross-subnet edges are reported as info when a router
+      // covers both subnets).
+      const routers: BacnetIpRouter[] = nodes
+        .filter((n) => !isSubnetZone(n))
+        .filter((n) => nodeKind(n) === 'router')
+        .map((n) => {
+          const d = n.data as { routerInterfaces?: Array<{ ip?: string; cidr: string }> };
+          return {
+            nodeId: n.id,
+            label: nodeLabel(n) || n.id,
+            interfaces: d.routerInterfaces ?? [],
+          };
+        });
+      const findings = validateBacnetIpNetwork(ipDevices, ipEdges, routers);
 
       // Net.1 — subnet-zone validator: cross-check each placed device's
       // IP against the CIDR of the zone it geometrically sits inside.
@@ -3663,6 +3698,49 @@
     return selectedNode;
   });
 
+  /** Single-selection IP router — drives the Net.3 router-interfaces
+   *  config panel. */
+  const selectedRouter = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'router') return null;
+    return selectedNode;
+  });
+
+  /** Update one interface on a router. */
+  function updateRouterInterface(
+    routerId: string,
+    index: number,
+    field: 'ip' | 'cidr',
+    value: string,
+  ): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== routerId) return n;
+      const d = n.data as { routerInterfaces?: Array<{ ip?: string; cidr: string }> };
+      const ifs = [...(d.routerInterfaces ?? [])];
+      const cur = ifs[index] ?? { ip: '', cidr: '' };
+      ifs[index] = { ...cur, [field]: value };
+      return { ...n, data: { ...d, routerInterfaces: ifs } };
+    });
+  }
+
+  function addRouterInterface(routerId: string): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== routerId) return n;
+      const d = n.data as { routerInterfaces?: Array<{ ip?: string; cidr: string }> };
+      const ifs = [...(d.routerInterfaces ?? []), { ip: '', cidr: '' }];
+      return { ...n, data: { ...d, routerInterfaces: ifs } };
+    });
+  }
+
+  function removeRouterInterface(routerId: string, index: number): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== routerId) return n;
+      const d = n.data as { routerInterfaces?: Array<{ ip?: string; cidr: string }> };
+      const ifs = (d.routerInterfaces ?? []).filter((_, i) => i !== index);
+      return { ...n, data: { ...d, routerInterfaces: ifs } };
+    });
+  }
+
   /** Mutate a single field on a node's data, immutably. Used by the
    *  Net.2 IP / BBMD config panel and the subnet-zone edit panel. */
   function updateNodeField(nodeId: string, field: string, value: unknown): void {
@@ -4751,7 +4829,61 @@
           </Panel>
         {/if}
 
-        {#if selectedIpDevice && !selectedSubnetZone}
+        {#if selectedRouter}
+          {@const rData = selectedRouter.data as {
+            routerInterfaces?: Array<{ ip?: string; cidr: string }>;
+          }}
+          {@const ifs = rData.routerInterfaces ?? []}
+          <Panel position="top-center">
+            <div class="router-panel">
+              <span class="router-title">Router — {nodeLabel(selectedRouter)}</span>
+              <div class="router-ifaces-edit">
+                {#each ifs as iface, i (i)}
+                  <div class="router-iface-row">
+                    <span class="iface-num">if{i}</span>
+                    <input
+                      class="ip-input"
+                      type="text"
+                      value={iface.ip ?? ''}
+                      placeholder="10.0.1.1"
+                      title="Router's IP on this interface (informational — what matters for routing is the CIDR)."
+                      oninput={(e) => updateRouterInterface(selectedRouter.id, i, 'ip', (e.currentTarget as HTMLInputElement).value)}
+                      spellcheck="false"
+                      autocapitalize="off"
+                    />
+                    <input
+                      class="ip-input"
+                      type="text"
+                      value={iface.cidr}
+                      placeholder="10.0.1.0/24"
+                      title="CIDR for this interface — devices with IPs in this range are reachable via this interface."
+                      oninput={(e) => updateRouterInterface(selectedRouter.id, i, 'cidr', (e.currentTarget as HTMLInputElement).value)}
+                      spellcheck="false"
+                      autocapitalize="off"
+                    />
+                    <button
+                      type="button"
+                      class="iface-del"
+                      title="Remove this interface"
+                      onclick={() => removeRouterInterface(selectedRouter.id, i)}
+                    >✕</button>
+                  </div>
+                {/each}
+                {#if ifs.length === 0}
+                  <span class="router-hint">No interfaces yet — add at least 2 to bridge subnets.</span>
+                {/if}
+              </div>
+              <button
+                type="button"
+                class="iface-add"
+                onclick={() => addRouterInterface(selectedRouter.id)}
+                title="Add another network interface."
+              >+ interface</button>
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedIpDevice && !selectedSubnetZone && !selectedRouter}
           {@const ipData = selectedIpDevice.data as {
             ipAddress?: string;
             subnetMask?: string;
@@ -7179,6 +7311,82 @@
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
+  }
+
+  /* Net.3 — router-interfaces editor. Same chrome family as the IP /
+     BBMD panel above. */
+  .router-panel {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    max-width: 50rem;
+  }
+  .router-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: #f59e0b;
+    margin-top: 0.25rem;
+  }
+  .router-ifaces-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .router-iface-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+  }
+  .iface-num {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-weight: 600;
+    width: 1.8rem;
+  }
+  .iface-del {
+    font: inherit;
+    font-size: 0.7rem;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    border-radius: 4px;
+    padding: 0 0.4rem;
+    cursor: pointer;
+  }
+  .iface-del:hover {
+    border-color: #e74c3c;
+    color: #e74c3c;
+  }
+  .iface-add {
+    font: inherit;
+    font-size: 0.7rem;
+    align-self: flex-start;
+    margin-top: 0.25rem;
+    background: transparent;
+    border: 1px dashed color-mix(in srgb, #f59e0b 60%, transparent);
+    color: #f59e0b;
+    border-radius: 4px;
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+  }
+  .iface-add:hover {
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+  }
+  .router-hint {
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-style: italic;
+    padding: 0.15rem 0.25rem;
   }
 
   .wire-title {

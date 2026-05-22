@@ -15,7 +15,7 @@
    *  otherwise paint an unreadable column of dots. */
   const TERMINAL_HANDLE_CAP = 24;
 
-  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion';
+  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router';
 
   type BasNodeData = {
     label: string;
@@ -67,6 +67,10 @@
      *  Broadcast Management Device. Drives the BBMD badge below the
      *  subtitle (Net.2). Only meaningful on supervisor/controller. */
     isBBMD?: boolean;
+    /** Router-only: ordered list of network interfaces. Each interface
+     *  has its own IP + CIDR-prefix mask. Min 2 to be useful (a router
+     *  with one interface is just an endpoint). (Net.3) */
+    routerInterfaces?: ReadonlyArray<{ ip: string; cidr: string }>;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -151,6 +155,7 @@
     sensor: '◇',
     safety: '⚠',
     expansion: '⊞',
+    router: '◆',
   };
 
   const KIND_LABEL: Record<BasNodeKind, string> = {
@@ -159,6 +164,7 @@
     sensor: 'Sensor',
     safety: 'Safety',
     expansion: 'Expansion',
+    router: 'IP Router',
   };
 
   /** Subtitle for a sensor — prefers any import-supplied subtitle (mac / instance
@@ -285,6 +291,13 @@
   {#if data.isBBMD && (data.kind === 'supervisor' || data.kind === 'controller')}
     <div class="bbmd-badge" title="BACnet Broadcast Management Device — bridges BACnet broadcasts to peer BBMDs on remote subnets.">
       BBMD
+    </div>
+  {/if}
+  {#if data.kind === 'router' && data.routerInterfaces && data.routerInterfaces.length > 0}
+    <div class="router-ifaces" title="L3 router interfaces — each is one subnet this router participates in.">
+      {#each data.routerInterfaces as iface, i (i)}
+        <span class="iface-chip">{iface.cidr || '—'}</span>
+      {/each}
     </div>
   {/if}
   {#if data.childCount !== undefined && data.childCount > 0}
@@ -502,6 +515,33 @@
     font-size: 0.78rem;
     padding: 0.35rem 0.55rem;
     min-width: 8.5rem;
+  }
+
+  /* Router — distinct color so a network-savvy reader can spot the
+     L3 device immediately (Net.3). */
+  .kind-router {
+    --accent: #f59e0b;
+  }
+
+  .router-ifaces {
+    margin-top: 0.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    justify-content: center;
+  }
+  .iface-chip {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent, #f59e0b) 18%, transparent);
+    color: var(--accent, #f59e0b);
+    border: 1px solid color-mix(in srgb, var(--accent, #f59e0b) 40%, transparent);
   }
 
   .header {

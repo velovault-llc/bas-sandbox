@@ -52,6 +52,21 @@ export interface BacnetIpEdge {
   readonly bNodeId: string;
 }
 
+/** A network-layer router (Net.3) — bridges multiple subnets via L3
+ *  unicast routing. Has 2+ interfaces, each with its own IP + CIDR.
+ *  Wired to other devices via bacnet-ip edges; when two devices on
+ *  different subnets are both wired to the same router AND that router
+ *  has interfaces matching both endpoints' subnets, the cross-subnet
+ *  edge is reported as routed (info), not subnet-mismatch (error). */
+export interface BacnetIpRouter {
+  readonly nodeId: string;
+  readonly label: string;
+  /** Ordered list of router interfaces. Each is a CIDR like "10.0.1.0/24"
+   *  (the IP within the subnet is informational; what matters for
+   *  routing is the CIDR membership of the peer device). */
+  readonly interfaces: ReadonlyArray<{ ip?: string; cidr: string }>;
+}
+
 export type Ipv4FindingId =
   | 'ipv4.duplicate-ip'
   | 'ipv4.subnet-mismatch'
@@ -140,6 +155,7 @@ export function formatIpv4(ip: number): string {
 export function validateBacnetIpNetwork(
   devices: readonly BacnetIpDevice[],
   edges: readonly BacnetIpEdge[],
+  routers: readonly BacnetIpRouter[] = [],
 ): Ipv4Finding[] {
   const findings: Ipv4Finding[] = [];
 
@@ -242,10 +258,28 @@ export function validateBacnetIpNetwork(
     }
     // Subnet match — use each device's own mask. If the two networks
     // disagree under EITHER mask, the link is broken UNLESS a BBMD on
-    // each side knows about the other (Net.2 bridge-aware validation).
+    // each side knows about the other (Net.2 bridge-aware validation)
+    // OR a router has interfaces on both subnets (Net.3 L3 routing).
     const aNet = networkAddress(a.ip, a.mask);
     const bNet = networkAddress(b.ip, a.mask);
     if (aNet !== bNet) {
+      // Router L3-route check (Net.3) — runs first. A router with
+      // interfaces on both subnets short-circuits to info ("routed via
+      // <router>") because L3 unicast packets WILL reach the other
+      // side via the router. (Broadcasts still need a BBMD; if neither
+      // side has one, fall through to BBMD checks below.)
+      const routerBridge = routerHasInterfacesOn(routers, a.ip, b.ip);
+      if (routerBridge) {
+        findings.push({
+          id: 'ipv4.cross-subnet-no-bridge',
+          severity: 'info',
+          title: `Cross-subnet BACnet/IP — routed via ${routerBridge.label}`,
+          description: `${a.dev.label} (${formatIpv4(aNet)}/${maskToCidr(a.mask)}) ↔ ${b.dev.label} (${formatIpv4(bNet)}/${maskToCidr(b.mask)}) cross subnets via L3 router ${routerBridge.label}. Unicast BACnet (ReadProperty, WriteProperty) works; broadcasts (Who-Is, I-Am) still need BBMDs on each side.`,
+          nodeIds: [a.dev.nodeId, b.dev.nodeId, routerBridge.nodeId],
+          edgeIds: [e.edgeId],
+        });
+        continue;
+      }
       const bridgeStatus = bbmdBridgeStatus(a.dev, b.dev);
       if (bridgeStatus.kind === 'bridged') {
         // OK — informational only. Tell the reader WHY the cross-subnet
@@ -372,6 +406,31 @@ type BridgeStatus =
   | { kind: 'one-side-bbmd'; bbmdSide: BacnetIpDevice; nonBbmdSide: BacnetIpDevice }
   /** Neither endpoint is a BBMD — the classic unbridged cross-subnet. */
   | { kind: 'none' };
+
+/** Find a router whose interface CIDRs cover both supplied IPs (i.e.
+ *  the router straddles both subnets). Returns the first matching
+ *  router or null. Pure — does not check whether the router is
+ *  physically wired into the path; canvas wiring is irrelevant for
+ *  routing-by-config (real-world routers don't need to be in the
+ *  spanning tree of every flow they route). */
+function routerHasInterfacesOn(
+  routers: readonly BacnetIpRouter[],
+  ipA: number,
+  ipB: number,
+): BacnetIpRouter | null {
+  for (const r of routers) {
+    let coversA = false;
+    let coversB = false;
+    for (const iface of r.interfaces) {
+      const cidr = parseCidr(iface.cidr);
+      if (!cidr) continue;
+      if (!coversA && ipInCidr(ipA, cidr)) coversA = true;
+      if (!coversB && ipInCidr(ipB, cidr)) coversB = true;
+      if (coversA && coversB) return r;
+    }
+  }
+  return null;
+}
 
 function bbmdHasPeer(bbmd: BacnetIpDevice, peerIp: string | undefined): boolean {
   if (!peerIp) return false;

@@ -180,6 +180,7 @@ export type {
   MstpTrunkSnapshot,
   BacnetIpDevice,
   BacnetIpEdge,
+  BacnetIpRouter,
   Ipv4Finding,
   Ipv4FindingId,
   ParsedCidr,

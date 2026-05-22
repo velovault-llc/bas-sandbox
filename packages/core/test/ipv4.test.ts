@@ -12,6 +12,7 @@ import {
   formatCidr,
   type BacnetIpDevice,
   type BacnetIpEdge,
+  type BacnetIpRouter,
   type PlacedBacnetIpDevice,
   type SubnetZone,
 } from '../src/bacnet/ipv4.js';
@@ -338,6 +339,110 @@ describe('validateBacnetIpNetwork — BBMD bridging (Net.2)', () => {
       (f) => f.id === 'ipv4.bbmd-peer-unknown' && f.severity === 'error',
     );
     expect(f).toBeDefined();
+  });
+});
+
+// ── Router L3-bridging (Net.3) ──────────────────────────────────────
+
+describe('validateBacnetIpNetwork — router L3 bridging (Net.3)', () => {
+  it('cross-subnet trunk with a router covering both subnets: info (routed)', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({ nodeId: 'a', label: 'NAE-A', ipAddress: '10.0.1.10', subnetMask: '255.255.255.0' }),
+      dev({ nodeId: 'b', label: 'NAE-B', ipAddress: '10.0.2.10', subnetMask: '255.255.255.0' }),
+    ];
+    const routers: BacnetIpRouter[] = [
+      {
+        nodeId: 'r1',
+        label: 'RTR-1',
+        interfaces: [
+          { ip: '10.0.1.1', cidr: '10.0.1.0/24' },
+          { ip: '10.0.2.1', cidr: '10.0.2.0/24' },
+        ],
+      },
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')], routers);
+    expect(findings.some((f) => f.id === 'ipv4.subnet-mismatch')).toBe(false);
+    const info = findings.find(
+      (f) => f.id === 'ipv4.cross-subnet-no-bridge' && f.severity === 'info',
+    );
+    expect(info).toBeDefined();
+    expect(info!.title).toContain('RTR-1');
+  });
+
+  it('router covering only ONE of the two subnets: no bridge, fall through to BBMD/subnet-mismatch', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({ nodeId: 'a', label: 'NAE-A', ipAddress: '10.0.1.10', subnetMask: '255.255.255.0' }),
+      dev({ nodeId: 'b', label: 'NAE-B', ipAddress: '10.0.2.10', subnetMask: '255.255.255.0' }),
+    ];
+    const routers: BacnetIpRouter[] = [
+      {
+        nodeId: 'r1',
+        label: 'RTR-PARTIAL',
+        interfaces: [
+          { ip: '10.0.1.1', cidr: '10.0.1.0/24' },
+          { ip: '172.16.0.1', cidr: '172.16.0.0/24' }, // not the other side
+        ],
+      },
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')], routers);
+    expect(findings.some((f) => f.id === 'ipv4.subnet-mismatch')).toBe(true);
+  });
+
+  it('router with malformed CIDR is silently ignored (no crash)', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({ nodeId: 'a', label: 'NAE-A', ipAddress: '10.0.1.10', subnetMask: '255.255.255.0' }),
+      dev({ nodeId: 'b', label: 'NAE-B', ipAddress: '10.0.2.10', subnetMask: '255.255.255.0' }),
+    ];
+    const routers: BacnetIpRouter[] = [
+      {
+        nodeId: 'r1',
+        label: 'BROKEN',
+        interfaces: [
+          { cidr: 'garbage' },
+          { cidr: 'also-bad' },
+        ],
+      },
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')], routers);
+    expect(findings.some((f) => f.id === 'ipv4.subnet-mismatch')).toBe(true);
+  });
+
+  it('router PLUS symmetric BBMDs: router wins (reported as routed, not bridged)', () => {
+    // When both bridges exist, the router path is reported because it
+    // handles unicast too and is the more general bridge. Result: one
+    // info finding from the router, not the BBMD bridge.
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-A',
+        ipAddress: '10.0.1.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['10.0.2.10'],
+      }),
+      dev({
+        nodeId: 'b',
+        label: 'NAE-B',
+        ipAddress: '10.0.2.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['10.0.1.10'],
+      }),
+    ];
+    const routers: BacnetIpRouter[] = [
+      {
+        nodeId: 'r1',
+        label: 'RTR-1',
+        interfaces: [
+          { cidr: '10.0.1.0/24' },
+          { cidr: '10.0.2.0/24' },
+        ],
+      },
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')], routers);
+    const routerFinding = findings.find((f) => f.title?.includes('RTR-1'));
+    expect(routerFinding).toBeDefined();
+    expect(findings.some((f) => f.id === 'ipv4.bbmd-asymmetric-bdt')).toBe(false);
   });
 });
 

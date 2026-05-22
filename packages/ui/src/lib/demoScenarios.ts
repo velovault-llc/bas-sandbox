@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG, type SingleZoneConfig } from './sim/thermal';
 import type { BasScenarioV1, WiredTargetSpec } from './scenario';
 
 type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
-type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety';
+type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router';
 
 type SpecNode = {
   id: string;
@@ -26,6 +26,9 @@ type SpecNode = {
   forcedMac?: number;
   /** Extra fields slipped onto data (fault, signal, alarm thresholds, etc.). */
   data?: Record<string, unknown>;
+  /** Subnet-zone only: rendered rectangle width/height in canvas coords. */
+  width?: number;
+  height?: number;
 };
 
 type SpecEdge = {
@@ -51,17 +54,37 @@ type ScenarioSpec = {
 };
 
 function buildScenario(spec: ScenarioSpec): BasScenarioV1 {
-  const nodes: Node[] = spec.nodes.map((n) => ({
-    id: n.id,
-    type: 'bas',
-    position: { x: n.x, y: n.y },
-    data: {
-      kind: n.kind,
-      label: n.label,
-      ...(n.forcedMac !== undefined ? { forcedMac: n.forcedMac } : {}),
-      ...(n.data ?? {}),
-    },
-  }));
+  const nodes: Node[] = spec.nodes.map((n) => {
+    // Subnet-zone nodes use the dedicated 'subnet' SvelteFlow node type
+    // and render behind regular nodes (negative zIndex).
+    if (n.kind === 'subnet-zone') {
+      return {
+        id: n.id,
+        type: 'subnet',
+        position: { x: n.x, y: n.y },
+        width: n.width ?? 360,
+        height: n.height ?? 240,
+        zIndex: -1,
+        data: {
+          kind: 'subnet-zone',
+          label: n.label,
+          // Zone-specific data (cidr, color) comes in via n.data.
+          ...(n.data ?? {}),
+        },
+      };
+    }
+    return {
+      id: n.id,
+      type: 'bas',
+      position: { x: n.x, y: n.y },
+      data: {
+        kind: n.kind,
+        label: n.label,
+        ...(n.forcedMac !== undefined ? { forcedMac: n.forcedMac } : {}),
+        ...(n.data ?? {}),
+      },
+    };
+  });
   const edges: Edge[] = spec.edges.map((e, idx) => ({
     id: `de-${idx}-${e.source}-${e.target}`,
     source: e.source,
@@ -422,6 +445,205 @@ export const DEMOS: readonly Demo[] = [
         },
       ],
       focused: 'fec1',
+    }),
+  },
+
+  {
+    id: 'bbmd-bridged',
+    name: 'BBMD bridge: cross-subnet done right',
+    blurb:
+      'Two NAEs on different /24s, but both configured as BBMDs with each other in their BDT. Validator should mark this as info-only — healthy cross-subnet BACnet.',
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'nae-a',
+          kind: 'supervisor',
+          label: 'NAE-A',
+          x: 200,
+          y: 120,
+          data: {
+            ipAddress: '192.168.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.1.1',
+            isBBMD: true,
+            bdtPeers: ['192.168.2.10'],
+          },
+        },
+        {
+          id: 'nae-b',
+          kind: 'supervisor',
+          label: 'NAE-B',
+          x: 600,
+          y: 120,
+          data: {
+            ipAddress: '192.168.2.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.2.1',
+            isBBMD: true,
+            bdtPeers: ['192.168.1.10'],
+          },
+        },
+      ],
+      edges: [
+        // Cross-subnet BACnet/IP. Would normally fire subnet-mismatch
+        // but the BBMD-on-both-sides config legitimizes it.
+        { source: 'nae-a', target: 'nae-b', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
+
+  {
+    id: 'bbmd-asymmetric',
+    name: 'BBMD: asymmetric BDT (broadcasts one direction only)',
+    blurb:
+      `Both NAEs are BBMDs, but only NAE-A lists NAE-B in its BDT. NAE-A I-Ams reach NAE-B; NAE-B's broadcasts never reach NAE-A. Classic "half-working" misconfig.`,
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'nae-a',
+          kind: 'supervisor',
+          label: 'NAE-A',
+          x: 200,
+          y: 120,
+          data: {
+            ipAddress: '192.168.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.1.1',
+            isBBMD: true,
+            bdtPeers: ['192.168.2.10'],
+          },
+        },
+        {
+          id: 'nae-b',
+          kind: 'supervisor',
+          label: 'NAE-B',
+          x: 600,
+          y: 120,
+          data: {
+            ipAddress: '192.168.2.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.2.1',
+            isBBMD: true,
+            // Empty BDT — the integrator forgot to populate this side.
+            bdtPeers: [],
+          },
+        },
+      ],
+      edges: [
+        { source: 'nae-a', target: 'nae-b', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
+
+  {
+    id: 'router-bridge',
+    name: 'L3 router bridging two subnets',
+    blurb:
+      'Two NAEs on different /24s wired to each other, plus a virtual router with interfaces on BOTH subnets. Validator reports the cross-subnet path as routed (info) — unicast works without BBMDs.',
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'nae-a',
+          kind: 'supervisor',
+          label: 'NAE-A',
+          x: 120,
+          y: 120,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+          },
+        },
+        {
+          id: 'rtr',
+          kind: 'router',
+          label: 'RTR-CORE',
+          x: 400,
+          y: 120,
+          data: {
+            routerInterfaces: [
+              { ip: '10.0.1.1', cidr: '10.0.1.0/24' },
+              { ip: '10.0.2.1', cidr: '10.0.2.0/24' },
+            ],
+            subtitle: '2 interfaces · 10.0.1.0/24 + 10.0.2.0/24',
+          },
+        },
+        {
+          id: 'nae-b',
+          kind: 'supervisor',
+          label: 'NAE-B',
+          x: 680,
+          y: 120,
+          data: {
+            ipAddress: '10.0.2.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.2.1',
+          },
+        },
+      ],
+      edges: [
+        // Cross-subnet edge, but the router covers both subnets so the
+        // validator reports info (routed via RTR-CORE) instead of error.
+        { source: 'nae-a', target: 'nae-b', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
+
+  {
+    id: 'subnet-zones-walkthrough',
+    name: 'Subnet zones — IP vs VLAN visibility',
+    blurb:
+      `Two subnet-zone containers (BMS VLAN 10.0.1.0/24 + Corp 10.0.2.0/24) with NAE-Corp dropped in the wrong zone — its IP doesn't match the VLAN it's drawn in. Net.1 zone validator flags it.`,
+    scenario: buildScenario({
+      nodes: [
+        // Two zones side by side.
+        {
+          id: 'zone-bms',
+          kind: 'subnet-zone',
+          label: 'BMS VLAN',
+          x: 80,
+          y: 80,
+          width: 360,
+          height: 240,
+          data: { cidr: '10.0.1.0/24', color: '#4a9eff' },
+        },
+        {
+          id: 'zone-corp',
+          kind: 'subnet-zone',
+          label: 'Corp',
+          x: 520,
+          y: 80,
+          width: 360,
+          height: 240,
+          data: { cidr: '10.0.2.0/24', color: '#fb923c' },
+        },
+        // NAE in BMS zone, properly IP'd — should be silent.
+        {
+          id: 'nae-bms',
+          kind: 'supervisor',
+          label: 'NAE-BMS',
+          x: 200,
+          y: 180,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+          },
+        },
+        // NAE in Corp zone, but mis-IP'd to BMS subnet — fires the
+        // zone-cidr-mismatch finding.
+        {
+          id: 'nae-corp',
+          kind: 'supervisor',
+          label: 'NAE-Corp',
+          x: 640,
+          y: 180,
+          data: {
+            ipAddress: '10.0.1.50', // wrong! Inside Corp zone but on BMS subnet.
+            subnetMask: '255.255.255.0',
+          },
+        },
+      ],
+      edges: [],
     }),
   },
 
