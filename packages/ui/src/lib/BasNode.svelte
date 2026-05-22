@@ -71,6 +71,11 @@
      *  has its own IP + CIDR-prefix mask. Min 2 to be useful (a router
      *  with one interface is just an endpoint). (Net.3) */
     routerInterfaces?: ReadonlyArray<{ ip: string; cidr: string }>;
+    /** Power state — when true the device is treated as unpowered.
+     *  Excluded from network validation, broadcast traces, and
+     *  offline-detection (since "deliberately off" is not the same as
+     *  "comm-lost"). Drives the powered-off visual state below. */
+    poweredOff?: boolean;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -192,6 +197,7 @@
   class:is-wired={physicsWired}
   class:has-fault={!!data.fault && data.fault !== 'normal'}
   class:is-offline={isOffline}
+  class:is-powered-off={!!data.poweredOff}
   class:holds-token={!!(data as { holdsToken?: boolean }).holdsToken}
 >
   <!-- Network trunk in (always rendered). Controllers receive supervisor
@@ -300,6 +306,11 @@
       {#each data.routerInterfaces as iface, i (i)}
         <span class="iface-chip">{iface.cidr || '—'}</span>
       {/each}
+    </div>
+  {/if}
+  {#if data.poweredOff}
+    <div class="power-off-badge" title="Device is powered off. Excluded from network validation + broadcast traces.">
+      ⏻ POWERED OFF
     </div>
   {/if}
   {#if data.childCount !== undefined && data.childCount > 0}
@@ -528,6 +539,45 @@
      distinct from a generic supervisor (Net.4). */
   .kind-bbmd {
     --accent: #06b6d4;
+  }
+
+  /* Powered-off — drop saturation + opacity so the device reads as
+     deliberately-not-running rather than just unwired. Distinct from
+     `.is-offline` which signals comm-lost (red ring). */
+  .bas-node.is-powered-off {
+    opacity: 0.55;
+    filter: grayscale(0.7);
+  }
+  .bas-node.is-powered-off::before {
+    /* Faint diagonal stripe — the "out of service" textbook icon. */
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 8px,
+      color-mix(in srgb, CanvasText 10%, transparent) 8px,
+      color-mix(in srgb, CanvasText 10%, transparent) 10px
+    );
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  .power-off-badge {
+    margin-top: 0.25rem;
+    padding: 0.08rem 0.4rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: center;
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
+    color: #f59e0b;
+    border: 1px solid color-mix(in srgb, #f59e0b 50%, transparent);
   }
 
   .router-ifaces {

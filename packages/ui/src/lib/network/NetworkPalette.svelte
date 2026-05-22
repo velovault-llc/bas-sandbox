@@ -10,12 +10,25 @@
   // a drag-drop of a node).
 
   import { canvasActions, canvasSnapshot } from '../canvasStore.svelte';
+  import { networkGearByVendor, type NetworkGearModel } from '@bas/core';
 
   function onTileDragStart(event: DragEvent, kind: string): void {
     if (!event.dataTransfer) return;
     event.dataTransfer.setData('application/bas-node-kind', kind);
     event.dataTransfer.effectAllowed = 'move';
   }
+
+  /** Drag-start for a specific real-world network appliance — carries
+   *  the node kind plus the model id so BuildCanvas can stamp the
+   *  vendor + model on the dropped node. */
+  function onGearDragStart(event: DragEvent, gear: NetworkGearModel): void {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.setData('application/bas-node-kind', gear.nodeKind);
+    event.dataTransfer.setData('application/bas-network-gear-model', gear.id);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+
+  const gearByVendor = $derived.by(() => Array.from(networkGearByVendor().entries()));
 
   // Live inventory — count zones / routers / BBMDs currently on the
   // canvas so the user can see at a glance what they've built.
@@ -89,6 +102,46 @@
         <span class="net-tile-sub">Forwards BACnet broadcasts across subnets</span>
       </div>
     </div>
+  </section>
+
+  <section class="catalog">
+    <h4>Real-world models</h4>
+    <p class="catalog-blurb">
+      Drag a specific BBMD or router product onto the canvas — the dropped node
+      carries the vendor + model in its subtitle. Useful when you want to
+      mirror an actual install ("this site has 3 BAS Routers and a Cimetrics Eapi").
+    </p>
+    {#each gearByVendor as [vendor, models] (vendor)}
+      <div class="vendor-group">
+        <span class="vendor-name">{vendor}</span>
+        {#each models as gear (gear.id)}
+          <div
+            class="gear-tile"
+            draggable="true"
+            ondragstart={(e) => onGearDragStart(e, gear)}
+            role="button"
+            tabindex="0"
+            title={gear.notes}
+          >
+            <span class="gear-glyph" class:bbmd={gear.nodeKind === 'bbmd'}
+              class:router={gear.nodeKind === 'router'}>
+              {gear.nodeKind === 'bbmd' ? '◫' : '◆'}
+            </span>
+            <div class="gear-body">
+              <div class="gear-line1">
+                <span class="gear-model">{gear.model}</span>
+                {#if gear.priceBand}
+                  <span class="gear-price">{gear.priceBand}</span>
+                {/if}
+              </div>
+              <span class="gear-line2">
+                {gear.family} · {gear.protocols.join(' / ')}
+              </span>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/each}
   </section>
 
   <section class="inventory">
@@ -251,5 +304,89 @@
     background: color-mix(in srgb, CanvasText 8%, transparent);
     padding: 0.05rem 0.3rem;
     border-radius: 3px;
+  }
+
+  /* Real-world gear catalog list — denser tiles grouped by vendor. */
+  .catalog {
+    gap: 0.55rem;
+  }
+  .catalog-blurb {
+    margin: 0;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    line-height: 1.4;
+  }
+  .vendor-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .vendor-name {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    margin-top: 0.2rem;
+  }
+  .gear-tile {
+    display: grid;
+    grid-template-columns: 1.4rem 1fr;
+    gap: 0.5rem;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+    border-radius: 5px;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    cursor: grab;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .gear-tile:hover {
+    border-color: color-mix(in srgb, CanvasText 30%, transparent);
+    background: color-mix(in srgb, CanvasText 5%, transparent);
+  }
+  .gear-tile:active {
+    cursor: grabbing;
+  }
+  .gear-glyph {
+    font-size: 1.1rem;
+    line-height: 1;
+    text-align: center;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    align-self: center;
+  }
+  .gear-glyph.bbmd {
+    color: #06b6d4;
+  }
+  .gear-glyph.router {
+    color: #f59e0b;
+  }
+  .gear-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .gear-line1 {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .gear-model {
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .gear-price {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.65rem;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+  }
+  .gear-line2 {
+    font-size: 0.68rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

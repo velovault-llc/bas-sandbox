@@ -49,6 +49,16 @@ export type {
 } from './equipment/catalog.js';
 
 export {
+  NETWORK_GEAR_CATALOG,
+  findNetworkGear,
+  networkGearByVendor,
+} from './equipment/networkGear.js';
+export type {
+  NetworkGearModel,
+  NetworkGearKind,
+} from './equipment/networkGear.js';
+
+export {
   SENSOR_CATALOG,
   findSensorModel,
   sensorCatalogBySubject,

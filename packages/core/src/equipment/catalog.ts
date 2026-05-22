@@ -317,6 +317,94 @@ export const VENDOR_CATALOG: readonly ControllerModel[] = [
     protocols: ['BACnet/IP', 'BACnet MS/TP'],
     notes: 'Site supervisor, IP + MS/TP. Programs in GCL+ — a vendor-specific scripting language.',
   },
+
+  // ── Schneider Electric / EcoStruxure ─────────────────────────────────
+  {
+    id: 'schneider-asp-server',
+    vendor: 'Schneider Electric',
+    model: 'AS-P (SmartX Server)',
+    family: 'EcoStruxure Building Operation',
+    role: 'supervisor',
+    programmingLanguage: 'IEC-61131-3 ST',
+    stPortable: true,
+    maxPoints: 10000,
+    points: { expansion: 10000 },
+    protocols: ['BACnet/IP', 'BACnet MS/TP', 'LON', 'Modbus TCP'],
+    notes: 'EcoStruxure Building Operation Automation Server. Hosts WorkStation graphics + Script Editor (ST-flavored). Multi-protocol gateway role.',
+  },
+  {
+    id: 'schneider-asb-controller',
+    vendor: 'Schneider Electric',
+    model: 'AS-B (SmartX Server-Lite)',
+    family: 'EcoStruxure Building Operation',
+    role: 'plant',
+    programmingLanguage: 'IEC-61131-3 ST',
+    stPortable: true,
+    maxPoints: 1000,
+    points: { expansion: 1000 },
+    protocols: ['BACnet/IP', 'BACnet MS/TP'],
+    notes: 'Smaller-footprint EcoStruxure server for plant rooms.',
+  },
+
+  // ── Honeywell WEBs / Niagara ───────────────────────────────────────
+  {
+    id: 'honeywell-webs-n4',
+    vendor: 'Honeywell',
+    model: 'WEBs-N4',
+    family: 'WEBs',
+    role: 'supervisor',
+    programmingLanguage: 'Niagara Wiresheet',
+    stPortable: false,
+    maxPoints: 5000,
+    points: { expansion: 5000 },
+    protocols: ['BACnet/IP', 'BACnet MS/TP', 'Niagara Fox', 'Modbus TCP'],
+    notes: 'Honeywell-branded Niagara N4 supervisor. Same Tridium core as JACE-8000 with Honeywell skinning + libraries.',
+  },
+
+  // ── Distech ECY engine ─────────────────────────────────────────────
+  {
+    id: 'distech-ecy-s1000',
+    vendor: 'Distech Controls',
+    model: 'ECY-S1000',
+    family: 'ECY',
+    role: 'supervisor',
+    programmingLanguage: 'Niagara Wiresheet',
+    stPortable: false,
+    maxPoints: 1000,
+    points: { expansion: 1000 },
+    protocols: ['BACnet/IP', 'BACnet MS/TP', 'Niagara Fox'],
+    notes: 'Distech Niagara-based server for plant-room scale sites. Aligns with their ECx field-controller family.',
+  },
+
+  // ── Tridium JACE 9000 (newer flagship) ─────────────────────────────
+  {
+    id: 'tridium-jace-9000',
+    vendor: 'Tridium',
+    model: 'JACE 9000',
+    family: 'Niagara',
+    role: 'supervisor',
+    programmingLanguage: 'Niagara Wiresheet',
+    stPortable: false,
+    maxPoints: 10000,
+    points: { expansion: 10000 },
+    protocols: ['BACnet/IP', 'BACnet MS/TP', 'BACnet SC', 'Modbus TCP', 'Niagara Fox'],
+    notes: 'Successor to the JACE-8000. ARM-based supervisor, BACnet/SC support, larger device capacity.',
+  },
+
+  // ── Siemens Desigo (modern post-Apogee) ────────────────────────────
+  {
+    id: 'siemens-pxc4-desigo',
+    vendor: 'Siemens',
+    model: 'PXC4 Desigo',
+    family: 'Desigo CC',
+    role: 'supervisor',
+    programmingLanguage: 'Siemens PPCL',
+    stPortable: false,
+    maxPoints: 2000,
+    points: { expansion: 2000 },
+    protocols: ['BACnet/IP', 'BACnet MS/TP', 'Modbus TCP', 'KNX'],
+    notes: 'Successor generation to Apogee PXC. Used as part of Desigo CC building automation.',
+  },
 ];
 
 /** Look up a controller model by id. */

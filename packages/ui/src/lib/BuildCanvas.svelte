@@ -46,6 +46,7 @@
     findExpansionModule,
     findActuatorModel,
     findEquipmentModel,
+    findNetworkGear,
     findTileTemplate,
     formatPointBreakdown,
     computeSensorReading,
@@ -67,6 +68,7 @@
     validateIpZones,
     parseIpv4 as parseIpv4FromUiCanvas,
     formatIpv4 as formatIpv4FromUiCanvas,
+    parseCidr as parseCidrFromUiCanvas,
     type StEnv,
     type MstpFinding,
     type BacnetIpDevice,
@@ -109,6 +111,14 @@
 
   function isSubnetZone(n: Node): boolean {
     return (n.data as { kind?: string } | undefined)?.kind === 'subnet-zone';
+  }
+
+  /** True iff `s` is a non-empty string that doesn't parse as a CIDR.
+   *  Empty / undefined treated as "no input yet" → not an error. Used
+   *  by zone + router input fields to draw a red border in real time. */
+  function isCidrInvalid(s: string | undefined | null): boolean {
+    if (!s) return false;
+    return parseCidrFromUiCanvas(s) === null;
   }
 
   // ============ Net.5 — broadcast routing trace ============
@@ -588,6 +598,8 @@
     const actuatorModel = actuatorModelId ? findActuatorModel(actuatorModelId) : undefined;
     const equipmentModelId = event.dataTransfer?.getData('application/bas-equipment-model');
     const equipmentModel = equipmentModelId ? findEquipmentModel(equipmentModelId) : undefined;
+    const networkGearModelId = event.dataTransfer?.getData('application/bas-network-gear-model');
+    const networkGearModel = networkGearModelId ? findNetworkGear(networkGearModelId) : undefined;
 
     // Expansion drops always carry a model id (no generic expansions).
     if (kind === 'expansion' && expansionModel) {
@@ -606,6 +618,32 @@
           },
         },
       ];
+      return;
+    }
+
+    // Real-world network gear drop (BBMD or Router from the Network
+    // sidebar catalog). Carries a NetworkGearModel — stamp vendor +
+    // model on the dropped node so the canvas reflects the actual
+    // install.
+    if ((kind === 'router' || kind === 'bbmd') && networkGearModel) {
+      const id = `n${nextId++}`;
+      const data: Record<string, unknown> = {
+        kind,
+        label: networkGearModel.model,
+        networkGearModelId: networkGearModel.id,
+        subtitle: `${networkGearModel.vendor} · ${networkGearModel.family} · ${networkGearModel.protocols.join(' / ')}`,
+      };
+      if (kind === 'router') {
+        data.routerInterfaces = [
+          { ip: '', cidr: '' },
+          { ip: '', cidr: '' },
+        ];
+      } else {
+        // bbmd
+        data.isBBMD = true;
+        data.bdtPeers = [];
+      }
+      nodes = [...nodes, { id, type: 'bas', position, data }];
       return;
     }
 
@@ -2396,6 +2434,7 @@
     {
       const ipDevices: BacnetIpDevice[] = nodes
         .filter((n) => !isSubnetZone(n))
+        .filter((n) => !((n.data as { poweredOff?: boolean }).poweredOff))
         .filter((n) => {
           const d = n.data as {
             ipAddress?: string;
@@ -2435,6 +2474,7 @@
       // covers both subnets).
       const routers: BacnetIpRouter[] = nodes
         .filter((n) => !isSubnetZone(n))
+        .filter((n) => !((n.data as { poweredOff?: boolean }).poweredOff))
         .filter((n) => nodeKind(n) === 'router')
         .map((n) => {
           const d = n.data as { routerInterfaces?: Array<{ ip?: string; cidr: string }> };
@@ -3801,6 +3841,9 @@
 
     const offline = new Set<string>();
     for (const n of nodes) {
+      // Powered-off devices are deliberately off — that's distinct from
+      // "comm-lost", so the stale/offline badges shouldn't fire.
+      if ((n.data as { poweredOff?: boolean }).poweredOff) continue;
       // Supervisors themselves never count as "offline" — they're the root.
       if (nodeKind(n) === 'supervisor') continue;
       // Subnet zones are visual containers, not devices — never offline.
@@ -3958,6 +4001,19 @@
         return { ...n, data: rest };
       }
       return { ...n, data: { ...d, [field]: value } };
+    });
+  }
+
+  /** Toggle the device's power state. A powered-off device is excluded
+   *  from network validation, broadcast tracing, and offline-detection
+   *  (since "deliberately off" is not the same as "comm-lost"). Sim
+   *  programs still tick — that wiring lands in a follow-up. */
+  function togglePower(nodeId: string): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const d = n.data as { poweredOff?: boolean } & Record<string, unknown>;
+      const next = !d.poweredOff;
+      return { ...n, data: { ...d, poweredOff: next } };
     });
   }
 
@@ -5048,10 +5104,12 @@
                 <span>CIDR</span>
                 <input
                   class="cidr-input"
+                  class:invalid={isCidrInvalid(zoneData.cidr)}
                   type="text"
                   value={zoneData.cidr}
                   oninput={(e) => updateZoneField(selectedSubnetZone.id, 'cidr', (e.currentTarget as HTMLInputElement).value)}
                   placeholder="10.0.1.0/24"
+                  title={isCidrInvalid(zoneData.cidr) ? `"${zoneData.cidr}" isn\'t a valid CIDR. Use IP/prefix, e.g. 10.0.1.0/24.` : 'CIDR notation — e.g. 10.0.1.0/24.'}
                   spellcheck="false"
                   autocapitalize="off"
                   autocorrect="off"
@@ -5080,8 +5138,10 @@
         {#if selectedRouter}
           {@const rData = selectedRouter.data as {
             routerInterfaces?: Array<{ ip?: string; cidr: string }>;
+            poweredOff?: boolean;
           }}
           {@const ifs = rData.routerInterfaces ?? []}
+          {@const routerOff = rData.poweredOff === true}
           <Panel position="top-center">
             <div class="router-panel">
               <span class="router-title">Router —</span>
@@ -5116,10 +5176,11 @@
                     />
                     <input
                       class="ip-input"
+                      class:invalid={isCidrInvalid(iface.cidr)}
                       type="text"
                       value={iface.cidr}
                       placeholder="10.0.1.0/24"
-                      title="CIDR for this interface — devices with IPs in this range are reachable via this interface."
+                      title={isCidrInvalid(iface.cidr) ? `"${iface.cidr}" isn\'t a valid CIDR. Use IP/prefix, e.g. 10.0.1.0/24.` : 'CIDR for this interface — devices with IPs in this range are reachable via this interface.'}
                       oninput={(e) => updateRouterInterface(selectedRouter.id, i, 'cidr', (e.currentTarget as HTMLInputElement).value)}
                       spellcheck="false"
                       autocapitalize="off"
@@ -5144,6 +5205,13 @@
               >+ interface</button>
               <button
                 type="button"
+                class="power-toggle"
+                class:powered-off={routerOff}
+                onclick={() => togglePower(selectedRouter.id)}
+                title={routerOff ? `Router is POWERED OFF — its interfaces won't bridge any subnets. Click to power on.` : `Simulate cutting power to this router — cross-subnet paths it covers will lose their bridge.`}
+              >{routerOff ? '⏼ Power on' : '⏻ Power off'}</button>
+              <button
+                type="button"
                 class="ip-delete"
                 title="Delete this router."
                 onclick={() => deleteNodeById(selectedRouter.id)}
@@ -5159,10 +5227,12 @@
             gateway?: string;
             isBBMD?: boolean;
             bdtPeers?: string[];
+            poweredOff?: boolean;
           }}
           {@const isBb = !!ipData.isBBMD}
           {@const ipDeviceKind = nodeKind(selectedIpDevice)}
           {@const bbmdToggleDisabled = ipDeviceKind === 'bbmd'}
+          {@const isOff = !!ipData.poweredOff}
           <Panel position="top-center">
             <div class="ip-config-panel">
               <span class="ip-config-title">Network —</span>
@@ -5316,6 +5386,17 @@
                 </div>
               {/if}
               <span class="ip-divider"></span>
+              <button
+                type="button"
+                class="power-toggle"
+                class:powered-off={isOff}
+                onclick={() => togglePower(selectedIpDevice.id)}
+                title={isOff
+                  ? 'Device is currently POWERED OFF — broadcasts and validations skip it. Click to power back on.'
+                  : `Simulate cutting power to this device. It will be excluded from network validation, broadcast traces, and offline-detection (since it's deliberately off, not comm-lost).`}
+              >
+                {isOff ? '⏼ Power on' : '⏻ Power off'}
+              </button>
               <button
                 type="button"
                 class="ip-delete"
@@ -7636,6 +7717,32 @@
   .ip-delete:hover {
     background: color-mix(in srgb, #e74c3c 15%, transparent);
   }
+  /* Power toggle — green when off (= "click to turn on"), amber when on
+     (= "click to cut power"). Visually distinct from Delete so it never
+     gets misclicked. */
+  .power-toggle {
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.55rem;
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .power-toggle:hover {
+    border-color: #f59e0b;
+    color: #f59e0b;
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+  }
+  .power-toggle.powered-off {
+    color: #2ecc71;
+    border-color: #2ecc71;
+    background: color-mix(in srgb, #2ecc71 14%, transparent);
+  }
+  .power-toggle.powered-off:hover {
+    background: color-mix(in srgb, #2ecc71 24%, transparent);
+  }
   .ip-field {
     display: inline-flex;
     align-items: center;
@@ -7655,6 +7762,13 @@
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
+  }
+  /* Live CIDR-validation state — red border + faint red fill when the
+     current text doesn't parse as IP/prefix. Empty input is fine. */
+  input.ip-input.invalid,
+  input.cidr-input.invalid {
+    border-color: #e74c3c;
+    background: color-mix(in srgb, #e74c3c 8%, Canvas);
   }
   .ip-divider {
     width: 1px;
