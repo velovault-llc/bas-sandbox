@@ -15,17 +15,23 @@
   import {
     tileCatalogByKind,
     compileSpecLang,
+    findControllerModel,
+    findSensorModel,
     type Tile,
     type SpecRule,
     type SpecProgram,
     type TileKind,
     type TileTemplate,
+    type PointBinding,
+    type ControllerBindings,
   } from '@bas/core';
   import {
     programStore,
     closeSpecLang,
     setProgramSpec,
+    setProgramBindings,
   } from '../cli/programStore.svelte';
+  import { canvasSnapshot } from '../canvasStore.svelte';
 
   // Escape-key closer — guarantees a recovery path even if the ✕ button
   // is somehow blocked by an overlapping element.
@@ -66,6 +72,80 @@
   let rules = $state<SpecRule[]>([]);
   let activeRuleId = $state<string | null>(null);
   let showCompiled = $state(false);
+  let showPoints = $state(true); // Point Assignments visible by default — it's the first step
+
+  // Local mirror of the saved bindings so dropdown edits are responsive.
+  // Synced to programStore via the same loadedForCtrl effect below.
+  let bindings = $state<PointBinding[]>([]);
+
+  // Role catalogs — derived from the tile palette so adding a new subject
+  // tile automatically exposes it as an assignable role.
+  const subjectRoles = $derived(
+    (palette.get('subject') ?? []).map((t) => ({ token: t.token, display: t.display, description: t.description })),
+  );
+  const actuatorRoles = $derived(
+    (palette.get('actuator') ?? []).map((t) => ({ token: t.token, display: t.display, description: t.description })),
+  );
+
+  // Wired sensors for THIS controller (sensor → controller edges).
+  // Each entry includes the physical terminal id (e.g., UI-1) and the
+  // sensor metadata so the panel can render a useful row.
+  const wiredInputs = $derived.by(() => {
+    if (!ctrlId) return [];
+    const rows: { terminalId: string; sensorNodeId: string; sensorLabel: string; sensorSubtitle: string }[] = [];
+    for (const e of canvasSnapshot.edges) {
+      if (e.target !== ctrlId) continue;
+      if (!e.targetHandle) continue;
+      // Skip non-terminal handles (e.g., net-in/out).
+      const prefix = e.targetHandle.split('-')[0];
+      if (!['UI', 'AI', 'BI'].includes(prefix)) continue;
+      const sensor = canvasSnapshot.nodes.find((n) => n.id === e.source);
+      if (!sensor) continue;
+      const data = sensor.data as { label?: string; sensorModelId?: string };
+      const senModel = data.sensorModelId ? findSensorModel(data.sensorModelId) : undefined;
+      rows.push({
+        terminalId: e.targetHandle,
+        sensorNodeId: sensor.id,
+        sensorLabel: data.label ?? sensor.id,
+        sensorSubtitle: senModel ? `${senModel.vendor} ${senModel.model} · ${senModel.subject}` : 'unknown sensor',
+      });
+    }
+    return rows.sort((a, b) => a.terminalId.localeCompare(b.terminalId));
+  });
+
+  // Output terminals on the controller (AO/BO/UO). Listed even if not
+  // wired to anything — the tech assigns the logical role first, then
+  // wires the actuator later.
+  const outputTerminals = $derived.by(() => {
+    if (!ctrlId) return [];
+    const node = canvasSnapshot.nodes.find((n) => n.id === ctrlId);
+    if (!node) return [];
+    const vendorModelId = (node.data as { vendorModelId?: string }).vendorModelId;
+    const model = vendorModelId ? findControllerModel(vendorModelId) : undefined;
+    const counts = model?.points ?? { UO: 0, AO: 0, BO: 0 };
+    const out: string[] = [];
+    for (const kind of ['UO', 'AO', 'BO'] as const) {
+      const n = (counts[kind] ?? 0) as number;
+      for (let i = 1; i <= n; i++) out.push(`${kind}-${i}`);
+    }
+    return out;
+  });
+
+  function bindingFor(terminalId: string): PointBinding | undefined {
+    return bindings.find((b) => b.terminalId === terminalId);
+  }
+
+  function setBindingRole(terminalId: string, role: string, sensorNodeId?: string): void {
+    const next = bindings.filter((b) => b.terminalId !== terminalId);
+    // Also clear any prior binding that used this role on a different
+    // terminal — a role can only be claimed by ONE point at a time.
+    const cleaned = next.filter((b) => b.role !== role);
+    if (role && role !== '__unassigned__') {
+      cleaned.push({ terminalId, role, sourceNodeId: sensorNodeId });
+    }
+    bindings = cleaned;
+    if (ctrlId) setProgramBindings(ctrlId, { bindings: cleaned });
+  }
 
   // Re-hydrate from store when the active controller changes.
   // CRITICAL: compute `nextRules` once and assign both `rules` and
@@ -87,12 +167,17 @@
     const nextRules: SpecRule[] = existing?.specProgram
       ? existing.specProgram.rules.map((r) => ({ ...r, tiles: [...r.tiles] }))
       : [];
+    const nextBindings: PointBinding[] = existing?.bindings?.bindings
+      ? existing.bindings.bindings.map((b) => ({ ...b }))
+      : [];
     rules = nextRules;
+    bindings = nextBindings;
     activeRuleId = nextRules[0]?.id ?? null;
   });
 
   const program = $derived<SpecProgram>({ rules });
-  const compileResult = $derived(compileSpecLang(program));
+  const currentBindings = $derived<ControllerBindings>({ bindings });
+  const compileResult = $derived(compileSpecLang(program, currentBindings));
 
   function nextId(prefix: string): string {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -182,6 +267,9 @@
         <span class="ctrl-label">{ctrlLabel}</span>
       </div>
       <div class="head-actions">
+        <button type="button" class="action" onclick={() => (showPoints = !showPoints)} title="Toggle the Point Assignments panel">
+          {showPoints ? '▲ Hide points' : '▼ Show points'}
+        </button>
         <button type="button" class="action" onclick={() => (showCompiled = !showCompiled)} title="Toggle the compiled ST view">
           {showCompiled ? '◀ Hide ST' : 'Show ST ▶'}
         </button>
@@ -193,6 +281,69 @@
         </button>
       </div>
     </header>
+
+    {#if showPoints}
+      <section class="points-panel" aria-label="Point assignments">
+        <header class="points-head">
+          <h3>Point Assignments</h3>
+          <span class="muted">map each physical terminal to a logical role · prevents "wrong sensor wired to wrong rule" bugs</span>
+        </header>
+        <div class="points-grid">
+          <div class="points-col">
+            <h4>Inputs (wired sensors)</h4>
+            {#if wiredInputs.length === 0}
+              <p class="muted small">No sensors wired to this controller yet. Wire one on the canvas first.</p>
+            {/if}
+            {#each wiredInputs as row (row.sensorNodeId + row.terminalId)}
+              {@const b = bindingFor(row.terminalId)}
+              <div class="point-row">
+                <span class="terminal-badge kind-input">{row.terminalId}</span>
+                <div class="point-info">
+                  <strong>{row.sensorLabel}</strong>
+                  <span class="muted small">{row.sensorSubtitle}</span>
+                </div>
+                <select
+                  class="role-select"
+                  value={b?.role ?? '__unassigned__'}
+                  onchange={(e) => setBindingRole(row.terminalId, (e.currentTarget as HTMLSelectElement).value, row.sensorNodeId)}
+                >
+                  <option value="__unassigned__">— pick role —</option>
+                  {#each subjectRoles as r (r.token)}
+                    <option value={r.token}>{r.display}</option>
+                  {/each}
+                </select>
+              </div>
+            {/each}
+          </div>
+
+          <div class="points-col">
+            <h4>Outputs (controller terminals)</h4>
+            {#if outputTerminals.length === 0}
+              <p class="muted small">No output terminals on this controller model.</p>
+            {/if}
+            {#each outputTerminals as terminalId (terminalId)}
+              {@const b = bindingFor(terminalId)}
+              <div class="point-row">
+                <span class="terminal-badge kind-output">{terminalId}</span>
+                <div class="point-info">
+                  <span class="muted small">drives an actuator</span>
+                </div>
+                <select
+                  class="role-select"
+                  value={b?.role ?? '__unassigned__'}
+                  onchange={(e) => setBindingRole(terminalId, (e.currentTarget as HTMLSelectElement).value)}
+                >
+                  <option value="__unassigned__">— pick role —</option>
+                  {#each actuatorRoles as r (r.token)}
+                    <option value={r.token}>{r.display}</option>
+                  {/each}
+                </select>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </section>
+    {/if}
 
     <div class="body" class:with-st={showCompiled}>
       <aside class="palette" aria-label="Tile palette">
@@ -274,6 +425,9 @@
                 {#if err}
                   <div class="rule-error">⚠ {err}</div>
                 {/if}
+                {#each compileResult.warnings.get(rule.id) ?? [] as warn}
+                  <div class="rule-warning">⚠ {warn}</div>
+                {/each}
               </div>
               <button
                 type="button"
@@ -488,6 +642,70 @@
     font-size: 0.78rem;
     margin-top: 0.35rem;
   }
+  .rule-warning {
+    color: #f39c12;
+    font-size: 0.78rem;
+    margin-top: 0.25rem;
+  }
+
+  .points-panel {
+    border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    padding: 0.7rem 1.2rem 0.9rem;
+    background: color-mix(in srgb, Canvas 94%, CanvasText 2%);
+  }
+  .points-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .points-head h3 { margin: 0; font-size: 0.9rem; }
+  .points-head .muted { font-size: 0.72rem; }
+  .points-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.5rem;
+  }
+  .points-col h4 {
+    margin: 0 0 0.4rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+  .point-row {
+    display: grid;
+    grid-template-columns: 4.2rem 1fr 10rem;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 5px;
+  }
+  .point-row:hover { background: color-mix(in srgb, CanvasText 4%, transparent); }
+  .terminal-badge {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    text-align: center;
+    border: 1px solid currentColor;
+  }
+  .terminal-badge.kind-input { color: #3498db; }
+  .terminal-badge.kind-output { color: #9b59b6; }
+  .point-info { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .point-info strong { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .small { font-size: 0.72rem; }
+  .role-select {
+    background: color-mix(in srgb, Canvas 98%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    color: CanvasText;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .role-select:focus { outline: 1px solid #27ae60; outline-offset: 1px; }
   .rule-delete {
     background: transparent; border: none; cursor: pointer;
     color: color-mix(in srgb, CanvasText 50%, transparent);

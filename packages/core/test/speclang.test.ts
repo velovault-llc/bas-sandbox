@@ -165,6 +165,52 @@ describe('SpecLang compiler — error handling', () => {
   });
 });
 
+describe('SpecLang compiler — point binding warnings', () => {
+  const program: SpecProgram = {
+    rules: [
+      rule(
+        t('when'),
+        t('occupancy'),
+        t('is'),
+        t('vacant'),
+        t('close'),
+        t('primary-damper'),
+        t('to'),
+        t('percent-value', { numericValue: 0 }),
+      ),
+    ],
+  };
+
+  it('skips warnings when no bindings provided (backwards compat)', () => {
+    const result = compileSpecLang(program);
+    expect(result.warnings.size).toBe(0);
+    expect(result.ok).toBe(true);
+  });
+
+  it('warns when a role used in a rule has no physical binding', () => {
+    const result = compileSpecLang(program, {
+      bindings: [
+        // Only damper bound — occupancy is missing.
+        { terminalId: 'AO-1', role: 'primary-damper' },
+      ],
+    });
+    expect(result.ok).toBe(true); // warnings don't block compile
+    const ruleWarnings = result.warnings.get(program.rules[0].id) ?? [];
+    expect(ruleWarnings.length).toBe(1);
+    expect(ruleWarnings[0]).toContain('occupancy');
+  });
+
+  it('no warnings when every role is bound', () => {
+    const result = compileSpecLang(program, {
+      bindings: [
+        { terminalId: 'UI-1', role: 'occupancy', sourceNodeId: 'n2' },
+        { terminalId: 'AO-1', role: 'primary-damper' },
+      ],
+    });
+    expect(result.warnings.size).toBe(0);
+  });
+});
+
 describe('SpecLang end-to-end — VAV scenario equivalent', () => {
   /** Build the VAV starter program in SpecLang. The runtime checks from the
    *  VAV scenario should pass against the compiled ST output. */

@@ -14,12 +14,14 @@ import {
   type StProgram,
   type FbdGraph,
   type SpecProgram,
+  type ControllerBindings,
 } from '@bas/core';
 
 const LS_PREFIX = 'bas-sandbox.controller-program.';
 const LS_INDEX = 'bas-sandbox.controller-program.__index';
 const LS_FBD_PREFIX = 'bas-sandbox.controller-fbd.';
 const LS_SPEC_PREFIX = 'bas-sandbox.controller-spec.';
+const LS_BINDINGS_PREFIX = 'bas-sandbox.controller-bindings.';
 
 export interface ControllerProgram {
   /** Raw source the user typed (text mode). For FBD-authored programs this
@@ -39,6 +41,10 @@ export interface ControllerProgram {
    *  is stored here. ST source is derived via compileSpecLang. Mutually
    *  exclusive with fbdGraph — flipping editors clears the other. */
   specProgram: SpecProgram | null;
+  /** Point bindings — explicit terminal-to-role assignments. Outlives the
+   *  programming editor choice (the same bindings apply whether the user
+   *  authors in SpecLang, FBD, or raw ST). */
+  bindings: ControllerBindings;
 }
 
 interface ProgramStore {
@@ -126,8 +132,8 @@ export function closeSpecLang(): void {
 /** Replace a controller's program with a SpecLang assembly. Compiles to
  *  ST under the hood + persists both source + the tile structure. */
 export function setProgramSpec(controllerId: string, spec: SpecProgram): ControllerProgram {
-  const sl = compileSpecLang(spec);
   const existing = programStore.byId[controllerId];
+  const sl = compileSpecLang(spec, existing?.bindings);
   if (!sl.ok || sl.source.trim() === '') {
     const prog: ControllerProgram = {
       source: existing?.source ?? '',
@@ -136,6 +142,7 @@ export function setProgramSpec(controllerId: string, spec: SpecProgram): Control
       state: existing?.state ?? {},
       fbdGraph: null,
       specProgram: spec,
+      bindings: existing?.bindings ?? { bindings: [] },
     };
     programStore.byId[controllerId] = prog;
     persistSpecProgram(controllerId, spec);
@@ -150,6 +157,7 @@ export function setProgramSpec(controllerId: string, spec: SpecProgram): Control
     // Authoring source flipped — clear FBD graph; SpecLang is the truth now.
     fbdGraph: null,
     specProgram: spec,
+    bindings: existing?.bindings ?? { bindings: [] },
   };
   programStore.byId[controllerId] = prog;
   persistToStorage(controllerId, prog.source);
@@ -171,6 +179,7 @@ export function setProgramSource(controllerId: string, source: string): Controll
     // of truth flipped.
     fbdGraph: null,
     specProgram: null,
+    bindings: existing?.bindings ?? { bindings: [] },
   };
   programStore.byId[controllerId] = prog;
   persistToStorage(controllerId, source);
@@ -191,6 +200,7 @@ export function setProgramGraph(controllerId: string, graph: FbdGraph): Controll
       state: existing?.state ?? {},
       fbdGraph: graph,
       specProgram: null,
+      bindings: existing?.bindings ?? { bindings: [] },
     };
     programStore.byId[controllerId] = prog;
     persistFbdGraph(controllerId, graph);
@@ -206,6 +216,7 @@ export function setProgramGraph(controllerId: string, graph: FbdGraph): Controll
     state: existing?.state ?? {},
     fbdGraph: graph,
     specProgram: null,
+    bindings: existing?.bindings ?? { bindings: [] },
   };
   programStore.byId[controllerId] = prog;
   persistToStorage(controllerId, prog.source);
@@ -218,6 +229,28 @@ export function setProgramGraph(controllerId: string, graph: FbdGraph): Controll
 export function clearProgram(controllerId: string): void {
   delete programStore.byId[controllerId];
   removeFromStorage(controllerId);
+}
+
+/** Replace the point bindings for a controller. Triggers a recompile so
+ *  SpecLang warnings update immediately. */
+export function setProgramBindings(controllerId: string, bindings: ControllerBindings): void {
+  const existing = programStore.byId[controllerId] ?? emptyProgram();
+  // If a SpecLang program exists, recompile it so warnings reflect the
+  // new bindings. Otherwise just store.
+  if (existing.specProgram) {
+    const sl = compileSpecLang(existing.specProgram, bindings);
+    const result = sl.ok && sl.source ? compile(sl.source) : null;
+    programStore.byId[controllerId] = {
+      ...existing,
+      bindings,
+      source: sl.source || existing.source,
+      compiled: result?.ok && result.program ? result.program : existing.compiled,
+      error: result?.ok === false ? result.error ?? 'compile failed' : null,
+    };
+  } else {
+    programStore.byId[controllerId] = { ...existing, bindings };
+  }
+  persistBindings(controllerId, bindings);
 }
 
 export function getProgram(controllerId: string): ControllerProgram | undefined {
@@ -242,8 +275,22 @@ export function rehydrateAllPrograms(): void {
 
 // ── persistence helpers ──
 
+function loadBindings(controllerId: string): ControllerBindings {
+  if (typeof localStorage === 'undefined') return { bindings: [] };
+  const raw = localStorage.getItem(LS_BINDINGS_PREFIX + controllerId);
+  if (!raw) return { bindings: [] };
+  try {
+    const parsed = JSON.parse(raw) as ControllerBindings;
+    if (Array.isArray(parsed.bindings)) return parsed;
+  } catch {
+    // ignore
+  }
+  return { bindings: [] };
+}
+
 function loadFromStorage(controllerId: string): ControllerProgram {
   if (typeof localStorage === 'undefined') return emptyProgram();
+  const bindings = loadBindings(controllerId);
   // Priority for round-tripping the editor: SpecLang > FBD > raw ST source.
   // Whichever the user authored last is the source of truth — we re-compile
   // to ST on load so the sim has fresh bytecode.
@@ -267,6 +314,7 @@ function loadFromStorage(controllerId: string): ControllerProgram {
         state: {},
         fbdGraph: null,
         specProgram,
+        bindings,
       };
     }
   }
@@ -290,11 +338,15 @@ function loadFromStorage(controllerId: string): ControllerProgram {
         state: {},
         fbdGraph,
         specProgram: null,
+        bindings,
       };
     }
   }
   const source = localStorage.getItem(LS_PREFIX + controllerId) ?? '';
-  if (!source) return emptyProgram();
+  if (!source) {
+    // Even with no program yet, return any existing bindings.
+    return { ...emptyProgram(), bindings };
+  }
   const result = compile(source);
   return {
     source,
@@ -303,7 +355,21 @@ function loadFromStorage(controllerId: string): ControllerProgram {
     state: {},
     fbdGraph: null,
     specProgram: null,
+    bindings,
   };
+}
+
+function persistBindings(controllerId: string, bindings: ControllerBindings): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (!bindings || bindings.bindings.length === 0) {
+      localStorage.removeItem(LS_BINDINGS_PREFIX + controllerId);
+      return;
+    }
+    localStorage.setItem(LS_BINDINGS_PREFIX + controllerId, JSON.stringify(bindings));
+  } catch {
+    // ignore
+  }
 }
 
 function persistToStorage(controllerId: string, source: string): void {
@@ -338,7 +404,15 @@ function removeFromStorage(controllerId: string): void {
 }
 
 function emptyProgram(): ControllerProgram {
-  return { source: '', compiled: null, error: null, state: {}, fbdGraph: null, specProgram: null };
+  return {
+    source: '',
+    compiled: null,
+    error: null,
+    state: {},
+    fbdGraph: null,
+    specProgram: null,
+    bindings: { bindings: [] },
+  };
 }
 
 function persistSpecProgram(controllerId: string, spec: SpecProgram | null): void {

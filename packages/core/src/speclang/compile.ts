@@ -18,7 +18,7 @@
 //
 // Anything fancier (timers, schedules, multi-condition AND/OR) is v2.
 
-import type { SpecProgram, SpecRule, Tile } from './types.js';
+import type { ControllerBindings, SpecProgram, SpecRule, Tile } from './types.js';
 import { findTileTemplate } from './tiles.js';
 
 export interface CompileResult {
@@ -27,18 +27,31 @@ export interface CompileResult {
   readonly source: string;
   /** Per-rule error messages (rule.id → message). */
   readonly errors: ReadonlyMap<string, string>;
+  /** Per-rule warnings (rule.id → message). Rules with warnings still
+   *  compile — these are advisory, e.g. "this rule references 'zone temp'
+   *  but no sensor is bound to that role yet." */
+  readonly warnings: ReadonlyMap<string, string[]>;
   /** Lines emitted per rule (rule.id → ST line). Useful for the UI's
    *  "show as code" toggle that highlights which rule made which line. */
   readonly byRule: ReadonlyMap<string, string>;
 }
 
-export function compileSpecLang(program: SpecProgram): CompileResult {
+export function compileSpecLang(program: SpecProgram, bindings?: ControllerBindings): CompileResult {
   const errors = new Map<string, string>();
+  const warnings = new Map<string, string[]>();
   const byRule = new Map<string, string>();
   const lines: string[] = [];
 
+  // Build a set of bound role tokens so we can warn when a rule references
+  // a role that has no physical point assigned. Skip the check entirely if
+  // no bindings were provided — backwards-compat with callers that don't
+  // care about the point-list discipline yet.
+  const boundRoles = bindings
+    ? new Set(bindings.bindings.map((b) => b.role))
+    : null;
+
   if (program.rules.length === 0) {
-    return { ok: true, source: '', errors, byRule };
+    return { ok: true, source: '', errors, warnings, byRule };
   }
 
   // Header comment so users opening "show as code" see this is SpecLang-generated.
@@ -55,6 +68,24 @@ export function compileSpecLang(program: SpecProgram): CompileResult {
       lines.push(result.source);
       byRule.set(rule.id, result.source);
     }
+    // Point-binding warnings: collect any subject/actuator tile referenced
+    // by this rule whose role isn't bound to a physical terminal.
+    if (boundRoles) {
+      const unbound: string[] = [];
+      for (const t of rule.tiles) {
+        if (t.kind === 'subject' || t.kind === 'actuator') {
+          if (!boundRoles.has(t.token)) {
+            unbound.push(t.display);
+          }
+        }
+      }
+      if (unbound.length > 0) {
+        const uniqueUnbound = Array.from(new Set(unbound));
+        warnings.set(rule.id, [
+          `No physical point bound to: ${uniqueUnbound.join(', ')}. Assign a sensor/actuator in the Point Assignments panel before deploying.`,
+        ]);
+      }
+    }
     lines.push('');
   }
 
@@ -62,6 +93,7 @@ export function compileSpecLang(program: SpecProgram): CompileResult {
     ok: errors.size === 0,
     source: lines.join('\n').trimEnd() + '\n',
     errors,
+    warnings,
     byRule,
   };
 }

@@ -44,6 +44,34 @@ export interface SpecProgram {
   readonly rules: readonly SpecRule[];
 }
 
+/**
+ * One physical-terminal → logical-role mapping. Created explicitly by the
+ * user in the Point Assignment panel before they write rules. This is the
+ * commissioning point-list: "UI-1 is the zone temp sensor", "AO-1 drives
+ * the primary damper", etc. Once bound, the SpecLang compiler can warn if
+ * a rule references a role that has no physical point behind it.
+ */
+export interface PointBinding {
+  /** Physical terminal id on the controller, e.g. "UI-1", "AO-2", "BO-3". */
+  readonly terminalId: string;
+  /** Canonical role token from the SUBJECT or ACTUATOR tile catalog —
+   *  e.g. "zone-temp", "occupancy", "primary-damper". */
+  readonly role: string;
+  /** For inputs: the canvas node id of the sensor wired to this terminal.
+   *  For outputs: undefined (the actuator is the terminal itself in our
+   *  current model). */
+  readonly sourceNodeId?: string;
+  /** Free-text note the technician can add — eg "wire run from RM 203
+   *  east wall to panel J3" — for the commissioning report. */
+  readonly note?: string;
+}
+
+/** All point bindings for one controller. Stored in the program store
+ *  alongside the SpecLang rules. */
+export interface ControllerBindings {
+  readonly bindings: readonly PointBinding[];
+}
+
 /** Catalog entry for a draggable tile in the palette. */
 export interface TileTemplate {
   readonly kind: TileKind;

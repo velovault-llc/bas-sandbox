@@ -95,6 +95,8 @@ export type {
   TileTemplate,
   SpecRule,
   SpecProgram,
+  PointBinding,
+  ControllerBindings,
   CompileResult as SpecCompileResult,
 } from './speclang/index.js';
 
