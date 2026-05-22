@@ -218,7 +218,9 @@
         </div>
       {/if}
       {#each visible as p (p.id)}
-        <div class="entry layer-{p.layer}">
+        {@const fault = p.service === 'Timeout' || p.service === 'CommunicationLost'}
+        {@const recover = p.service === 'CommunicationRestored'}
+        <div class="entry layer-{p.layer}" class:fault class:recover>
           <span class="time">{formatTime(p.simSec)}</span>
           <span class="macs">{srcDst(p)}</span>
           <span class="svc" title={p.summary}>{p.service}</span>
@@ -427,6 +429,22 @@
   .entry.layer-app {
     background: color-mix(in srgb, #9b59b6 8%, transparent);
     color: color-mix(in srgb, #9b59b6 92%, CanvasText);
+  }
+
+  /* Timeout + CommunicationLost rows turn red — same visual language
+     as the runtime log's error level, so a tech scanning either surface
+     knows immediately that a confirmed service failed. */
+  .entry.fault {
+    background: color-mix(in srgb, #e74c3c 14%, transparent);
+    color: color-mix(in srgb, #e74c3c 100%, CanvasText);
+    font-weight: 600;
+  }
+
+  /* CommunicationRestored rows turn green to signal recovery. */
+  .entry.recover {
+    background: color-mix(in srgb, #2ecc71 14%, transparent);
+    color: color-mix(in srgb, #2ecc71 100%, CanvasText);
+    font-weight: 600;
   }
 
   .time {

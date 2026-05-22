@@ -817,6 +817,29 @@
   // For non-temperature objects we fall back to a relative 1% movement.
   const COV_DEADBAND_DEFAULT = 0.5;
 
+  // ── Retry-on-timeout state ──────────────────────────────────────────
+  // When a confirmed service (ReadProperty / WriteProperty / CoV) goes
+  // unanswered — typically because the trunk is broken or the child is
+  // offline — the supervisor doesn't just give up immediately. It emits
+  // a Timeout marker (BACnet apdu_timeout ≈ 3s) and retries the request.
+  // After N consecutive failures it declares CommunicationLost and stops
+  // hammering the bus until comm restores.
+  type FailingChildState = {
+    trunkId: string;
+    childNodeId: string;
+    childLabel: string;
+    childMac: number;
+    consecutiveFails: number;
+    /** Have we already emitted the CommunicationLost alert? Prevents
+     *  repeated alerts while the child stays offline. */
+    reportedLost: boolean;
+  };
+  const failingChildren = new Map<string, FailingChildState>();
+  // BACnet APDU timeout default — supervisors wait this long after a
+  // confirmed request before declaring the attempt failed.
+  const APDU_TIMEOUT_S = 3.0;
+  const COMM_LOST_RETRY_THRESHOLD = 3;
+
   let showAdvanced = $state(false);
 
   // Bundled demo scenarios. Picking one snaps config to its values and
@@ -1989,6 +2012,8 @@
                   : targetObj.presentValue)
               : 0;
             const trunkLabel = trunkLabelStr;
+            // Always emit the request — supervisor doesn't know the
+            // child is gone until the timeout expires.
             logBacnetPacket({
               simSec: simSecondsElapsed,
               trunkId: trunkEdge.id,
@@ -2000,18 +2025,78 @@
               summary: `MAC 0 → ${child.label}: ReadProperty ${objectId} (${objectName})`,
               layer: 'app',
             });
-            logBacnetPacket({
-              simSec: simSecondsElapsed + trunkLatencyS,
-              trunkId: trunkEdge.id,
-              trunkLabel,
-              srcMac: child.mac,
-              dstMac: 0,
-              service: 'ReadProperty-ACK',
-              objectId,
-              value,
-              summary: `${child.label} → MAC 0: ${objectId} = ${typeof value === 'number' ? value.toFixed(2) : String(value)}`,
-              layer: 'app',
-            });
+            const failKey = `${trunkEdge.id}|${child.nodeId}`;
+            if (offline.has(child.nodeId)) {
+              // No ACK comes back. After APDU_TIMEOUT_S, supervisor
+              // emits a Timeout marker. Track consecutive fails.
+              const fail = failingChildren.get(failKey) ?? {
+                trunkId: trunkEdge.id,
+                childNodeId: child.nodeId,
+                childLabel: child.label,
+                childMac: child.mac,
+                consecutiveFails: 0,
+                reportedLost: false,
+              };
+              fail.consecutiveFails += 1;
+              const attempt = fail.consecutiveFails;
+              logBacnetPacket({
+                simSec: simSecondsElapsed + APDU_TIMEOUT_S,
+                trunkId: trunkEdge.id,
+                trunkLabel,
+                srcMac: 0,
+                dstMac: child.mac,
+                service: 'Timeout',
+                objectId,
+                summary: `MAC 0 ✗ ${child.label}: no response (attempt ${attempt}/${COMM_LOST_RETRY_THRESHOLD})`,
+                layer: 'app',
+              });
+              if (attempt >= COMM_LOST_RETRY_THRESHOLD && !fail.reportedLost) {
+                fail.reportedLost = true;
+                logBacnetPacket({
+                  simSec: simSecondsElapsed + APDU_TIMEOUT_S + 0.001,
+                  trunkId: trunkEdge.id,
+                  trunkLabel,
+                  srcMac: 0,
+                  dstMac: child.mac,
+                  service: 'CommunicationLost',
+                  summary: `${child.label} (MAC ${child.mac}) declared COMM-LOST after ${COMM_LOST_RETRY_THRESHOLD} failed attempts`,
+                  layer: 'app',
+                });
+                logEvent(simSecondsElapsed + APDU_TIMEOUT_S, 'error', 'bacnet', `${child.label}: communication lost after ${COMM_LOST_RETRY_THRESHOLD} failed polls — check trunk continuity, MAC config, power.`);
+              }
+              failingChildren.set(failKey, fail);
+            } else {
+              // Healthy round-trip — emit the ACK and clear any prior
+              // failure state.
+              logBacnetPacket({
+                simSec: simSecondsElapsed + trunkLatencyS,
+                trunkId: trunkEdge.id,
+                trunkLabel,
+                srcMac: child.mac,
+                dstMac: 0,
+                service: 'ReadProperty-ACK',
+                objectId,
+                value,
+                summary: `${child.label} → MAC 0: ${objectId} = ${typeof value === 'number' ? value.toFixed(2) : String(value)}`,
+                layer: 'app',
+              });
+              const fail = failingChildren.get(failKey);
+              if (fail && fail.reportedLost) {
+                // Child came back. Announce + clear.
+                logBacnetPacket({
+                  simSec: simSecondsElapsed + trunkLatencyS + 0.001,
+                  trunkId: trunkEdge.id,
+                  trunkLabel,
+                  srcMac: child.mac,
+                  dstMac: 0,
+                  service: 'CommunicationRestored',
+                  summary: `${child.label} (MAC ${child.mac}) back online — ${fail.consecutiveFails} attempt${fail.consecutiveFails === 1 ? '' : 's'} failed before restoration`,
+                  layer: 'app',
+                });
+                logEvent(simSecondsElapsed, 'info', 'bacnet', `${child.label}: communication restored.`);
+              }
+              if (fail) failingChildren.delete(failKey);
+            }
             nextChildIdx = (nextChildIdx + 1) % children.length;
             nextSimSec += APP_LAYER_POLL_CADENCE_S;
             firedThisTick += 1;
@@ -2055,6 +2140,10 @@
       // Now evaluate each live subscription.
       for (const sub of covSubscriptions.values()) {
         if (covEmitsThisTick >= MAX_COV_EMITS_PER_TICK) break;
+        // Offline children physically can't push to the supervisor —
+        // suppress notifications. The heartbeat-poll path is the one
+        // that surfaces comm-lost via timeout/retry tracking.
+        if (offline.has(sub.childNodeId)) continue;
         const childNode = nodes.find((n) => n.id === sub.childNodeId);
         if (!childNode) continue;
         const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;

@@ -34,7 +34,14 @@ export type BacnetService =
   // crosses its deadband. Idle bus until something actually moves.
   | 'SubscribeCOV'
   | 'SubscribeCOV-ACK'
-  | 'ConfirmedCOVNotification';
+  | 'ConfirmedCOVNotification'
+  // Reliability fault-handling: when a confirmed service goes
+  // unanswered, the supervisor emits a Timeout marker, then retries.
+  // After enough strikes it declares CommunicationLost and stops
+  // hammering the bus.
+  | 'Timeout'
+  | 'CommunicationLost'
+  | 'CommunicationRestored';
 
 export interface BacnetPacket {
   readonly id: number;
