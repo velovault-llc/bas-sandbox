@@ -10,6 +10,7 @@
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
   import SpecLangCanvas from './lib/speclang/SpecLangCanvas.svelte';
   import BacnetInspector from './lib/bacnet/BacnetInspector.svelte';
+  import BacnetPacketLogPanel from './lib/bacnet/BacnetPacketLogPanel.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
@@ -433,6 +434,7 @@
           <ModelPickerModal />
           <ScenarioPanel />
           <RuntimeLogPanel />
+          <BacnetPacketLogPanel />
           <button
             type="button"
             class="dock-toggle"

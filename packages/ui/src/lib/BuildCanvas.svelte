@@ -33,9 +33,11 @@
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
   import { registerBridge, controllerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
+  import { logPacket as logBacnetPacket } from './bacnet/bacnetPacketLog.svelte';
   import {
     runProgram,
     makeEnv,
+    synthesizeBacnetObjects,
     findControllerModel,
     findSensorModel,
     findSafetyDevice,
@@ -752,6 +754,19 @@
   // owns the token, rotation counts, etc. Keyed by edge.id so SvelteFlow
   // edge inspectors can read it directly.
   let mstpTrunkStates = $state.raw<Map<string, MstpTrunkState>>(new Map());
+  // BACnet app-layer poll scheduler — when (in sim seconds) the supervisor
+  // on a given trunk should fire its next ReadProperty, plus which child
+  // it will hit next (round-robin). Keyed by trunk edge id; this is a
+  // *display* concern, not part of the MstpTrunkState in core.
+  let bacnetPollSchedule = new Map<string, { nextSimSec: number; nextChildIdx: number }>();
+  // Per-trunk poll cadence (sim-seconds). At 5s, a 4-child trunk gets
+  // each child polled every 20s — matches what a typical Niagara supervisor
+  // does on a healthy FEC bus.
+  const APP_LAYER_POLL_CADENCE_S = 5;
+  // Hard cap on Token-Pass packets emitted per trunk per tick. At 300×
+  // sim-speed a 32-device trunk would emit hundreds of hops per tick;
+  // capping keeps the log readable and the buffer from churning.
+  const MAX_TOKEN_HOPS_PER_TICK_PER_TRUNK = 8;
 
   let showAdvanced = $state(false);
 
@@ -1653,6 +1668,7 @@
       // For each trunk, build MstpDevice[] (sorted by node label so MAC
       // assignment is deterministic across renders), then step the token.
       const nextStates = new Map<string, MstpTrunkState>();
+      const nextPollSchedule = new Map<string, { nextSimSec: number; nextChildIdx: number }>();
       for (const trunk of trunks) {
         // Pick a representative edge id (the lowest-id MS/TP edge whose
         // endpoints are both in this trunk) — used as the trunk's key.
@@ -1680,9 +1696,124 @@
         // If membership changed (different node ids), re-init.
         const sameMembers = prev && prev.devices.every((d, i) => d.nodeId === devices[i]?.nodeId);
         const start = sameMembers ? seed : initMstpTrunkState(devices, baud);
-        nextStates.set(trunkEdge.id, stepMstpToken(start, dtSeconds));
+        const stepped = stepMstpToken(start, dtSeconds);
+        nextStates.set(trunkEdge.id, stepped);
+
+        // ── Emit Token-Pass packets for each hop the token made this tick.
+        // Hop count = rotationsDelta * N + (newIdx - oldIdx). At very fast
+        // sim speeds we cap emission to MAX_TOKEN_HOPS_PER_TICK_PER_TRUNK
+        // and append a single "+K more" summary packet — keeps the log
+        // useful at 1× while not exploding at 300×.
+        const N = stepped.devices.length;
+        if (N > 1 && sameMembers) {
+          const rotationsDelta = stepped.rotations - start.rotations;
+          const hopCount = rotationsDelta * N + (stepped.tokenIndex - start.tokenIndex);
+          const trunkLabel = `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`;
+          const emit = Math.min(hopCount, MAX_TOKEN_HOPS_PER_TICK_PER_TRUNK);
+          for (let i = 0; i < emit; i++) {
+            const srcIdx = (start.tokenIndex + i) % N;
+            const dstIdx = (start.tokenIndex + i + 1) % N;
+            const src = devices[srcIdx];
+            const dst = devices[dstIdx];
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel,
+              srcMac: src.mac,
+              dstMac: dst.mac,
+              service: 'Token-Pass',
+              summary: `${src.label} (MAC ${src.mac}) → ${dst.label} (MAC ${dst.mac})`,
+              layer: 'link',
+            });
+          }
+          if (hopCount > emit) {
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel,
+              srcMac: 0,
+              service: 'Token-Pass',
+              summary: `+${hopCount - emit} more token hops compressed (sim ${simSpeed}×)`,
+              layer: 'link',
+            });
+          }
+        }
+
+        // ── BACnet app-layer poll: supervisor (MAC 0) issues a ReadProperty
+        // on a child controller's first AI object every APP_LAYER_POLL_CADENCE_S.
+        // Round-robins through the children so each one sees attention.
+        const supervisor = devices.find((d) => d.mac === 0);
+        const children = devices.filter((d) => d.mac !== 0);
+        if (supervisor && children.length > 0) {
+          const prevSched = bacnetPollSchedule.get(trunkEdge.id) ?? {
+            nextSimSec: simSecondsElapsed + APP_LAYER_POLL_CADENCE_S,
+            nextChildIdx: 0,
+          };
+          let { nextSimSec, nextChildIdx } = prevSched;
+          // Fire as many polls as fit in this tick — at fast sim speeds
+          // we might emit a couple at once, but cap at 3 per tick to keep
+          // the buffer breathable.
+          let firedThisTick = 0;
+          while (simSecondsElapsed >= nextSimSec && firedThisTick < 3) {
+            const child = children[nextChildIdx % children.length];
+            // Synthesize the child's BACnet objects so we can name a real
+            // AI to read. Falls back to AI:1 with the value 0 if the child
+            // has no bindings yet.
+            const childNode = nodes.find((n) => n.id === child.nodeId);
+            const vendorModelId = (childNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+            const childProg = programStore.byId[child.nodeId];
+            const childObjects = synthesizeBacnetObjects({
+              vendorModelId,
+              bindings: childProg?.bindings,
+              envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
+              envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
+            });
+            const targetObj = childObjects.find((o) => o.type === 'analog-input') ?? childObjects[0];
+            const objectId = targetObj?.id ?? 'AI:1';
+            const objectName = targetObj?.name ?? '(unassigned)';
+            const value = targetObj
+              ? (typeof targetObj.presentValue === 'boolean'
+                  ? (targetObj.presentValue ? 1 : 0)
+                  : targetObj.presentValue)
+              : 0;
+            const trunkLabel = `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`;
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel,
+              srcMac: 0,
+              dstMac: child.mac,
+              service: 'ReadProperty',
+              objectId,
+              summary: `MAC 0 → ${child.label}: ReadProperty ${objectId} (${objectName})`,
+              layer: 'app',
+            });
+            logBacnetPacket({
+              simSec: simSecondsElapsed,
+              trunkId: trunkEdge.id,
+              trunkLabel,
+              srcMac: child.mac,
+              dstMac: 0,
+              service: 'ReadProperty-ACK',
+              objectId,
+              value,
+              summary: `${child.label} → MAC 0: ${objectId} = ${typeof value === 'number' ? value.toFixed(2) : String(value)}`,
+              layer: 'app',
+            });
+            nextChildIdx = (nextChildIdx + 1) % children.length;
+            nextSimSec += APP_LAYER_POLL_CADENCE_S;
+            firedThisTick += 1;
+          }
+          // If we still owe polls but ran out of budget, snap forward so we
+          // don't accumulate debt that explodes the buffer later.
+          if (simSecondsElapsed >= nextSimSec) {
+            nextSimSec = simSecondsElapsed + APP_LAYER_POLL_CADENCE_S;
+          }
+          nextPollSchedule.set(trunkEdge.id, { nextSimSec, nextChildIdx });
+        }
       }
       mstpTrunkStates = nextStates;
+      bacnetPollSchedule = nextPollSchedule;
     }
 
     // ── Yoke sensor T_sensed to the linked zone ───────────────────────
