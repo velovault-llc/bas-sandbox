@@ -66,11 +66,24 @@ export const programStore = $state<ProgramStore>({
   activeSpecLangControllerLabel: null,
 });
 
+/** Close every programming surface (CLI, FBD, SpecLang). Used when
+ *  opening a new one so the user always has exactly one editor visible
+ *  — otherwise overlays stack and the lower one becomes un-clickable. */
+function closeAllProgrammingSurfaces(): void {
+  programStore.activeControllerId = null;
+  programStore.activeControllerLabel = null;
+  programStore.activeFbdControllerId = null;
+  programStore.activeFbdControllerLabel = null;
+  programStore.activeSpecLangControllerId = null;
+  programStore.activeSpecLangControllerLabel = null;
+}
+
 /** Open the CLI panel pointed at this controller. */
 export function openCli(controllerId: string, label: string): void {
   if (!(controllerId in programStore.byId)) {
     programStore.byId[controllerId] = loadFromStorage(controllerId);
   }
+  closeAllProgrammingSurfaces();
   programStore.activeControllerId = controllerId;
   programStore.activeControllerLabel = label;
 }
@@ -85,6 +98,7 @@ export function openFbd(controllerId: string, label: string): void {
   if (!(controllerId in programStore.byId)) {
     programStore.byId[controllerId] = loadFromStorage(controllerId);
   }
+  closeAllProgrammingSurfaces();
   programStore.activeFbdControllerId = controllerId;
   programStore.activeFbdControllerLabel = label;
 }
@@ -99,6 +113,7 @@ export function openSpecLang(controllerId: string, label: string): void {
   if (!(controllerId in programStore.byId)) {
     programStore.byId[controllerId] = loadFromStorage(controllerId);
   }
+  closeAllProgrammingSurfaces();
   programStore.activeSpecLangControllerId = controllerId;
   programStore.activeSpecLangControllerLabel = label;
 }

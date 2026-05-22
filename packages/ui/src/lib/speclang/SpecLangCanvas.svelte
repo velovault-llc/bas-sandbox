@@ -264,7 +264,7 @@
   .speclang-overlay {
     position: absolute;
     inset: 1rem;
-    z-index: 50;
+    z-index: 70;
     background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
     border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
     border-radius: 10px;
