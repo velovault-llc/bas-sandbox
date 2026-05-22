@@ -172,18 +172,29 @@ interface StmtResult {
 }
 
 function compileTrigger(tiles: readonly Tile[]): ExprResult {
-  // Drop the leading trigger keyword (When / While).
-  if (tiles[0].kind !== 'trigger') {
+  // Find the When/While trigger keyword anywhere in the slice — users
+  // sometimes drop the condition tiles BEFORE the trigger ("zone temp
+  // When exceeds 75°F" instead of "When zone temp exceeds 75°F"). We
+  // accept either order, compile correctly, and warn that the canonical
+  // form starts with When/While.
+  const triggerPos = tiles.findIndex((t) => t.kind === 'trigger');
+  if (triggerPos === -1) {
     return { expr: '', error: 'Rule must start with "When" or "While".' };
   }
-  const body = tiles.slice(1);
+  let warning: string | undefined;
+  if (triggerPos !== 0) {
+    warning = `"${tiles[triggerPos].display}" should normally come first. Reordered automatically for compile; consider using the ← → arrows on each tile to fix the visual order.`;
+  }
+  // Body = every tile that isn't the trigger keyword, preserving order.
+  const body = [...tiles.slice(0, triggerPos), ...tiles.slice(triggerPos + 1)];
   if (body.length === 0) {
     // Permissive: a bare "When" with no condition fires every tick. Useful
     // for absolute overrides ("always set damper to 50%"). Warn so the user
     // knows that's the semantic.
     return {
       expr: 'TRUE',
-      warning: 'Trigger has no condition — this rule fires every tick. Add a subject after "When" (e.g., "When zone temp exceeds setpoint") if that\'s not what you want.',
+      warning: (warning ? warning + ' ' : '') +
+        'Trigger has no condition — this rule fires every tick. Add a subject after "When" (e.g., "When zone temp exceeds setpoint") if that\'s not what you want.',
     };
   }
 
@@ -192,7 +203,7 @@ function compileTrigger(tiles: readonly Tile[]): ExprResult {
     const subj = envKeyOrFail(body[0]);
     if (!subj) return { expr: '', error: `Unknown subject "${body[0].display}".` };
     const litVal = literalToNumber(body[2]);
-    return { expr: `${subj} = ${formatNum(litVal)}` };
+    return { expr: `${subj} = ${formatNum(litVal)}`, warning };
   }
 
   // ── Shape 2: SUBJECT OPERATOR SUBJECT (by VALUE)?  ───────────────────
@@ -217,7 +228,7 @@ function compileTrigger(tiles: readonly Tile[]): ExprResult {
     } else if (body.length !== 3) {
       return { expr: '', error: 'Trigger has extra tiles after the subject comparison.' };
     }
-    return { expr: `${lhs} ${op} ${rhsExpr}` };
+    return { expr: `${lhs} ${op} ${rhsExpr}`, warning };
   }
 
   // ── Shape 3: SUBJECT OPERATOR VALUE  (eg "CO2 exceeds 800 ppm") ─────
@@ -232,7 +243,7 @@ function compileTrigger(tiles: readonly Tile[]): ExprResult {
     const op = comparator(body[1].token);
     if (!op) return { expr: '', error: `Unsupported operator "${body[1].display}".` };
     const rhs = body[2].numericValue ?? 0;
-    return { expr: `${lhs} ${op} ${formatNum(rhs)}` };
+    return { expr: `${lhs} ${op} ${formatNum(rhs)}`, warning };
   }
 
   return { expr: '', error: 'Trigger shape not recognized — try "When SUBJECT exceeds SUBJECT by VALUE" or "When SUBJECT is LITERAL".' };

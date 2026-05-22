@@ -230,6 +230,32 @@
     );
   }
 
+  /** Swap a tile with its left neighbor within the same rule (no-op at
+   *  position 0). Powers the ← arrow button on each placed tile. */
+  function moveTileLeft(ruleId: string, tileId: string): void {
+    rules = rules.map((r) => {
+      if (r.id !== ruleId) return r;
+      const idx = r.tiles.findIndex((t) => t.id === tileId);
+      if (idx <= 0) return r;
+      const next = [...r.tiles];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return { ...r, tiles: next };
+    });
+  }
+
+  /** Swap a tile with its right neighbor within the same rule (no-op at
+   *  the end). Powers the → arrow button on each placed tile. */
+  function moveTileRight(ruleId: string, tileId: string): void {
+    rules = rules.map((r) => {
+      if (r.id !== ruleId) return r;
+      const idx = r.tiles.findIndex((t) => t.id === tileId);
+      if (idx < 0 || idx >= r.tiles.length - 1) return r;
+      const next = [...r.tiles];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return { ...r, tiles: next };
+    });
+  }
+
   function updateTileValue(ruleId: string, tileId: string, value: number): void {
     rules = rules.map((r) => {
       if (r.id !== ruleId) return r;
@@ -416,8 +442,15 @@
                   <span class="rule-empty">Click a TRIGGER tile (When / While) to start this rule.</span>
                 {/if}
                 <div class="rule-tiles">
-                  {#each rule.tiles as tile (tile.id)}
+                  {#each rule.tiles as tile, idx (tile.id)}
                     <span class="tile placed kind-{tile.kind}" style:--c={CATEGORY_COLOR[tile.kind]}>
+                      <button
+                        type="button"
+                        class="tile-move"
+                        title="Move this tile left"
+                        disabled={idx === 0}
+                        onclick={() => moveTileLeft(rule.id, tile.id)}
+                      >←</button>
                       {#if tile.kind === 'value'}
                         <input
                           type="number"
@@ -430,6 +463,13 @@
                       {:else}
                         {renderTileLabel(tile)}
                       {/if}
+                      <button
+                        type="button"
+                        class="tile-move"
+                        title="Move this tile right"
+                        disabled={idx === rule.tiles.length - 1}
+                        onclick={() => moveTileRight(rule.id, tile.id)}
+                      >→</button>
                       <button
                         type="button"
                         class="tile-remove"
@@ -583,16 +623,20 @@
   .tile.kind-value    { --c: #16a085; }
   .tile.kind-literal  { --c: #7f8c8d; }
   .tile.placed { padding-right: 0.3rem; }
-  .tile-remove {
+  .tile-remove,
+  .tile-move {
     background: transparent;
     border: none;
     color: inherit;
     font-size: 0.7rem;
     cursor: pointer;
     padding: 0 0.2rem;
-    opacity: 0.6;
+    opacity: 0.55;
+    font-family: inherit;
   }
-  .tile-remove:hover { opacity: 1; }
+  .tile-remove:hover,
+  .tile-move:hover:not(:disabled) { opacity: 1; }
+  .tile-move:disabled { opacity: 0.18; cursor: not-allowed; }
 
   .value-input {
     width: 4ch;
