@@ -2340,17 +2340,33 @@
       const ipDevices: BacnetIpDevice[] = nodes
         .filter((n) => !isSubnetZone(n))
         .filter((n) => {
-          const d = n.data as { ipAddress?: string; subnetMask?: string; gateway?: string };
-          return !!d.ipAddress || !!d.subnetMask || !!d.gateway;
+          const d = n.data as {
+            ipAddress?: string;
+            subnetMask?: string;
+            gateway?: string;
+            isBBMD?: boolean;
+          };
+          // Include any device with IP config OR a BBMD flag — empty-BDT
+          // and unknown-peer findings should still fire on a BBMD that
+          // hasn't been given an IP yet.
+          return !!d.ipAddress || !!d.subnetMask || !!d.gateway || !!d.isBBMD;
         })
         .map((n) => {
-          const d = n.data as { ipAddress?: string; subnetMask?: string; gateway?: string };
+          const d = n.data as {
+            ipAddress?: string;
+            subnetMask?: string;
+            gateway?: string;
+            isBBMD?: boolean;
+            bdtPeers?: string[];
+          };
           return {
             nodeId: n.id,
             label: nodeLabel(n) || n.id,
             ipAddress: d.ipAddress,
             subnetMask: d.subnetMask,
             gateway: d.gateway,
+            isBBMD: d.isBBMD,
+            bdtPeers: d.bdtPeers,
           };
         });
       const ipEdges: BacnetIpEdge[] = edges
@@ -2401,7 +2417,8 @@
         liveKeys.add(key);
         if (!announcedIpv4Findings.has(key)) {
           announcedIpv4Findings.add(key);
-          const level = f.severity === 'error' ? 'error' : 'warn';
+          const level =
+            f.severity === 'error' ? 'error' : f.severity === 'warning' ? 'warn' : 'info';
           logEvent(simSecondsElapsed, level, 'bacnet-ip', `${f.title} — ${f.description}`);
         }
       }
@@ -3637,6 +3654,61 @@
     return selectedNode;
   });
 
+  /** Single-selection BACnet/IP-capable device (supervisor or controller) —
+   *  drives the Net.2 IP / BBMD config panel. */
+  const selectedIpDevice = $derived.by(() => {
+    if (!selectedNode) return null;
+    const k = nodeKind(selectedNode);
+    if (k !== 'supervisor' && k !== 'controller') return null;
+    return selectedNode;
+  });
+
+  /** Mutate a single field on a node's data, immutably. Used by the
+   *  Net.2 IP / BBMD config panel and the subnet-zone edit panel. */
+  function updateNodeField(nodeId: string, field: string, value: unknown): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const d = n.data as Record<string, unknown>;
+      // Treat empty strings as "unset" so the validator's
+      // "skip devices without IP" path engages.
+      if (typeof value === 'string' && value === '') {
+        const { [field]: _drop, ...rest } = d;
+        void _drop;
+        return { ...n, data: rest };
+      }
+      return { ...n, data: { ...d, [field]: value } };
+    });
+  }
+
+  /** Toggle BBMD on/off for a node. When turning OFF, also drop the BDT. */
+  function toggleBbmd(nodeId: string, on: boolean): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const d = n.data as Record<string, unknown>;
+      if (on) {
+        return { ...n, data: { ...d, isBBMD: true, bdtPeers: d.bdtPeers ?? [] } };
+      }
+      const { isBBMD: _ib, bdtPeers: _bp, ...rest } = d;
+      void _ib;
+      void _bp;
+      return { ...n, data: rest };
+    });
+  }
+
+  /** Update the BDT for a node. `peersCsv` is a comma- or newline-separated
+   *  list of dotted-quads. We split, trim, and drop blanks. */
+  function setBdtFromCsv(nodeId: string, peersCsv: string): void {
+    const peers = peersCsv
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    nodes = nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const d = n.data as Record<string, unknown>;
+      return { ...n, data: { ...d, bdtPeers: peers } };
+    });
+  }
+
   /** Update a single zoneConfig field on the selected zone. Live — the
    *  next sim tick picks it up. */
   function updateZoneConfig(zoneId: string, field: string, value: number): void {
@@ -4675,6 +4747,85 @@
               >
                 ✕ Delete zone
               </button>
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedIpDevice && !selectedSubnetZone}
+          {@const ipData = selectedIpDevice.data as {
+            ipAddress?: string;
+            subnetMask?: string;
+            gateway?: string;
+            isBBMD?: boolean;
+            bdtPeers?: string[];
+          }}
+          {@const isBb = !!ipData.isBBMD}
+          <Panel position="top-center">
+            <div class="ip-config-panel">
+              <span class="ip-config-title">Network — {nodeLabel(selectedIpDevice)}</span>
+              <label class="ip-field" title="IPv4 address — dotted-quad, e.g. 10.0.1.10.">
+                <span>IP</span>
+                <input
+                  class="ip-input"
+                  type="text"
+                  value={ipData.ipAddress ?? ''}
+                  placeholder="10.0.1.10"
+                  oninput={(e) => updateNodeField(selectedIpDevice.id, 'ipAddress', (e.currentTarget as HTMLInputElement).value)}
+                  spellcheck="false"
+                  autocapitalize="off"
+                />
+              </label>
+              <label class="ip-field" title="Subnet mask — dotted-quad, e.g. 255.255.255.0.">
+                <span>Mask</span>
+                <input
+                  class="ip-input"
+                  type="text"
+                  value={ipData.subnetMask ?? ''}
+                  placeholder="255.255.255.0"
+                  oninput={(e) => updateNodeField(selectedIpDevice.id, 'subnetMask', (e.currentTarget as HTMLInputElement).value)}
+                  spellcheck="false"
+                  autocapitalize="off"
+                />
+              </label>
+              <label class="ip-field" title="Default gateway — dotted-quad, e.g. 10.0.1.1.">
+                <span>GW</span>
+                <input
+                  class="ip-input"
+                  type="text"
+                  value={ipData.gateway ?? ''}
+                  placeholder="10.0.1.1"
+                  oninput={(e) => updateNodeField(selectedIpDevice.id, 'gateway', (e.currentTarget as HTMLInputElement).value)}
+                  spellcheck="false"
+                  autocapitalize="off"
+                />
+              </label>
+              <span class="ip-divider"></span>
+              <label
+                class="bbmd-toggle"
+                class:active={isBb}
+                title="Mark this device as a BACnet Broadcast Management Device. BBMDs bridge BACnet broadcasts (Who-Is, I-Am) between subnets. Required when cross-subnet BACnet/IP is in play."
+              >
+                <input
+                  type="checkbox"
+                  checked={isBb}
+                  onchange={(e) => toggleBbmd(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).checked)}
+                />
+                <span>BBMD</span>
+              </label>
+              {#if isBb}
+                <label class="bdt-field" title="Broadcast Distribution Table — comma-separated IPs of peer BBMDs on remote subnets. Each peer must list this BBMD back, or broadcasts only flow one direction.">
+                  <span>BDT peers</span>
+                  <input
+                    class="bdt-input"
+                    type="text"
+                    value={(ipData.bdtPeers ?? []).join(', ')}
+                    placeholder="10.0.2.10, 10.0.3.10"
+                    oninput={(e) => setBdtFromCsv(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).value)}
+                    spellcheck="false"
+                    autocapitalize="off"
+                  />
+                </label>
+              {/if}
             </div>
           </Panel>
         {/if}
@@ -6936,6 +7087,98 @@
   }
   .subnet-edit-delete:hover {
     background: color-mix(in srgb, #e74c3c 15%, transparent);
+  }
+
+  /* Net.2 — IP / BBMD config panel. Same chrome as the trunk + subnet
+     edit panels so the top-center inspector reads as one consistent
+     surface. */
+  .ip-config-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    max-width: 56rem;
+  }
+  .ip-config-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+  }
+  .ip-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+  .ip-field input.ip-input {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    width: 7.5rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+  .ip-divider {
+    width: 1px;
+    height: 1.2rem;
+    background: color-mix(in srgb, CanvasText 20%, transparent);
+    margin: 0 0.2rem;
+  }
+  .bbmd-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    cursor: pointer;
+    user-select: none;
+  }
+  .bbmd-toggle input {
+    margin: 0;
+  }
+  .bbmd-toggle.active {
+    border-color: #4a9eff;
+    color: #4a9eff;
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+  }
+  .bdt-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    flex: 1 1 14rem;
+  }
+  .bdt-input {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    flex: 1 1 12rem;
+    min-width: 8rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
   }
 
   .wire-title {

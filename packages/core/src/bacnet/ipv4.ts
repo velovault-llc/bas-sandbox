@@ -32,6 +32,17 @@ export interface BacnetIpDevice {
   readonly subnetMask?: string;
   /** Optional default gateway. */
   readonly gateway?: string;
+  /** True when this device is configured to act as a BACnet Broadcast
+   *  Management Device — it bridges BACnet broadcasts (Who-Is, I-Am,
+   *  UDP/47808) between its own subnet and the peer BBMDs listed in
+   *  `bdtPeers`. Without a BBMD on each subnet, cross-subnet BACnet
+   *  discovery fails silently — devices on the other side don't show
+   *  up in the supervisor's "live" list. */
+  readonly isBBMD?: boolean;
+  /** Broadcast Distribution Table — IPs of peer BBMDs this BBMD is
+   *  configured to forward broadcasts to. Each entry is a dotted-quad.
+   *  Only meaningful when `isBBMD === true`. */
+  readonly bdtPeers?: readonly string[];
 }
 
 /** An edge connecting two devices over BACnet/IP. */
@@ -51,7 +62,11 @@ export type Ipv4FindingId =
   | 'ipv4.private-public-mix'
   | 'ipv4.zone-cidr-mismatch'
   | 'ipv4.zone-invalid-cidr'
-  | 'ipv4.outside-any-zone';
+  | 'ipv4.outside-any-zone'
+  | 'ipv4.cross-subnet-no-bridge'
+  | 'ipv4.bbmd-empty-bdt'
+  | 'ipv4.bbmd-asymmetric-bdt'
+  | 'ipv4.bbmd-peer-unknown';
 
 export interface Ipv4Finding {
   readonly id: Ipv4FindingId;
@@ -226,18 +241,60 @@ export function validateBacnetIpNetwork(
       });
     }
     // Subnet match — use each device's own mask. If the two networks
-    // disagree under EITHER mask, the link is broken.
+    // disagree under EITHER mask, the link is broken UNLESS a BBMD on
+    // each side knows about the other (Net.2 bridge-aware validation).
     const aNet = networkAddress(a.ip, a.mask);
     const bNet = networkAddress(b.ip, a.mask);
     if (aNet !== bNet) {
-      findings.push({
-        id: 'ipv4.subnet-mismatch',
-        severity: 'error',
-        title: `Subnet mismatch on bacnet-ip trunk`,
-        description: `${a.dev.label} (${a.dev.ipAddress}/${maskToCidr(a.mask)}) and ${b.dev.label} (${b.dev.ipAddress}) end up on different networks (${formatIpv4(aNet)} vs ${formatIpv4(bNet)}) under ${a.dev.label}'s mask. These devices can't talk without a BBMD or a route — re-IP one of them or add a BBMD if you actually need cross-subnet BACnet.`,
-        nodeIds: [a.dev.nodeId, b.dev.nodeId],
-        edgeIds: [e.edgeId],
-      });
+      const bridgeStatus = bbmdBridgeStatus(a.dev, b.dev);
+      if (bridgeStatus.kind === 'bridged') {
+        // OK — informational only. Tell the reader WHY the cross-subnet
+        // trunk is valid, since "this works because both sides are
+        // BBMDs with each other in their BDT" is exactly the kind of
+        // fact a tech needs to know.
+        findings.push({
+          id: 'ipv4.cross-subnet-no-bridge',
+          severity: 'info',
+          title: `Cross-subnet BACnet/IP — bridged by BBMDs`,
+          description: `${a.dev.label} (${formatIpv4(aNet)}/${maskToCidr(a.mask)}) ↔ ${b.dev.label} (${formatIpv4(bNet)}/${maskToCidr(b.mask)}). Both ends are BBMDs and each lists the other in its BDT, so broadcasts forward correctly. Healthy cross-subnet BACnet.`,
+          nodeIds: [a.dev.nodeId, b.dev.nodeId],
+          edgeIds: [e.edgeId],
+        });
+      } else if (bridgeStatus.kind === 'asymmetric') {
+        // One side has the other in its BDT but not vice versa — this
+        // is the famously brittle "broadcasts only flow one direction"
+        // misconfig. Devices on the side without the BDT entry never
+        // see broadcasts from the other side, so they don't I-Am
+        // properly.
+        findings.push({
+          id: 'ipv4.bbmd-asymmetric-bdt',
+          severity: 'error',
+          title: `BBMD BDT asymmetric — broadcasts flow only one direction`,
+          description: `${bridgeStatus.haveSide.label} has ${bridgeStatus.missingSide.label} in its BDT, but ${bridgeStatus.missingSide.label} doesn't have ${bridgeStatus.haveSide.label}. Broadcasts will forward one way and disappear the other. Add the missing peer (${bridgeStatus.haveSide.ipAddress}) to ${bridgeStatus.missingSide.label}'s BDT.`,
+          nodeIds: [a.dev.nodeId, b.dev.nodeId],
+          edgeIds: [e.edgeId],
+        });
+      } else if (bridgeStatus.kind === 'one-side-bbmd') {
+        // Only one side is a BBMD — the other isn't bridging at all.
+        findings.push({
+          id: 'ipv4.cross-subnet-no-bridge',
+          severity: 'error',
+          title: `Cross-subnet BACnet/IP needs BBMDs on BOTH ends`,
+          description: `${a.dev.label} (${a.dev.ipAddress}/${maskToCidr(a.mask)}) and ${b.dev.label} (${b.dev.ipAddress}) are on different subnets. ${bridgeStatus.bbmdSide.label} is a BBMD but ${bridgeStatus.nonBbmdSide.label} isn't — broadcasts have nowhere to land on the far side. Either make ${bridgeStatus.nonBbmdSide.label} a BBMD too, or re-IP onto the same subnet.`,
+          nodeIds: [a.dev.nodeId, b.dev.nodeId],
+          edgeIds: [e.edgeId],
+        });
+      } else {
+        // No BBMD on either side — the classic subnet-mismatch.
+        findings.push({
+          id: 'ipv4.subnet-mismatch',
+          severity: 'error',
+          title: `Subnet mismatch on bacnet-ip trunk`,
+          description: `${a.dev.label} (${a.dev.ipAddress}/${maskToCidr(a.mask)}) and ${b.dev.label} (${b.dev.ipAddress}) end up on different networks (${formatIpv4(aNet)} vs ${formatIpv4(bNet)}) under ${a.dev.label}'s mask. These devices can't talk without a BBMD or a route — re-IP one of them or mark a node on each side as a BBMD with the other in its BDT.`,
+          nodeIds: [a.dev.nodeId, b.dev.nodeId],
+          edgeIds: [e.edgeId],
+        });
+      }
     }
 
     // Private/public mix — at least one in RFC1918, the other not.
@@ -255,7 +312,92 @@ export function validateBacnetIpNetwork(
     }
   }
 
+  // 4. Per-BBMD: BDT sanity. A BBMD with no peers in its BDT silently
+  // fails to forward; a BBMD whose BDT lists IPs not seen on the canvas
+  // is pointing at ghosts — a useful "did the integrator forget to
+  // update the BDT after a controller swap?" finding.
+  const ipToDevice = new Map<number, BacnetIpDevice>();
+  for (const d of devices) {
+    const ip = parseIpv4(d.ipAddress);
+    if (ip !== null) ipToDevice.set(ip, d);
+  }
+  for (const d of devices) {
+    if (!d.isBBMD) continue;
+    const peers = d.bdtPeers ?? [];
+    if (peers.length === 0) {
+      findings.push({
+        id: 'ipv4.bbmd-empty-bdt',
+        severity: 'warning',
+        title: `${d.label} is a BBMD with an empty BDT`,
+        description: `${d.label} is configured as a BBMD but its Broadcast Distribution Table is empty — no peer BBMDs to forward broadcasts to. The BBMD will accept local broadcasts but never propagate them. Add the IP of every BBMD on remote subnets that this BBMD should reach.`,
+        nodeIds: [d.nodeId],
+      });
+    }
+    for (const peer of peers) {
+      const peerIp = parseIpv4(peer);
+      if (peerIp === null) {
+        findings.push({
+          id: 'ipv4.bbmd-peer-unknown',
+          severity: 'error',
+          title: `${d.label} BDT entry "${peer}" isn't a valid IP`,
+          description: `Each BDT peer must be a dotted-quad IPv4 address. Fix or remove this entry.`,
+          nodeIds: [d.nodeId],
+        });
+        continue;
+      }
+      if (!ipToDevice.has(peerIp)) {
+        findings.push({
+          id: 'ipv4.bbmd-peer-unknown',
+          severity: 'warning',
+          title: `${d.label} BDT peer ${peer} not present on the canvas`,
+          description: `${d.label}'s BDT names ${peer} as a peer BBMD, but no device on the canvas has that IP. The peer may exist in the real install — or this is a stale BDT entry from before someone re-IP'd a controller. Confirm with the as-built drawings.`,
+          nodeIds: [d.nodeId],
+        });
+      }
+    }
+  }
+
   return findings;
+}
+
+/** Result of evaluating whether a cross-subnet bacnet-ip edge is
+ *  bridged by BBMDs at each end. */
+type BridgeStatus =
+  /** Both endpoints are BBMDs AND each lists the other in its BDT. */
+  | { kind: 'bridged' }
+  /** Both endpoints are BBMDs but only one direction's BDT entry is
+   *  present. Broadcasts flow one way only. */
+  | { kind: 'asymmetric'; haveSide: BacnetIpDevice; missingSide: BacnetIpDevice }
+  /** Exactly one endpoint is a BBMD; the other isn't bridging at all. */
+  | { kind: 'one-side-bbmd'; bbmdSide: BacnetIpDevice; nonBbmdSide: BacnetIpDevice }
+  /** Neither endpoint is a BBMD — the classic unbridged cross-subnet. */
+  | { kind: 'none' };
+
+function bbmdHasPeer(bbmd: BacnetIpDevice, peerIp: string | undefined): boolean {
+  if (!peerIp) return false;
+  const target = parseIpv4(peerIp);
+  if (target === null) return false;
+  for (const p of bbmd.bdtPeers ?? []) {
+    if (parseIpv4(p) === target) return true;
+  }
+  return false;
+}
+
+function bbmdBridgeStatus(a: BacnetIpDevice, b: BacnetIpDevice): BridgeStatus {
+  const aBb = !!a.isBBMD;
+  const bBb = !!b.isBBMD;
+  if (!aBb && !bBb) return { kind: 'none' };
+  if (aBb && !bBb) return { kind: 'one-side-bbmd', bbmdSide: a, nonBbmdSide: b };
+  if (!aBb && bBb) return { kind: 'one-side-bbmd', bbmdSide: b, nonBbmdSide: a };
+  // Both BBMDs — check the BDT cross-reference.
+  const aSeesB = bbmdHasPeer(a, b.ipAddress);
+  const bSeesA = bbmdHasPeer(b, a.ipAddress);
+  if (aSeesB && bSeesA) return { kind: 'bridged' };
+  if (aSeesB && !bSeesA) return { kind: 'asymmetric', haveSide: a, missingSide: b };
+  if (!aSeesB && bSeesA) return { kind: 'asymmetric', haveSide: b, missingSide: a };
+  // Both BBMDs but neither has the other → treat as asymmetric with
+  // an arbitrary missing-side pointer; the message names both.
+  return { kind: 'asymmetric', haveSide: a, missingSide: b };
 }
 
 function maskToCidr(mask: number): number {

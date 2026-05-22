@@ -175,6 +175,172 @@ describe('validateBacnetIpNetwork', () => {
   });
 });
 
+// ── BBMD / cross-subnet bridge (Net.2) ──────────────────────────────
+
+describe('validateBacnetIpNetwork — BBMD bridging (Net.2)', () => {
+  it('cross-subnet trunk with NO BBMDs: classic subnet-mismatch error', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({ nodeId: 'a', label: 'NAE-1', ipAddress: '192.168.1.10', subnetMask: '255.255.255.0' }),
+      dev({ nodeId: 'b', label: 'JACE-2', ipAddress: '192.168.2.10', subnetMask: '255.255.255.0' }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')]);
+    expect(findings.some((f) => f.id === 'ipv4.subnet-mismatch')).toBe(true);
+    expect(findings.some((f) => f.id === 'ipv4.cross-subnet-no-bridge')).toBe(false);
+  });
+
+  it('cross-subnet trunk with symmetric BBMDs: bridged (info), no error', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '192.168.1.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['192.168.2.10'],
+      }),
+      dev({
+        nodeId: 'b',
+        label: 'JACE-2',
+        ipAddress: '192.168.2.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['192.168.1.10'],
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')]);
+    expect(findings.some((f) => f.id === 'ipv4.subnet-mismatch')).toBe(false);
+    const ok = findings.find((f) => f.id === 'ipv4.cross-subnet-no-bridge');
+    expect(ok).toBeDefined();
+    expect(ok!.severity).toBe('info');
+  });
+
+  it('cross-subnet trunk with asymmetric BDT: error (broadcasts only one way)', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '192.168.1.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['192.168.2.10'],
+      }),
+      dev({
+        nodeId: 'b',
+        label: 'JACE-2',
+        ipAddress: '192.168.2.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        // missing peer back to NAE-1 — asymmetric
+        bdtPeers: [],
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')]);
+    const f = findings.find((f) => f.id === 'ipv4.bbmd-asymmetric-bdt');
+    expect(f).toBeDefined();
+    expect(f!.severity).toBe('error');
+  });
+
+  it('cross-subnet trunk with only one BBMD: error (other side has no bridge)', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '192.168.1.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['192.168.2.10'],
+      }),
+      dev({
+        nodeId: 'b',
+        label: 'JACE-2',
+        ipAddress: '192.168.2.10',
+        subnetMask: '255.255.255.0',
+        // not a BBMD at all
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')]);
+    const f = findings.find(
+      (f) => f.id === 'ipv4.cross-subnet-no-bridge' && f.severity === 'error',
+    );
+    expect(f).toBeDefined();
+  });
+
+  it('same-subnet trunk: BBMD flags do nothing (no bridge needed)', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '10.0.0.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['10.0.0.20'],
+      }),
+      dev({
+        nodeId: 'b',
+        label: 'NAE-2',
+        ipAddress: '10.0.0.20',
+        subnetMask: '255.255.255.0',
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')]);
+    // No subnet-mismatch / cross-subnet anything fires.
+    expect(findings.some((f) => f.id === 'ipv4.subnet-mismatch')).toBe(false);
+    expect(findings.some((f) => f.id === 'ipv4.cross-subnet-no-bridge')).toBe(false);
+  });
+
+  it('BBMD with empty BDT: warning', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '10.0.0.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: [],
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, []);
+    const f = findings.find((f) => f.id === 'ipv4.bbmd-empty-bdt');
+    expect(f).toBeDefined();
+    expect(f!.severity).toBe('warning');
+  });
+
+  it('BBMD with peer IP not on the canvas: warning (stale-BDT detection)', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '10.0.0.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['10.0.99.99'], // doesn't exist on canvas
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, []);
+    const f = findings.find((f) => f.id === 'ipv4.bbmd-peer-unknown');
+    expect(f).toBeDefined();
+    expect(f!.severity).toBe('warning');
+  });
+
+  it('BBMD with malformed peer IP: error', () => {
+    const devs: BacnetIpDevice[] = [
+      dev({
+        nodeId: 'a',
+        label: 'NAE-1',
+        ipAddress: '10.0.0.10',
+        subnetMask: '255.255.255.0',
+        isBBMD: true,
+        bdtPeers: ['not.an.ip'],
+      }),
+    ];
+    const findings = validateBacnetIpNetwork(devs, []);
+    const f = findings.find(
+      (f) => f.id === 'ipv4.bbmd-peer-unknown' && f.severity === 'error',
+    );
+    expect(f).toBeDefined();
+  });
+});
+
 // ── CIDR helpers ─────────────────────────────────────────────────────
 
 describe('CIDR helpers', () => {

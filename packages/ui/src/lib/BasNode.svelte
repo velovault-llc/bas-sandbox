@@ -63,6 +63,10 @@
     safetyModelId?: string;
     /** Expansion-only: id from EXPANSION_CATALOG (real-world module). */
     expansionModelId?: string;
+    /** Network — flagged when this node is configured as a BACnet
+     *  Broadcast Management Device. Drives the BBMD badge below the
+     *  subtitle (Net.2). Only meaningful on supervisor/controller. */
+    isBBMD?: boolean;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -278,6 +282,11 @@
       {data.alarm === 'high' ? '▲ HIGH TEMP' : '▼ LOW TEMP'}
     </div>
   {/if}
+  {#if data.isBBMD && (data.kind === 'supervisor' || data.kind === 'controller')}
+    <div class="bbmd-badge" title="BACnet Broadcast Management Device — bridges BACnet broadcasts to peer BBMDs on remote subnets.">
+      BBMD
+    </div>
+  {/if}
   {#if data.childCount !== undefined && data.childCount > 0}
     <div class="children-toggle" title={data.collapsed ? 'Click to expand' : 'Click to collapse'}>
       {data.collapsed ? '▶' : '▼'}
@@ -436,6 +445,24 @@
     background: color-mix(in srgb, #4a9eff 22%, transparent);
     color: #4a9eff;
     border: 1px solid color-mix(in srgb, #4a9eff 55%, transparent);
+  }
+
+  /* Net.2 — BBMD identity badge. Quiet by default (no flash) so the
+     user can tell at a glance which nodes bridge broadcasts. */
+  .bbmd-badge {
+    margin-top: 0.25rem;
+    padding: 0.08rem 0.4rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: center;
+    background: color-mix(in srgb, #4a9eff 18%, transparent);
+    color: #4a9eff;
+    border: 1px solid color-mix(in srgb, #4a9eff 45%, transparent);
   }
 
   @keyframes alarm-flash {
