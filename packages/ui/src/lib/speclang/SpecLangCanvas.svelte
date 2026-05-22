@@ -87,45 +87,56 @@
     (palette.get('actuator') ?? []).map((t) => ({ token: t.token, display: t.display, description: t.description })),
   );
 
-  // Wired sensors for THIS controller (sensor → controller edges).
-  // Each entry includes the physical terminal id (e.g., UI-1) and the
-  // sensor metadata so the panel can render a useful row.
-  const wiredInputs = $derived.by(() => {
-    if (!ctrlId) return [];
-    const rows: { terminalId: string; sensorNodeId: string; sensorLabel: string; sensorSubtitle: string }[] = [];
+  /** What's wired to a given target terminal on the active controller. */
+  function sensorOnTerminal(terminalId: string): { sensorNodeId: string; sensorLabel: string; sensorSubtitle: string } | null {
+    if (!ctrlId) return null;
     for (const e of canvasSnapshot.edges) {
       if (e.target !== ctrlId) continue;
-      if (!e.targetHandle) continue;
-      // Skip non-terminal handles (e.g., net-in/out).
-      const prefix = e.targetHandle.split('-')[0];
-      if (!['UI', 'AI', 'BI'].includes(prefix)) continue;
+      if (e.targetHandle !== terminalId) continue;
       const sensor = canvasSnapshot.nodes.find((n) => n.id === e.source);
       if (!sensor) continue;
       const data = sensor.data as { label?: string; sensorModelId?: string };
       const senModel = data.sensorModelId ? findSensorModel(data.sensorModelId) : undefined;
-      rows.push({
-        terminalId: e.targetHandle,
+      return {
         sensorNodeId: sensor.id,
         sensorLabel: data.label ?? sensor.id,
         sensorSubtitle: senModel ? `${senModel.vendor} ${senModel.model} · ${senModel.subject}` : 'unknown sensor',
-      });
+      };
     }
-    return rows.sort((a, b) => a.terminalId.localeCompare(b.terminalId));
+    return null;
+  }
+
+  /** Build the full input-terminal list from the controller's model. Lists
+   *  every UI/AI/BI channel — wired or not — so the user can pre-assign a
+   *  role to a terminal that hasn't been wired yet (the "plan the point
+   *  list before the install" flow real commissioning agents follow). */
+  const inputTerminals = $derived.by(() => {
+    if (!ctrlId) return [];
+    const node = canvasSnapshot.nodes.find((n) => n.id === ctrlId);
+    if (!node) return [];
+    const vendorModelId = (node.data as { vendorModelId?: string }).vendorModelId;
+    const model = vendorModelId ? findControllerModel(vendorModelId) : undefined;
+    // Fallback for generic controllers (no vendor pick): permissive 8/4/4 mix.
+    const counts = (model?.points ?? { UI: 8, AI: 4, BI: 4 }) as Record<string, number | undefined>;
+    const out: string[] = [];
+    for (const kind of ['UI', 'AI', 'BI'] as const) {
+      const n = counts[kind] ?? 0;
+      for (let i = 1; i <= n; i++) out.push(`${kind}-${i}`);
+    }
+    return out;
   });
 
-  // Output terminals on the controller (AO/BO/UO). Listed even if not
-  // wired to anything — the tech assigns the logical role first, then
-  // wires the actuator later.
+  /** Output terminals (UO/AO/BO). Same logic — list all, wired or not. */
   const outputTerminals = $derived.by(() => {
     if (!ctrlId) return [];
     const node = canvasSnapshot.nodes.find((n) => n.id === ctrlId);
     if (!node) return [];
     const vendorModelId = (node.data as { vendorModelId?: string }).vendorModelId;
     const model = vendorModelId ? findControllerModel(vendorModelId) : undefined;
-    const counts = model?.points ?? { UO: 0, AO: 0, BO: 0 };
+    const counts = (model?.points ?? { UO: 0, AO: 4, BO: 4 }) as Record<string, number | undefined>;
     const out: string[] = [];
     for (const kind of ['UO', 'AO', 'BO'] as const) {
-      const n = (counts[kind] ?? 0) as number;
+      const n = counts[kind] ?? 0;
       for (let i = 1; i <= n; i++) out.push(`${kind}-${i}`);
     }
     return out;
@@ -290,22 +301,28 @@
         </header>
         <div class="points-grid">
           <div class="points-col">
-            <h4>Inputs (wired sensors)</h4>
-            {#if wiredInputs.length === 0}
-              <p class="muted small">No sensors wired to this controller yet. Wire one on the canvas first.</p>
+            <h4>Inputs (UI / AI / BI terminals)</h4>
+            {#if inputTerminals.length === 0}
+              <p class="muted small">No input terminals on this controller model.</p>
             {/if}
-            {#each wiredInputs as row (row.sensorNodeId + row.terminalId)}
-              {@const b = bindingFor(row.terminalId)}
-              <div class="point-row">
-                <span class="terminal-badge kind-input">{row.terminalId}</span>
+            {#each inputTerminals as terminalId (terminalId)}
+              {@const b = bindingFor(terminalId)}
+              {@const wired = sensorOnTerminal(terminalId)}
+              <div class="point-row" class:unwired={!wired}>
+                <span class="terminal-badge kind-input">{terminalId}</span>
                 <div class="point-info">
-                  <strong>{row.sensorLabel}</strong>
-                  <span class="muted small">{row.sensorSubtitle}</span>
+                  {#if wired}
+                    <strong>{wired.sensorLabel}</strong>
+                    <span class="muted small">{wired.sensorSubtitle}</span>
+                  {:else}
+                    <strong class="muted">(no sensor wired)</strong>
+                    <span class="muted small">assign a role to pre-plan, or wire a sensor first</span>
+                  {/if}
                 </div>
                 <select
                   class="role-select"
                   value={b?.role ?? '__unassigned__'}
-                  onchange={(e) => setBindingRole(row.terminalId, (e.currentTarget as HTMLSelectElement).value, row.sensorNodeId)}
+                  onchange={(e) => setBindingRole(terminalId, (e.currentTarget as HTMLSelectElement).value, wired?.sensorNodeId)}
                 >
                   <option value="__unassigned__">— pick role —</option>
                   {#each subjectRoles as r (r.token)}
@@ -682,6 +699,8 @@
     border-radius: 5px;
   }
   .point-row:hover { background: color-mix(in srgb, CanvasText 4%, transparent); }
+  .point-row.unwired { opacity: 0.55; }
+  .point-row.unwired:hover { opacity: 0.85; }
   .terminal-badge {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.75rem;
