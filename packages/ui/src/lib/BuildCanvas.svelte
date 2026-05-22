@@ -1725,30 +1725,66 @@
         );
         if (!trunkEdge) continue;
         const baud = ((trunkEdge.data as { baud?: number } | undefined)?.baud) ?? 38400;
-        const devices: MstpDevice[] = trunk
+        // Sort trunk members by label so MAC assignment is deterministic.
+        const trunkNodes = trunk
           .map((nid) => nodes.find((n) => n.id === nid))
           .filter((n): n is NonNullable<typeof n> => !!n)
-          .sort((a, b) => (nodeLabel(a) || a.id).localeCompare(nodeLabel(b) || b.id))
-          .map((n, idx) => {
-            // `forcedMac` from node data wins over auto-assignment —
-            // lets scenarios bake in a deliberate duplicate-MAC fault,
-            // and (later) lets the user explicitly set dip-switch
-            // addresses on each device. When unset, supervisors get
-            // MAC 0 and everyone else gets a sequential MAC.
-            const forcedMac = (n.data as { forcedMac?: number } | undefined)?.forcedMac;
-            const mac = typeof forcedMac === 'number'
-              ? forcedMac
-              : (nodeKind(n) === 'supervisor' ? 0 : idx + 1);
-            return {
-              nodeId: n.id,
-              mac,
-              label: nodeLabel(n) || n.id,
-              // Network-wide BACnet Device Instance — distinct from MAC,
-              // which is link-layer only. Default scheme (1000 + mac) is
-              // arbitrary but deterministic across renders.
-              deviceInstance: defaultDeviceInstance(mac),
-            };
-          });
+          .sort((a, b) => (nodeLabel(a) || a.id).localeCompare(nodeLabel(b) || b.id));
+
+        // ── Pick the MAC 0 holder for this trunk ─────────────────────
+        // Real-world rule: MAC 0 is the device that originates the token
+        // and acts as the master on this segment. In topology order:
+        //   1. A node explicitly marked `kind: supervisor` on the trunk
+        //      (NAE / JACE / NX directly wired into MS/TP).
+        //   2. A node that bridges from BACnet/IP downstream into MS/TP
+        //      — that's the FEC / edge router. It's the master on the
+        //      MS/TP side of itself, even though it's a peer/child on
+        //      the BACnet/IP side. Without this rule, every JACE-as-MSTP-
+        //      router topology would falsely flag "no supervisor".
+        //   3. Lowest-label-sorted node as a fallback so trunks-without-
+        //      a-master still get a deterministic MAC ring (the validator
+        //      will still warn — that warning is now informational, not
+        //      caused by misclassification).
+        const hasBacnetIpUplink = (nodeId: string): boolean =>
+          edges.some(
+            (e) =>
+              (e.data?.wireKind as string) === 'bacnet-ip' &&
+              (e.source === nodeId || e.target === nodeId),
+          );
+        // forcedMac always wins — scenarios use it to bake in dip-switch
+        // states. If any node has a forced MAC 0, that's the master.
+        const forcedZero = trunkNodes.find(
+          (n) => (n.data as { forcedMac?: number } | undefined)?.forcedMac === 0,
+        );
+        const supervisorOnTrunk = trunkNodes.find((n) => nodeKind(n) === 'supervisor');
+        const routerOnTrunk = trunkNodes.find((n) => hasBacnetIpUplink(n.id));
+        const masterNode = forcedZero ?? supervisorOnTrunk ?? routerOnTrunk ?? null;
+
+        // Walk in label order. The master gets MAC 0; everyone else
+        // increments a separate counter so we don't leave MAC 1 vacant
+        // when the master happens to sort first.
+        let nextChildMac = 1;
+        const devices: MstpDevice[] = trunkNodes.map((n) => {
+          const forcedMac = (n.data as { forcedMac?: number } | undefined)?.forcedMac;
+          let mac: number;
+          if (typeof forcedMac === 'number') {
+            mac = forcedMac;
+          } else if (masterNode && n.id === masterNode.id) {
+            mac = 0;
+          } else {
+            mac = nextChildMac;
+            nextChildMac += 1;
+          }
+          return {
+            nodeId: n.id,
+            mac,
+            label: nodeLabel(n) || n.id,
+            // Network-wide BACnet Device Instance — distinct from MAC,
+            // which is link-layer only. Default scheme (1000 + mac) is
+            // arbitrary but deterministic across renders.
+            deviceInstance: defaultDeviceInstance(mac),
+          };
+        });
         // Re-sort by MAC so the token ring matches the convention.
         devices.sort((a, b) => a.mac - b.mac);
         const prev = mstpTrunkStates.get(trunkEdge.id);
