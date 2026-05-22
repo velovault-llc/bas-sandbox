@@ -12,6 +12,7 @@
   import BacnetInspector from './lib/bacnet/BacnetInspector.svelte';
   import BacnetPacketLogPanel from './lib/bacnet/BacnetPacketLogPanel.svelte';
   import TrunkInspector from './lib/bacnet/TrunkInspector.svelte';
+  import NetworkHealthPill from './lib/bacnet/NetworkHealthPill.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
@@ -437,6 +438,7 @@
           <ScenarioPanel />
           <RuntimeLogPanel />
           <BacnetPacketLogPanel />
+          <NetworkHealthPill />
           <button
             type="button"
             class="dock-toggle"
