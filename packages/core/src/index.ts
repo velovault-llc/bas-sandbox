@@ -156,6 +156,12 @@ export {
   MSTP_TRUNK_RECOMMENDED_MAX_DEVICES,
   MSTP_MAC_MIN,
   MSTP_MAC_MAX,
+  validateBacnetIpNetwork,
+  parseIpv4,
+  formatIpv4,
+  networkAddress,
+  isContiguousMask,
+  isPrivateIpv4,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
@@ -166,6 +172,10 @@ export type {
   MstpFinding,
   MstpFindingId,
   MstpTrunkSnapshot,
+  BacnetIpDevice,
+  BacnetIpEdge,
+  Ipv4Finding,
+  Ipv4FindingId,
 } from './bacnet/index.js';
 
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';

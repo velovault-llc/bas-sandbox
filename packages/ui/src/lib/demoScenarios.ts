@@ -306,6 +306,78 @@ export const DEMOS: readonly Demo[] = [
   },
 
   {
+    id: 'subnet-misconfig',
+    name: 'BACnet/IP subnet mismatch',
+    blurb:
+      'Two NAEs supposed to talk over BACnet/IP — one configured for 192.168.1.x, the other for 192.168.2.x. Watch the validator flag the subnet mismatch and the bad gateway.',
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'nae1',
+          kind: 'supervisor',
+          label: 'NAE-A',
+          x: 200,
+          y: 120,
+          // Healthy config, sits in 192.168.1.0/24.
+          data: {
+            ipAddress: '192.168.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.1.1',
+          },
+        },
+        {
+          id: 'nae2',
+          kind: 'supervisor',
+          label: 'NAE-B',
+          x: 600,
+          y: 120,
+          // Different subnet (someone typed 1 vs 2 on the IP), AND
+          // gateway points back to the OTHER subnet — classic
+          // "I copied the config from the other NAE but only changed
+          // the host octet" mistake.
+          data: {
+            ipAddress: '192.168.2.20',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.1.1',
+          },
+        },
+        {
+          id: 'vav',
+          kind: 'controller',
+          label: 'VAV-201',
+          x: 400,
+          y: 320,
+        },
+        {
+          id: 'snr',
+          kind: 'sensor',
+          label: 'ZN-201',
+          x: 400,
+          y: 480,
+          data: { signal: 'rtd-pt1000' },
+        },
+      ],
+      edges: [
+        // The bad link — NAE-A ↔ NAE-B over BACnet/IP, but they're in
+        // different subnets per their masks. Validator should fire
+        // ipv4.subnet-mismatch + ipv4.gateway-not-in-subnet.
+        { source: 'nae1', target: 'nae2', wireKind: 'bacnet-ip' },
+        // One NAE drives a VAV so the canvas has something to run.
+        { source: 'nae1', target: 'vav', wireKind: 'bacnet-ip' },
+        { source: 'vav', target: 'snr', wireKind: 'hardwired' },
+      ],
+      wires: [
+        {
+          controllerId: 'vav',
+          sensorId: 'snr',
+          config: { initialZone: 76, setpoint: 72, outdoorAir: 88 },
+        },
+      ],
+      focused: 'vav',
+    }),
+  },
+
+  {
     id: 'mstp-commissioning',
     name: 'MS/TP commissioning fault',
     blurb:

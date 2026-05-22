@@ -25,6 +25,7 @@
     let info = 0;
     let firstProblemTrunk: string | null = null;
     const totalTrunks = trunkInspectorStore.byTrunkId.size;
+    // MS/TP findings — per-trunk map.
     for (const [trunkId, findings] of trunkInspectorStore.findingsByTrunkId) {
       for (const f of findings) {
         if (f.severity === 'error') {
@@ -37,6 +38,13 @@
           info++;
         }
       }
+    }
+    // BACnet/IP findings — flat list, not bound to an MS/TP trunk so
+    // they only roll up into the global count (no jump-to-trunk).
+    for (const f of trunkInspectorStore.ipv4Findings) {
+      if (f.severity === 'error') errors++;
+      else if (f.severity === 'warning') warnings++;
+      else info++;
     }
     return { errors, warnings, info, firstProblemTrunk, totalTrunks };
   });
@@ -58,7 +66,7 @@
   );
 </script>
 
-{#if summary.totalTrunks > 0}
+{#if summary.totalTrunks > 0 || summary.errors > 0 || summary.warnings > 0}
   <button
     type="button"
     class="net-health state-{state}"

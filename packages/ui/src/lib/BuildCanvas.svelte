@@ -34,7 +34,7 @@
   import { validateScenario } from './scenarios/validator';
   import { registerBridge, controllerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import { logPacket as logBacnetPacket } from './bacnet/bacnetPacketLog.svelte';
-  import { openTrunkInspector, publishTrunkStates, publishMstpFindings } from './bacnet/trunkInspectorStore.svelte';
+  import { openTrunkInspector, publishTrunkStates, publishMstpFindings, publishIpv4Findings } from './bacnet/trunkInspectorStore.svelte';
   import {
     runProgram,
     makeEnv,
@@ -61,8 +61,11 @@
     initMstpTrunkState,
     defaultDeviceInstance,
     validateMstpTrunks,
+    validateBacnetIpNetwork,
     type StEnv,
     type MstpFinding,
+    type BacnetIpDevice,
+    type BacnetIpEdge,
     type LoopState,
     type ZoneState,
     type MstpDevice,
@@ -775,6 +778,10 @@
   // Set of "trunkId:findingId" pairs we've already announced in the
   // runtime log this session — keeps re-logging quiet across ticks.
   const announcedMstpFindings = new Set<string>();
+  // BACnet/IP announce-once dedup — same pattern as MS/TP. The actual
+  // findings list lives in `trunkInspectorStore.ipv4Findings`; we
+  // publish there and don't keep a second local copy.
+  const announcedIpv4Findings = new Set<string>();
   // Hard cap on Token-Pass packets emitted per trunk per tick. At 300×
   // sim-speed a 32-device trunk would emit hundreds of hops per tick;
   // capping keeps the log readable and the buffer from churning.
@@ -1914,6 +1921,49 @@
       }
       mstpFindingsByTrunk = findingsByTrunk;
       publishMstpFindings(findingsByTrunk);
+    }
+
+    // ── BACnet/IP network validation (sibling to MS/TP above) ────────
+    // Collect every node that carries an IP config (ipAddress / subnetMask /
+    // gateway on its data) and every bacnet-ip edge, then run the IPv4
+    // validator. Findings stream into a flat list; we de-dup runtime-log
+    // announcements the same way we do for MS/TP.
+    {
+      const ipDevices: BacnetIpDevice[] = nodes
+        .filter((n) => {
+          const d = n.data as { ipAddress?: string; subnetMask?: string; gateway?: string };
+          return !!d.ipAddress || !!d.subnetMask || !!d.gateway;
+        })
+        .map((n) => {
+          const d = n.data as { ipAddress?: string; subnetMask?: string; gateway?: string };
+          return {
+            nodeId: n.id,
+            label: nodeLabel(n) || n.id,
+            ipAddress: d.ipAddress,
+            subnetMask: d.subnetMask,
+            gateway: d.gateway,
+          };
+        });
+      const ipEdges: BacnetIpEdge[] = edges
+        .filter((e) => (e.data?.wireKind as string) === 'bacnet-ip')
+        .map((e) => ({ edgeId: e.id, aNodeId: e.source, bNodeId: e.target }));
+      const findings = validateBacnetIpNetwork(ipDevices, ipEdges);
+      // Announce-once for the runtime log; finding key combines id +
+      // the nodes/edges it touches so re-emerging faults re-fire.
+      const liveKeys = new Set<string>();
+      for (const f of findings) {
+        const key = `${f.id}|${(f.nodeIds ?? []).join(',')}|${(f.edgeIds ?? []).join(',')}`;
+        liveKeys.add(key);
+        if (!announcedIpv4Findings.has(key)) {
+          announcedIpv4Findings.add(key);
+          const level = f.severity === 'error' ? 'error' : 'warn';
+          logEvent(simSecondsElapsed, level, 'bacnet-ip', `${f.title} — ${f.description}`);
+        }
+      }
+      for (const k of [...announcedIpv4Findings]) {
+        if (!liveKeys.has(k)) announcedIpv4Findings.delete(k);
+      }
+      publishIpv4Findings(findings);
     }
 
     // ── Yoke sensor T_sensed to the linked zone ───────────────────────

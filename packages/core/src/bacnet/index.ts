@@ -24,3 +24,18 @@ export {
   MSTP_MAC_MAX,
 } from './validate.js';
 export type { MstpFinding, MstpFindingId, MstpTrunkSnapshot } from './validate.js';
+
+export {
+  validateBacnetIpNetwork,
+  parseIpv4,
+  formatIpv4,
+  networkAddress,
+  isContiguousMask,
+  isPrivateIpv4,
+} from './ipv4.js';
+export type {
+  BacnetIpDevice,
+  BacnetIpEdge,
+  Ipv4Finding,
+  Ipv4FindingId,
+} from './ipv4.js';
