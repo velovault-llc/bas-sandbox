@@ -29,7 +29,7 @@
   import { importStore, canvasActions, openModelPicker, selectionStore, canvasSnapshot } from './canvasStore.svelte';
   import { log as logEvent } from './runtime/runtimeLogStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
-  import { openCli, openFbd, programStore } from './cli/programStore.svelte';
+  import { openCli, openFbd, openSpecLang, programStore } from './cli/programStore.svelte';
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
   import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
@@ -3256,6 +3256,14 @@
                     ▦ Diagram
                   </button>
                 {/if}
+                <button
+                  type="button"
+                  class="inspector-speclang"
+                  title="Open SpecLang — plain-English programming. Works on every controller in the catalog."
+                  onclick={() => openSpecLang(selectedController.id, nodeLabel(selectedController))}
+                >
+                  📝 SpecLang
+                </button>
                 <button
                   type="button"
                   class="inspector-delete"

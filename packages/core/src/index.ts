@@ -82,6 +82,22 @@ export type { ExpansionModule } from './equipment/expansions.js';
 export { computeSensorReading } from './sim/sensorSim.js';
 export type { SensorReading, SimContext } from './sim/sensorSim.js';
 
+export {
+  TILE_CATALOG,
+  tileCatalogByKind,
+  findTileTemplate,
+  compileSpecLang,
+  describeRule,
+} from './speclang/index.js';
+export type {
+  Tile,
+  TileKind,
+  TileTemplate,
+  SpecRule,
+  SpecProgram,
+  CompileResult as SpecCompileResult,
+} from './speclang/index.js';
+
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';
 export type {
   ScenarioDefinition,

@@ -8,6 +8,7 @@
   import WeatherPanel from './lib/weather/WeatherPanel.svelte';
   import CLIPanel from './lib/cli/CLIPanel.svelte';
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
+  import SpecLangCanvas from './lib/speclang/SpecLangCanvas.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
@@ -421,6 +422,9 @@
           {/if}
           {#if programStore.activeFbdControllerId}
             <FBDCanvas />
+          {/if}
+          {#if programStore.activeSpecLangControllerId}
+            <SpecLangCanvas />
           {/if}
           <ModelPickerModal />
           <ScenarioPanel />
