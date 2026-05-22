@@ -49,8 +49,13 @@
     initLoopState,
     HW_LOOP_DEFAULTS,
     CHW_LOOP_DEFAULTS,
+    stepZone,
+    initZoneState,
+    defaultOccupancySchedule,
+    DEFAULT_ZONE_CONFIG,
     type StEnv,
     type LoopState,
+    type ZoneState,
   } from '@bas/core';
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
@@ -58,7 +63,7 @@
 
   const nodeTypes = { bas: BasNode };
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -317,6 +322,13 @@
       defaultName: 'EQ-1',
       icon: '☷',
       description: 'AHU, VAV box, FCU, pump, boiler, chiller, cooling tower — the actual HVAC unit the actuators move and sensors measure.',
+    },
+    {
+      kind: 'zone',
+      label: 'Zone',
+      defaultName: 'ZONE-1',
+      icon: '▢',
+      description: 'A physical room or open area. Has thermal mass, internal loads (people / lights / equipment), and an envelope to OAT. The thing the BAS is ultimately trying to keep comfortable.',
     },
   ];
 
@@ -1391,6 +1403,35 @@
       });
     }
 
+    // ── Zone (room) thermal dynamics ─────────────────────────────────
+    // Each zone node on the canvas runs its own envelope + load model.
+    // Multi-zone scenarios become possible: drop 3 zones, each drifts
+    // independently based on OAT, occupancy schedule, and (eventually
+    // in B.4) supply air from its VAV. For now, supply air = 0 since the
+    // air-side coupling is the next session.
+    const zoneStateUpdates = new Map<string, ZoneState>();
+    const oatForZones = runningSnapshot[0]
+      ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60)
+      : 60;
+    const simHourForZones = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
+    for (const node of nodes) {
+      if (nodeKind(node) !== 'zone') continue;
+      const zData = node.data as { zoneState?: ZoneState };
+      const prev = zData.zoneState ?? initZoneState(DEFAULT_ZONE_CONFIG, oatForZones);
+      const next = stepZone(prev, DEFAULT_ZONE_CONFIG, {
+        outsideTemp: oatForZones,
+        hour: simHourForZones,
+        occupancy_frac: defaultOccupancySchedule(simHourForZones),
+        supplyAir_btu_per_hr: 0, // Session B.4: couple to VAV/AHU supply air
+      }, dtSeconds);
+      zoneStateUpdates.set(node.id, next);
+      const occPct = Math.round(defaultOccupancySchedule(simHourForZones) * 100);
+      physicsValueByNode.set(node.id, {
+        value: `${next.T_zone.toFixed(1)}°F · OAT ${oatForZones.toFixed(0)}°F · occ ${occPct}%`,
+        status: 'responded',
+      });
+    }
+
     nodes = nodes.map((n) => {
       const data = n.data as {
         kind: Kind;
@@ -1448,6 +1489,7 @@
       const physVal = physicsValueByNode.get(n.id);
       const actuatorUpdate = actuatorStateUpdates.get(n.id);
       const loopUpdate = loopStateUpdates.get(n.id);
+      const zoneUpdate = zoneStateUpdates.get(n.id);
       if (physVal) {
         return {
           ...n,
@@ -1459,6 +1501,7 @@
             ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
             ...(actuatorUpdate ? { actuatorState: actuatorUpdate } : {}),
             ...(loopUpdate ? { loopState: loopUpdate } : {}),
+            ...(zoneUpdate ? { zoneState: zoneUpdate } : {}),
           },
         };
       }

@@ -115,6 +115,14 @@ export type {
 } from './sim/hydronic.js';
 
 export {
+  stepZone,
+  initZoneState,
+  defaultOccupancySchedule,
+  DEFAULT_ZONE_CONFIG,
+} from './sim/zone.js';
+export type { ZoneConfig, ZoneState, ZoneInputs } from './sim/zone.js';
+
+export {
   TILE_CATALOG,
   tileCatalogByKind,
   findTileTemplate,
