@@ -1205,12 +1205,12 @@
     }
 
     // ── Hydronic plant dynamics ──────────────────────────────────────
-    // For each boiler / chiller / cooling-tower equipment unit on the
-    // canvas, advance its loop state based on actuator commands flowing
-    // into it. State persists on node.data.loopState across ticks; T_OA
-    // from the weather sim drives drift-toward-ambient when idle. This
-    // is the start of plant-loop modeling — Session A.2 will couple
-    // load equipment (AHU coils, VAV reheat) to the loop's supply temp.
+    // For each boiler / chiller / cooling-tower equipment unit, advance
+    // its loop state based on the actuator(s) wired INTO this specific
+    // equipment. Routing is by upstream controller-terminal binding:
+    //   burner-modulation actuator → plant fire/stage command
+    //   circulator-pump actuator   → pump speed command
+    // Anything else wired into the equipment counts as generic load.
     const loopStateUpdates = new Map<string, LoopState>();
     for (const node of nodes) {
       if (nodeKind(node) !== 'equipment') continue;
@@ -1218,46 +1218,74 @@
       const eqId = eqData.equipmentModelId;
       const eqModel = eqId ? findEquipmentModel(eqId) : undefined;
       if (!eqModel) continue;
-      // Only model plant equipment for now — boilers, chillers, cooling
-      // towers. AHU/VAV/FCU/pump are downstream-side and need different
-      // coupling math (Session A.2).
       const isHotPlant = eqModel.kind === 'boiler';
       const isCoolPlant = eqModel.kind === 'chiller';
       const isTower = eqModel.kind === 'cooling-tower';
       if (!isHotPlant && !isCoolPlant && !isTower) continue;
 
       const cfg = isHotPlant ? HW_LOOP_DEFAULTS : CHW_LOOP_DEFAULTS;
-      const prev = eqData.loopState ?? initLoopState(cfg, isHotPlant ? 70 : 70);
+      const prev = eqData.loopState ?? initLoopState(cfg, 70);
 
-      // Gather plant + pump commands by walking actuators wired to a
-      // controller whose role binding matches "burner / chiller / pump"
-      // env-keys. First-cut: any actuator wired (anywhere) to a
-      // controller acts as a generic command. We pick the highest
-      // actual position as the effective command. Future iterations can
-      // bind specific actuator roles ("burner-modulation",
-      // "chiller-enable") to specific equipment.
+      // Walk actuator → THIS equipment edges. Each actuator's command
+      // arrives via its upstream controller AO/BO terminal — which has
+      // a Point Assignment role. We use that role to route the actuator's
+      // actual position to the right equipment-input slot.
       let plantCommand = 0;
       let pumpCommand = 0;
-      // We can't easily walk topology to this equipment without wiring
-      // equipment→controller edges (Session A.2). For now, use the
-      // average of all actuators on the canvas as a rough proxy so the
-      // plant responds to controller activity. This is imperfect but
-      // visible — gives the user a working loop demo.
-      let actCount = 0;
-      let actSum = 0;
-      for (const otherNode of nodes) {
-        if (nodeKind(otherNode) !== 'actuator') continue;
-        const aState = (otherNode.data as { actuatorState?: { actual: number } })?.actuatorState;
-        if (!aState) continue;
-        actSum += aState.actual;
-        actCount++;
+      let extraLoad = 0;
+      const incomingActuatorRoles: string[] = []; // for the node label
+
+      for (const inEdge of edges) {
+        if (inEdge.target !== node.id) continue;
+        const actNode = nodes.find((n) => n.id === inEdge.source);
+        if (!actNode || nodeKind(actNode) !== 'actuator') continue;
+        const actState = (actNode.data as { actuatorState?: { actual: number } })?.actuatorState;
+        if (!actState) continue;
+
+        // Find the controller→actuator edge to get the source terminal,
+        // then look up that terminal's role binding on the controller.
+        const upstreamEdge = edges.find((e) => e.target === actNode.id);
+        if (!upstreamEdge) continue;
+        const ctrlProgram = programStore.byId[upstreamEdge.source];
+        const binding = upstreamEdge.sourceHandle
+          ? ctrlProgram?.bindings?.bindings.find((b) => b.terminalId === upstreamEdge.sourceHandle)
+          : undefined;
+        const role = binding?.role;
+
+        // Route by role. Unknown / unbound roles count as plant command
+        // (lets a generic single-actuator setup still work).
+        if (role === 'burner-mod' || role === 'chiller-stage') {
+          plantCommand = Math.max(plantCommand, actState.actual);
+          incomingActuatorRoles.push(role === 'burner-mod' ? 'burner' : 'stage');
+        } else if (role === 'chiller-enable') {
+          // Enable is binary — when on, treat as full stage command;
+          // when off, plant is off regardless of stage signal.
+          plantCommand = actState.actual > 0.5 ? Math.max(plantCommand, 1) : plantCommand;
+          incomingActuatorRoles.push('enable');
+        } else if (role === 'circulator-pump') {
+          pumpCommand = Math.max(pumpCommand, actState.actual);
+          incomingActuatorRoles.push('pump');
+        } else if (role === 'tower-fan') {
+          // Tower fan modulates condenser-water cooling, which we model
+          // as plant capacity for the tower.
+          plantCommand = Math.max(plantCommand, actState.actual);
+          incomingActuatorRoles.push('fan');
+        } else {
+          // Unknown / unbound — treat as a generic command nudge.
+          plantCommand = Math.max(plantCommand, actState.actual);
+          incomingActuatorRoles.push('unbound');
+        }
+        void extraLoad; // reserved for downstream load coupling (Session A.3)
       }
-      const avgAct = actCount > 0 ? actSum / actCount : 0;
-      // Hot plant fires harder when system actuators are commanded high
-      // (heating need). Cool plant stages harder same way (cooling need).
-      plantCommand = avgAct;
-      pumpCommand = avgAct > 0.05 ? Math.max(0.4, avgAct) : 0; // pump runs whenever there's load
-      const loadCommand = avgAct; // load proportional to actuator activity
+
+      // If the user wired a plant but didn't wire a pump actuator, run
+      // the pump at design flow whenever there IS plant activity —
+      // matches the real-world convention "pump always runs with plant."
+      if (pumpCommand === 0 && plantCommand > 0.05) pumpCommand = 1;
+
+      // Load command: until Session A.3 couples AHU/VAV coils, model
+      // load as a fraction of plant command so the loop ΔT stays sane.
+      const loadCommand = plantCommand * 0.85;
 
       // Weather-sim's OAT drives drift when idle.
       const oat = runningSnapshot[0]
@@ -1272,18 +1300,19 @@
       }, dtSeconds);
       loopStateUpdates.set(node.id, next);
 
-      // Surface the live loop state on the equipment node label.
-      const unit = '°F';
+      // Surface the live loop state + which actuators are driving it.
       const supply = next.T_supply.toFixed(1);
       const ret = next.T_return.toFixed(1);
       const dT = (next.T_supply - next.T_return).toFixed(1);
       const flow = next.flow_gpm.toFixed(0);
-      const label = isHotPlant
-        ? `HWS ${supply}${unit} · HWR ${ret}${unit} · ΔT ${dT}${unit} · ${flow} GPM`
-        : isCoolPlant
-          ? `CHWS ${supply}${unit} · CHWR ${ret}${unit} · ΔT ${dT}${unit} · ${flow} GPM`
-          : `CWS ${supply}${unit} · CWR ${ret}${unit} · ${flow} GPM`;
-      physicsValueByNode.set(node.id, { value: label, status: 'responded' });
+      const drivers = incomingActuatorRoles.length > 0
+        ? ` · drivers: ${Array.from(new Set(incomingActuatorRoles)).join(', ')}`
+        : ' · no actuators wired';
+      const prefix = isHotPlant ? 'HWS/HWR' : isCoolPlant ? 'CHWS/CHWR' : 'CWS/CWR';
+      physicsValueByNode.set(node.id, {
+        value: `${prefix} ${supply}/${ret}°F · ΔT ${dT}°F · ${flow} GPM${drivers}`,
+        status: 'responded',
+      });
     }
 
     nodes = nodes.map((n) => {

@@ -33,10 +33,20 @@ export const TILE_CATALOG: readonly TileTemplate[] = [
   { kind: 'subject', token: 'airflow',           display: 'airflow',           description: 'Supply airflow (CFM).',                          envKey: 'cfm' },
 
   // ── ACTUATORS (outputs the controller can drive) ─────────────────────
-  { kind: 'actuator', token: 'primary-damper', display: 'primary damper', description: 'Main air damper — primary cooling actuator.',         envKey: 'actuator' },
-  { kind: 'actuator', token: 'reheat-valve',   display: 'reheat valve',   description: 'Hot-water reheat valve (2-way or 3-way).',            envKey: 'reheat' },
-  { kind: 'actuator', token: 'cooling-valve',  display: 'cooling valve',  description: 'Chilled-water cooling valve.',                        envKey: 'cool_valve' },
-  { kind: 'actuator', token: 'supply-fan',     display: 'supply fan',     description: 'Supply air fan start/stop (binary or VFD).',          envKey: 'fan' },
+  // Terminal-unit actuators (VAV / FCU / RTU)
+  { kind: 'actuator', token: 'primary-damper', display: 'primary damper', description: 'Main air damper — primary cooling actuator (terminal unit).', envKey: 'actuator' },
+  { kind: 'actuator', token: 'reheat-valve',   display: 'reheat valve',   description: 'Hot-water reheat valve (2-way or 3-way).',                    envKey: 'reheat' },
+  { kind: 'actuator', token: 'cooling-valve',  display: 'cooling valve',  description: 'Chilled-water cooling valve.',                                envKey: 'cool_valve' },
+  { kind: 'actuator', token: 'supply-fan',     display: 'supply fan',     description: 'Supply air fan start/stop (binary or VFD).',                  envKey: 'fan' },
+  // AHU-level actuators
+  { kind: 'actuator', token: 'oa-damper',      display: 'OA damper',      description: 'Outside-air / mixed-air damper actuator.',                    envKey: 'oa_damper' },
+  { kind: 'actuator', token: 'return-fan',     display: 'return fan',     description: 'Return air fan VFD.',                                         envKey: 'return_fan' },
+  // Plant-side actuators (HW / CHW)
+  { kind: 'actuator', token: 'burner-mod',     display: 'burner modulation', description: 'Boiler burner firing-rate command (0-100%).',             envKey: 'fire_rate' },
+  { kind: 'actuator', token: 'circulator-pump', display: 'circulator pump',  description: 'Primary loop pump VFD speed reference.',                  envKey: 'circ_pump' },
+  { kind: 'actuator', token: 'chiller-enable', display: 'chiller enable',  description: 'Chiller plant enable (binary) — onboard staging takes over.', envKey: 'chiller_enable' },
+  { kind: 'actuator', token: 'chiller-stage',  display: 'chiller stage',   description: 'Chiller capacity / staging command (0-100%).',              envKey: 'chiller_stage' },
+  { kind: 'actuator', token: 'tower-fan',      display: 'tower fan',       description: 'Cooling-tower fan VFD speed reference.',                    envKey: 'tower_fan' },
 
   // ── OPERATORS ─────────────────────────────────────────────────────────
   { kind: 'operator', token: 'exceeds',  display: 'exceeds',  description: 'Greater than (>).' },
