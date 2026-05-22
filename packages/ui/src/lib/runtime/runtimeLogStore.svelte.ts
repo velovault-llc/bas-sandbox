@@ -61,11 +61,17 @@ export const runtimeLog = $state<RuntimeLogStore>({
   offsetY: _initialPos.y,
 });
 
-/** Vertical headroom (px) the panel must keep below the viewport top so
- *  the drag handle stays both visible AND clear of the page's top header
- *  bar (which is ~60px tall). Big enough to comfortably accommodate the
- *  panel's own header + the page chrome on top of it. */
-const PANEL_MIN_HEADER_VISIBLE = 250;
+/** Vertical headroom (px) the panel must keep below the viewport top
+ *  so the drag handle stays clickable. Accounts for:
+ *   - The app's top brand bar (~64px)
+ *   - The build-shell internal padding (~16px)
+ *   - BuildCanvas's own top toolbar with sim controls, network pill,
+ *     and clock (~80-100px depending on wrap)
+ *   - Margin so the panel header doesn't slip under any of those
+ *  Conservative 360px keeps the panel reliably draggable from any
+ *  reasonable viewport size. Bumped from 250 after the user hit the
+ *  "I can't grab the runtime log" bug repeatedly with the smaller value. */
+const PANEL_MIN_HEADER_VISIBLE = 360;
 
 export function setPanelPosition(x: number, y: number): void {
   const { cx, cy } = clampToViewport(x, y);

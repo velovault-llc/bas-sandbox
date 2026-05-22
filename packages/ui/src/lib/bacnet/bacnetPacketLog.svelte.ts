@@ -150,7 +150,10 @@ export function setTrunkFilter(id: string): void {
   bacnetPacketLog.trunkFilter = id;
 }
 
-const PANEL_MIN_HEADER_VISIBLE = 250;
+// See runtimeLogStore for the rationale — must be large enough that the
+// panel's drag handle can't end up under the app header + BuildCanvas's
+// own top toolbar (sim controls, network pill, clock). 360px is safe.
+const PANEL_MIN_HEADER_VISIBLE = 360;
 
 function clampToViewport(x: number, y: number): { cx: number; cy: number } {
   if (typeof window === 'undefined') return { cx: Math.max(0, x), cy: Math.max(0, y) };

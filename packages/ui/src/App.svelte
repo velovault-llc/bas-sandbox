@@ -23,9 +23,26 @@
   import { topologyToCanvas } from './lib/topologyImport';
   import { programStore, rehydrateAllPrograms } from './lib/cli/programStore.svelte';
   import { canvasActions, devicesNavStore } from './lib/canvasStore.svelte';
+  import { resetPanelPosition as resetRuntimePanel } from './lib/runtime/runtimeLogStore.svelte';
+  import { resetPanelPosition as resetBacnetPanel } from './lib/bacnet/bacnetPacketLog.svelte';
   import { onMount } from 'svelte';
 
-  onMount(() => rehydrateAllPrograms());
+  onMount(() => {
+    rehydrateAllPrograms();
+    // Global escape hatch for the recurring "I dragged the runtime log
+    // somewhere I can't grab anymore" bug. Press Home and both floating
+    // panels snap back to their corners. Doesn't fire when an input/
+    // textarea is focused so typing in the CLI doesn't trigger it.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Home') return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement | null)?.isContentEditable) return;
+      resetRuntimePanel();
+      resetBacnetPanel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   // When the scenario panel requests "show me", flip to Devices tab.
   // DevicesPalette listens to the same store for sub-tab + scroll-to.
@@ -176,6 +193,14 @@
 
     {#if mode === 'build'}
       <div class="header-actions">
+        <button
+          type="button"
+          class="hdr-btn"
+          onclick={() => { resetRuntimePanel(); resetBacnetPanel(); }}
+          title="Snap the Runtime Log and BACnet Packets panels back to their default corners. Hotkey: Home."
+        >
+          ↺ Snap panels
+        </button>
         <button
           type="button"
           class="hdr-btn"
