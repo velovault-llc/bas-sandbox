@@ -147,11 +147,17 @@ export {
   bacnetObjectId,
   bacnetUnitsForRole,
   BACNET_TYPE_PREFIX,
+  stepMstpToken,
+  initMstpTrunkState,
+  tokenHoldSeconds,
+  formatMstpDevice,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
   BacnetObjectType,
   SynthesizeInputs as BacnetSynthesizeInputs,
+  MstpDevice,
+  MstpTrunkState,
 } from './bacnet/index.js';
 
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';

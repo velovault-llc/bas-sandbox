@@ -7,3 +7,11 @@ export type { BacnetObject, BacnetObjectType } from './objects.js';
 
 export { synthesizeBacnetObjects } from './synthesize.js';
 export type { SynthesizeInputs } from './synthesize.js';
+
+export {
+  stepMstpToken,
+  initMstpTrunkState,
+  tokenHoldSeconds,
+  formatMstpDevice,
+} from './mstp.js';
+export type { MstpDevice, MstpTrunkState } from './mstp.js';

@@ -456,19 +456,24 @@
 
   .tabs {
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem;
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
-    overflow: hidden;
+    padding: 0.15rem;
   }
 
   .tabs button {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: fit-content;
     background: transparent;
     border: 0;
+    border-radius: 4px;
     color: inherit;
-    padding: 0.3rem 0.15rem;
-    font-size: 0.72rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.7rem;
     cursor: pointer;
+    white-space: nowrap;
   }
 
   .tabs button.active {

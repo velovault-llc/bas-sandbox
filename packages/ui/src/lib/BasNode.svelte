@@ -180,6 +180,7 @@
   class:is-wired={physicsWired}
   class:has-fault={!!data.fault && data.fault !== 'normal'}
   class:is-offline={isOffline}
+  class:holds-token={!!(data as { holdsToken?: boolean }).holdsToken}
 >
   <!-- Network trunk in (always rendered). Controllers receive supervisor
        traffic via the top edge; sensors/safeties receive their hardwired
@@ -326,6 +327,16 @@
   .bas-node.is-wired {
     border-color: #f59e0b;
     box-shadow: 0 0 0 2px color-mix(in srgb, #f59e0b 45%, transparent);
+  }
+
+  /* MS/TP token-holder — a brief cyan pulse to show traffic on the bus.
+     This is the visual that makes the trunk feel alive: as the token
+     rotates around MAC addresses, the highlight hops between nodes. */
+  .bas-node.holds-token {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, #06b6d4 70%, transparent),
+      0 0 14px color-mix(in srgb, #06b6d4 50%, transparent);
+    transition: box-shadow 80ms ease;
   }
 
   .bas-node.is-tripped {

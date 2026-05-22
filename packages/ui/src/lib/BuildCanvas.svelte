@@ -54,9 +54,13 @@
     initZoneState,
     defaultOccupancySchedule,
     DEFAULT_ZONE_CONFIG,
+    stepMstpToken,
+    initMstpTrunkState,
     type StEnv,
     type LoopState,
     type ZoneState,
+    type MstpDevice,
+    type MstpTrunkState,
   } from '@bas/core';
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
@@ -744,6 +748,10 @@
   let runningSystems = $state.raw<Map<string, SingleZoneSystem>>(new Map());
   let runningSamples = $state.raw<Map<string, Sample[]>>(new Map());
   let runningSnapshot = $state.raw<WiredTarget[]>([]);
+  // MS/TP trunk state by representative-edge-id. Tracks which MAC currently
+  // owns the token, rotation counts, etc. Keyed by edge.id so SvelteFlow
+  // edge inspectors can read it directly.
+  let mstpTrunkStates = $state.raw<Map<string, MstpTrunkState>>(new Map());
 
   let showAdvanced = $state(false);
 
@@ -1607,6 +1615,76 @@
       });
     }
 
+    // ── MS/TP token-passing simulation ───────────────────────────────
+    // Group every MS/TP edge into trunks (connected components via the
+    // shared MS/TP wireKind), assign each device a MAC, and advance
+    // the token-holder index by dtSeconds. The result drives node-level
+    // "I'm holding the token" highlights and per-trunk inspector panels.
+    {
+      const mstpEdges = edges.filter((e) => (e.data?.wireKind as string) === 'mstp');
+      // Build adjacency: device -> set of neighbor devices on MS/TP wires.
+      const adj = new Map<string, Set<string>>();
+      for (const e of mstpEdges) {
+        const a = e.source, b = e.target;
+        if (!a || !b) continue;
+        if (!adj.has(a)) adj.set(a, new Set());
+        if (!adj.has(b)) adj.set(b, new Set());
+        adj.get(a)!.add(b);
+        adj.get(b)!.add(a);
+      }
+      // BFS into connected components.
+      const visited = new Set<string>();
+      const trunks: string[][] = [];
+      for (const start of adj.keys()) {
+        if (visited.has(start)) continue;
+        const stack = [start];
+        const group: string[] = [];
+        while (stack.length > 0) {
+          const cur = stack.pop()!;
+          if (visited.has(cur)) continue;
+          visited.add(cur);
+          group.push(cur);
+          for (const nb of adj.get(cur) ?? []) {
+            if (!visited.has(nb)) stack.push(nb);
+          }
+        }
+        trunks.push(group);
+      }
+      // For each trunk, build MstpDevice[] (sorted by node label so MAC
+      // assignment is deterministic across renders), then step the token.
+      const nextStates = new Map<string, MstpTrunkState>();
+      for (const trunk of trunks) {
+        // Pick a representative edge id (the lowest-id MS/TP edge whose
+        // endpoints are both in this trunk) — used as the trunk's key.
+        const trunkEdge = mstpEdges.find((e) =>
+          trunk.includes(e.source) && trunk.includes(e.target),
+        );
+        if (!trunkEdge) continue;
+        const baud = ((trunkEdge.data as { baud?: number } | undefined)?.baud) ?? 38400;
+        const devices: MstpDevice[] = trunk
+          .map((nid) => nodes.find((n) => n.id === nid))
+          .filter((n): n is NonNullable<typeof n> => !!n)
+          .sort((a, b) => (nodeLabel(a) || a.id).localeCompare(nodeLabel(b) || b.id))
+          .map((n, idx) => ({
+            nodeId: n.id,
+            // Supervisors get MAC 0, others get sequential MACs (1-127).
+            mac: nodeKind(n) === 'supervisor' ? 0 : idx + 1,
+            label: nodeLabel(n) || n.id,
+          }));
+        // Re-sort by MAC so the token ring matches the convention.
+        devices.sort((a, b) => a.mac - b.mac);
+        const prev = mstpTrunkStates.get(trunkEdge.id);
+        const seed = prev && prev.devices.length === devices.length
+          ? prev
+          : initMstpTrunkState(devices, baud);
+        // If membership changed (different node ids), re-init.
+        const sameMembers = prev && prev.devices.every((d, i) => d.nodeId === devices[i]?.nodeId);
+        const start = sameMembers ? seed : initMstpTrunkState(devices, baud);
+        nextStates.set(trunkEdge.id, stepMstpToken(start, dtSeconds));
+      }
+      mstpTrunkStates = nextStates;
+    }
+
     // ── Yoke sensor T_sensed to the linked zone ───────────────────────
     // When a sensor is wired to a controller whose actuators feed
     // equipment that serves a zone, the sensor PHYSICALLY sits IN that
@@ -1712,6 +1790,17 @@
       const actuatorUpdate = actuatorStateUpdates.get(n.id);
       const loopUpdate = loopStateUpdates.get(n.id);
       const zoneUpdate = zoneStateUpdates.get(n.id);
+      // Is this node holding the MS/TP token right now?
+      let holdsToken = false;
+      let tokenMac: number | undefined;
+      for (const [, ts] of mstpTrunkStates) {
+        const dev = ts.devices[ts.tokenIndex];
+        if (dev && dev.nodeId === n.id) {
+          holdsToken = true;
+          tokenMac = dev.mac;
+          break;
+        }
+      }
       if (physVal) {
         return {
           ...n,
@@ -1724,6 +1813,8 @@
             ...(actuatorUpdate ? { actuatorState: actuatorUpdate } : {}),
             ...(loopUpdate ? { loopState: loopUpdate } : {}),
             ...(zoneUpdate ? { zoneState: zoneUpdate } : {}),
+            holdsToken,
+            tokenMac,
           },
         };
       }
