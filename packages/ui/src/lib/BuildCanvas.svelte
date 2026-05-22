@@ -1204,6 +1204,37 @@
       });
     }
 
+    // ── Hydronic load demand ─────────────────────────────────────────
+    // Before stepping plant equipment, compute aggregate load demand on
+    // each loop based on actual coil positions. A reheat valve at 80%
+    // means 80% of its design BTU is being drawn from the HW loop.
+    // Multiple coils sum (clamped to 1.0 so over-design doesn't blow up).
+    // This replaces the old "loadCommand = 0.85 × plantCommand" proxy —
+    // now plant demand and plant supply are independent, which is what
+    // makes outdoor-reset / staging sequences actually meaningful.
+    let hwLoadDemand = 0;
+    let chwLoadDemand = 0;
+    for (const actNode of nodes) {
+      if (nodeKind(actNode) !== 'actuator') continue;
+      const actState = (actNode.data as { actuatorState?: { actual: number } })?.actuatorState;
+      if (!actState) continue;
+      // Find the controller→actuator edge to read the binding role.
+      const upstream = edges.find((e) => e.target === actNode.id);
+      if (!upstream) continue;
+      const ctrlProg = programStore.byId[upstream.source];
+      const binding = upstream.sourceHandle
+        ? ctrlProg?.bindings?.bindings.find((b) => b.terminalId === upstream.sourceHandle)
+        : undefined;
+      const role = binding?.role;
+      if (role === 'reheat-valve' || role === 'heating-valve-actuator') {
+        hwLoadDemand += actState.actual;
+      } else if (role === 'cooling-valve' || role === 'cooling-valve-actuator') {
+        chwLoadDemand += actState.actual;
+      }
+    }
+    hwLoadDemand = Math.min(1.0, hwLoadDemand);
+    chwLoadDemand = Math.min(1.0, chwLoadDemand);
+
     // ── Hydronic plant dynamics ──────────────────────────────────────
     // For each boiler / chiller / cooling-tower equipment unit, advance
     // its loop state based on the actuator(s) wired INTO this specific
@@ -1283,9 +1314,16 @@
       // matches the real-world convention "pump always runs with plant."
       if (pumpCommand === 0 && plantCommand > 0.05) pumpCommand = 1;
 
-      // Load command: until Session A.3 couples AHU/VAV coils, model
-      // load as a fraction of plant command so the loop ΔT stays sane.
-      const loadCommand = plantCommand * 0.85;
+      // Load command now comes from actual coil demand on the matching
+      // loop type. Plant supply and load are independent — this is what
+      // makes "supply temp drops when loads open while plant is idle"
+      // visible, and what makes outdoor-reset sequences meaningful.
+      // Fall back to a small dummy load when no coils are wired so the
+      // loop demo still shows ΔT for a stand-alone plant test.
+      const detectedLoad = isHotPlant ? hwLoadDemand : (isCoolPlant ? chwLoadDemand : 0);
+      const loadCommand = detectedLoad > 0
+        ? detectedLoad
+        : (plantCommand > 0.05 ? 0.15 : 0); // small idle load when no coils wired
 
       // Weather-sim's OAT drives drift when idle.
       const oat = runningSnapshot[0]
@@ -1308,9 +1346,13 @@
       const drivers = incomingActuatorRoles.length > 0
         ? ` · drivers: ${Array.from(new Set(incomingActuatorRoles)).join(', ')}`
         : ' · no actuators wired';
+      const loadPct = Math.round(loadCommand * 100);
+      const loadTag = detectedLoad > 0
+        ? ` · load ${loadPct}% (coils)`
+        : (loadCommand > 0 ? ` · load ${loadPct}% (idle)` : '');
       const prefix = isHotPlant ? 'HWS/HWR' : isCoolPlant ? 'CHWS/CHWR' : 'CWS/CWR';
       physicsValueByNode.set(node.id, {
-        value: `${prefix} ${supply}/${ret}°F · ΔT ${dT}°F · ${flow} GPM${drivers}`,
+        value: `${prefix} ${supply}/${ret}°F · ΔT ${dT}°F · ${flow} GPM${loadTag}${drivers}`,
         status: 'responded',
       });
     }
