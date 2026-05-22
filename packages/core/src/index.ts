@@ -79,6 +79,25 @@ export {
 } from './equipment/expansions.js';
 export type { ExpansionModule } from './equipment/expansions.js';
 
+export {
+  ACTUATOR_CATALOG,
+  findActuatorModel,
+  actuatorCatalogByKind,
+} from './equipment/actuators.js';
+export type {
+  ActuatorModel,
+  ActuatorKind,
+  ActuatorSignal,
+  FailSafePosition,
+} from './equipment/actuators.js';
+
+export {
+  EQUIPMENT_CATALOG,
+  findEquipmentModel,
+  equipmentCatalogByKind,
+} from './equipment/units.js';
+export type { EquipmentModel, EquipmentKind } from './equipment/units.js';
+
 export { computeSensorReading } from './sim/sensorSim.js';
 export type { SensorReading, SimContext } from './sim/sensorSim.js';
 

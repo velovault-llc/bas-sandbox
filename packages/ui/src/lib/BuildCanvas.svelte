@@ -40,6 +40,8 @@
     findSensorModel,
     findSafetyDevice,
     findExpansionModule,
+    findActuatorModel,
+    findEquipmentModel,
     formatPointBreakdown,
     computeSensorReading,
     type StEnv,
@@ -50,7 +52,7 @@
 
   const nodeTypes = { bas: BasNode };
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -292,6 +294,20 @@
       icon: '⚠',
       description: 'Freezestat, high-static cutout, smoke detector, etc. Hardwired safety device.',
     },
+    {
+      kind: 'actuator',
+      label: 'Actuator',
+      defaultName: 'ACT-1',
+      icon: '⤳',
+      description: 'Damper, valve, VFD, or contactor. Receives the controller AO/BO command and produces physical motion. Some return a position-feedback signal back to a UI/AI.',
+    },
+    {
+      kind: 'equipment',
+      label: 'Equipment',
+      defaultName: 'EQ-1',
+      icon: '☷',
+      description: 'AHU, VAV box, FCU, pump, boiler, chiller, cooling tower — the actual HVAC unit the actuators move and sensors measure.',
+    },
   ];
 
   let nodes = $state.raw<Node[]>(_initialState.nodes);
@@ -378,6 +394,10 @@
     const safetyModel = safetyModelId ? findSafetyDevice(safetyModelId) : undefined;
     const expansionModelId = event.dataTransfer?.getData('application/bas-expansion-model');
     const expansionModel = expansionModelId ? findExpansionModule(expansionModelId) : undefined;
+    const actuatorModelId = event.dataTransfer?.getData('application/bas-actuator-model');
+    const actuatorModel = actuatorModelId ? findActuatorModel(actuatorModelId) : undefined;
+    const equipmentModelId = event.dataTransfer?.getData('application/bas-equipment-model');
+    const equipmentModel = equipmentModelId ? findEquipmentModel(equipmentModelId) : undefined;
 
     // Expansion drops always carry a model id (no generic expansions).
     if (kind === 'expansion' && expansionModel) {
@@ -404,7 +424,7 @@
     // placeholder" but the explicit choice matters: it tells them this is
     // not a real-world configuration.
     const needsPick =
-      !vendorModel && !sensorModel && !safetyModel &&
+      !vendorModel && !sensorModel && !safetyModel && !actuatorModel && !equipmentModel &&
       (kind === 'controller' || kind === 'sensor' || kind === 'safety');
 
     if (needsPick) {
@@ -421,8 +441,8 @@
     }
 
     finalizeDrop(item.kind, kind, position,
-      vendorModel?.id ?? sensorModel?.id ?? safetyModel?.id ?? null,
-      { vendorModel, sensorModel, safetyModel },
+      vendorModel?.id ?? sensorModel?.id ?? safetyModel?.id ?? actuatorModel?.id ?? equipmentModel?.id ?? null,
+      { vendorModel, sensorModel, safetyModel, actuatorModel, equipmentModel },
     );
   }
 
@@ -435,6 +455,8 @@
       vendorModel?: ReturnType<typeof findControllerModel>;
       sensorModel?: ReturnType<typeof findSensorModel>;
       safetyModel?: ReturnType<typeof findSafetyDevice>;
+      actuatorModel?: ReturnType<typeof findActuatorModel>;
+      equipmentModel?: ReturnType<typeof findEquipmentModel>;
     },
   ): void {
     // Re-resolve the model from pickedId when called from the picker
@@ -442,10 +464,14 @@
     let vendorModel = preResolved?.vendorModel;
     let sensorModel = preResolved?.sensorModel;
     let safetyModel = preResolved?.safetyModel;
-    if (pickedId && !vendorModel && !sensorModel && !safetyModel) {
+    let actuatorModel = preResolved?.actuatorModel;
+    let equipmentModel = preResolved?.equipmentModel;
+    if (pickedId && !vendorModel && !sensorModel && !safetyModel && !actuatorModel && !equipmentModel) {
       if (dropKind === 'controller') vendorModel = findControllerModel(pickedId);
       else if (dropKind === 'sensor') sensorModel = findSensorModel(pickedId);
       else if (dropKind === 'safety') safetyModel = findSafetyDevice(pickedId);
+      else if (dropKind === 'actuator') actuatorModel = findActuatorModel(pickedId);
+      else if (dropKind === 'equipment') equipmentModel = findEquipmentModel(pickedId);
     }
 
     const id = `n${nextId++}`;
@@ -484,6 +510,8 @@
     else if (vendorModel) baseLabel = vendorModel.model;
     else if (sensorModel) baseLabel = sensorModel.model;
     else if (safetyModel) baseLabel = safetyModel.model;
+    else if (actuatorModel) baseLabel = actuatorModel.model;
+    else if (equipmentModel) baseLabel = equipmentModel.model;
     else baseLabel = nextName(paletteKind);
     const data: Record<string, unknown> = { kind: paletteKind, label: baseLabel };
     if (vendorModel) {
@@ -498,6 +526,15 @@
       data.safetyModelId = safetyModel.id;
       const trip = safetyModel.tripPoint ? ` · trip @ ${safetyModel.tripPoint.value} ${safetyModel.tripPoint.units}` : '';
       data.subtitle = `${safetyModel.vendor} · ${safetyModel.normalState} · ${safetyModel.resetBehavior}-reset${trip}`;
+    }
+    if (actuatorModel) {
+      data.actuatorModelId = actuatorModel.id;
+      const fbk = actuatorModel.hasPositionFeedback ? ' · w/ feedback' : '';
+      data.subtitle = `${actuatorModel.vendor} · ${actuatorModel.signal} · ${actuatorModel.strokeSeconds}s stroke · fail-${actuatorModel.failSafe}${fbk}`;
+    }
+    if (equipmentModel) {
+      data.equipmentModelId = equipmentModel.id;
+      data.subtitle = `${equipmentModel.vendor} · ${equipmentModel.category} · ${equipmentModel.capacity}`;
     }
     nodes = [
       ...nodes,

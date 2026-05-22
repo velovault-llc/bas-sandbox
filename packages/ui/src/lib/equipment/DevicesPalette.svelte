@@ -4,6 +4,8 @@
     sensorCatalogBySubject,
     safetyCatalogByKind,
     expansionsByVendor,
+    actuatorCatalogByKind,
+    equipmentCatalogByKind,
     formatPointBreakdown,
     type ControllerModel,
     type SensorModel,
@@ -11,10 +13,14 @@
     type SensorSubject,
     type SafetyKind,
     type ExpansionModule,
+    type ActuatorModel,
+    type ActuatorKind,
+    type EquipmentModel,
+    type EquipmentKind,
   } from '@bas/core';
   import { selectionStore, devicesNavStore } from '../canvasStore.svelte';
 
-  type DeviceTab = 'controllers' | 'sensors' | 'safeties' | 'expansions';
+  type DeviceTab = 'controllers' | 'sensors' | 'safeties' | 'expansions' | 'actuators' | 'equipment';
   let tab = $state<DeviceTab>('controllers');
 
   // React to "show me X" signals from the scenario panel: switch sub-tab,
@@ -56,6 +62,14 @@
     const map = expansionsByVendor();
     return Array.from(map.entries()).map(([vendor, modules]) => ({ vendor, modules }));
   });
+  const actuatorGroups = $derived.by(() => {
+    const map = actuatorCatalogByKind();
+    return Array.from(map.entries()).map(([kind, models]) => ({ kind, models }));
+  });
+  const equipmentGroups = $derived.by(() => {
+    const map = equipmentCatalogByKind();
+    return Array.from(map.entries()).map(([kind, models]) => ({ kind, models }));
+  });
 
   function onDragController(event: DragEvent, model: ControllerModel): void {
     if (!event.dataTransfer) return;
@@ -81,6 +95,18 @@
     event.dataTransfer.setData('application/bas-expansion-model', module.id);
     event.dataTransfer.effectAllowed = 'move';
   }
+  function onDragActuator(event: DragEvent, model: ActuatorModel): void {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.setData('application/bas-node-kind', 'actuator');
+    event.dataTransfer.setData('application/bas-actuator-model', model.id);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+  function onDragEquipment(event: DragEvent, model: EquipmentModel): void {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.setData('application/bas-node-kind', 'equipment');
+    event.dataTransfer.setData('application/bas-equipment-model', model.id);
+    event.dataTransfer.effectAllowed = 'move';
+  }
 
   function isExpansionCompatible(m: ExpansionModule): boolean {
     const v = selectionStore.selectedControllerVendor;
@@ -101,6 +127,32 @@
       'damper-position': 'Damper feedback',
       'valve-position': 'Valve feedback',
     }[s];
+  }
+
+  function actuatorKindLabel(k: ActuatorKind): string {
+    return {
+      'damper-modulating': 'Modulating damper',
+      'damper-binary': '2-position damper',
+      'valve-modulating': 'Modulating valve',
+      'valve-floating': 'Floating valve (3-point)',
+      'valve-binary': '2-position valve',
+      vfd: 'Variable frequency drive',
+      contactor: 'Contactor / motor starter',
+      'pump-relay': 'Pump relay',
+    }[k];
+  }
+
+  function equipmentKindLabel(k: EquipmentKind): string {
+    return {
+      'vav-box': 'VAV boxes',
+      ahu: 'Air handlers (AHU)',
+      rtu: 'Rooftop units (RTU)',
+      fcu: 'Fan coil units (FCU)',
+      pump: 'Pumps',
+      boiler: 'Boilers',
+      chiller: 'Chillers',
+      'cooling-tower': 'Cooling towers',
+    }[k];
   }
 
   function kindLabel(k: SafetyKind): string {
@@ -150,6 +202,12 @@
     </button>
     <button type="button" class:active={tab === 'expansions'} onclick={() => (tab = 'expansions')}>
       Expansion
+    </button>
+    <button type="button" class:active={tab === 'actuators'} onclick={() => (tab = 'actuators')}>
+      Actuators
+    </button>
+    <button type="button" class:active={tab === 'equipment'} onclick={() => (tab = 'equipment')}>
+      Equipment
     </button>
   </div>
 
@@ -264,7 +322,7 @@
         </ul>
       </details>
     {/each}
-  {:else}
+  {:else if tab === 'expansions'}
     <!-- Expansions tab: read-only catalog for now. Future: draggable child-of-parent nodes. -->
     <p class="hint">
       Drag a module onto the canvas, then wire it to a parent controller from the same vendor.
@@ -294,6 +352,78 @@
                 {#if formatPointBreakdown(m.addedPoints)}
                   <span class="pill expansion-pill">+ {formatPointBreakdown(m.addedPoints)}</span>
                 {/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </details>
+    {/each}
+  {:else if tab === 'actuators'}
+    <p class="hint">
+      Drag onto the canvas. Actuators receive the controller's AO/BO command and produce physical motion.
+      Models with position feedback close the loop back to a UI/AI input.
+    </p>
+    {#each actuatorGroups as group (group.kind)}
+      <details class="group" open>
+        <summary>
+          <span class="group-name">{actuatorKindLabel(group.kind)}</span>
+          <span class="group-count">{group.models.length}</span>
+        </summary>
+        <ul>
+          {#each group.models as a (a.id)}
+            <li
+              class="model"
+              draggable="true"
+              ondragstart={(e) => onDragActuator(e, a)}
+              title={a.notes}
+              data-model-id={a.id}
+              class:highlight={highlightModelId === a.id}
+            >
+              <div class="model-head">
+                <strong>{a.vendor}</strong>
+                <span class="role mono">{a.model}</span>
+              </div>
+              <div class="meta">
+                <span class="pill">{a.signal}</span>
+                <span class="pill">{a.strokeSeconds}s stroke</span>
+                <span class="pill">fail-{a.failSafe}</span>
+                {#if a.hasPositionFeedback}
+                  <span class="pill">+ feedback</span>
+                {/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </details>
+    {/each}
+  {:else}
+    <p class="hint">
+      Drag a unit onto the canvas. Equipment defines what the actuators move (a damper inside a VAV box,
+      a coil inside an AHU) and what the sensors measure.
+    </p>
+    {#each equipmentGroups as group (group.kind)}
+      <details class="group" open>
+        <summary>
+          <span class="group-name">{equipmentKindLabel(group.kind)}</span>
+          <span class="group-count">{group.models.length}</span>
+        </summary>
+        <ul>
+          {#each group.models as e (e.id)}
+            <li
+              class="model"
+              draggable="true"
+              ondragstart={(ev) => onDragEquipment(ev, e)}
+              title={e.notes}
+              data-model-id={e.id}
+              class:highlight={highlightModelId === e.id}
+            >
+              <div class="model-head">
+                <strong>{e.vendor}</strong>
+                <span class="role mono">{e.model}</span>
+              </div>
+              <div class="meta">
+                <span class="pill">{e.category}</span>
+                <span class="pill">{e.capacity}</span>
               </div>
             </li>
           {/each}
