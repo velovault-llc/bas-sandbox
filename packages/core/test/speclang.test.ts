@@ -136,6 +136,74 @@ describe('SpecLang compiler — single rule shapes', () => {
   });
 });
 
+describe('SpecLang compiler — permissive monstrosities', () => {
+  it('compiles "When → Set zone-temp equals 0°F" with warnings instead of blocking', () => {
+    // The freeze-the-tenants rule from the user. Mal-formed but the user
+    // wants it to deploy anyway so they can stress-test the sim.
+    const program: SpecProgram = {
+      rules: [
+        rule(
+          t('when'),
+          t('set'),
+          t('zone-temp'),
+          t('equals'),
+          t('temp-value', { numericValue: 0 }),
+          t('occupied'),
+        ),
+      ],
+    };
+    const result = compileSpecLang(program);
+    expect(result.ok).toBe(true); // does NOT block
+    expect(result.source).toContain('IF TRUE THEN');
+    expect(result.source).toContain('sensed := 0.0');
+    const warns = result.warnings.get(program.rules[0].id) ?? [];
+    // Should warn about: empty trigger, subject-set override, extreme value, trailing tile
+    const joined = warns.join(' || ');
+    expect(joined).toMatch(/every tick/i);     // empty trigger warning
+    expect(joined).toMatch(/sensor reading/i); // subject-set override warning
+    expect(joined).toMatch(/32|extreme/i);     // physical-extreme warning
+    expect(joined).toMatch(/occupied/i);       // trailing-tile warning
+  });
+
+  it('still emits ST that runs against the interpreter', () => {
+    const program: SpecProgram = {
+      rules: [
+        rule(
+          t('when'),
+          t('set'),
+          t('primary-damper'),
+          t('to'),
+          t('percent-value', { numericValue: 50 }),
+        ),
+      ],
+    };
+    const result = compileSpecLang(program);
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('actuator := 0.5');
+  });
+
+  it('compiles "equals" as an alias for "to" in actions', () => {
+    const program: SpecProgram = {
+      rules: [
+        rule(
+          t('when'),
+          t('occupancy'),
+          t('is'),
+          t('vacant'),
+          t('set'),
+          t('primary-damper'),
+          t('equals'),
+          t('percent-value', { numericValue: 0 }),
+        ),
+      ],
+    };
+    const result = compileSpecLang(program);
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('IF occ = 0.0 THEN');
+    expect(result.source).toContain('actuator := 0.0');
+  });
+});
+
 describe('SpecLang compiler — error handling', () => {
   it('rejects an empty rule', () => {
     const program: SpecProgram = { rules: [rule()] };

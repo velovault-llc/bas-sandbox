@@ -60,6 +60,7 @@ export function compileSpecLang(program: SpecProgram, bindings?: ControllerBindi
 
   for (const rule of program.rules) {
     const result = compileRule(rule);
+    const ruleWarnings: string[] = [];
     if (result.error) {
       errors.set(rule.id, result.error);
       lines.push(`(* rule ${rule.id}: ${result.error} *)`);
@@ -68,6 +69,9 @@ export function compileSpecLang(program: SpecProgram, bindings?: ControllerBindi
       lines.push(result.source);
       byRule.set(rule.id, result.source);
     }
+    // Carry forward "monstrosity" warnings from the rule compiler (sensor
+    // overrides, extreme values, extra tiles ignored, etc.)
+    if (result.warnings) ruleWarnings.push(...result.warnings);
     // Point-binding warnings: collect any subject/actuator tile referenced
     // by this rule whose role isn't bound to a physical terminal.
     if (boundRoles) {
@@ -81,11 +85,12 @@ export function compileSpecLang(program: SpecProgram, bindings?: ControllerBindi
       }
       if (unbound.length > 0) {
         const uniqueUnbound = Array.from(new Set(unbound));
-        warnings.set(rule.id, [
+        ruleWarnings.push(
           `No physical point bound to: ${uniqueUnbound.join(', ')}. Assign a sensor/actuator in the Point Assignments panel before deploying.`,
-        ]);
+        );
       }
     }
+    if (ruleWarnings.length > 0) warnings.set(rule.id, ruleWarnings);
     lines.push('');
   }
 
@@ -101,6 +106,10 @@ export function compileSpecLang(program: SpecProgram, bindings?: ControllerBindi
 interface RuleCompileResult {
   source: string;
   error?: string;
+  /** Soft advisories that don't block compile. Things like "trigger has
+   *  no condition — fires every tick" or "Set on a sensor overrides the
+   *  reading in sim; real hardware would no-op." */
+  warnings?: string[];
 }
 
 function compileRule(rule: SpecRule): RuleCompileResult {
@@ -111,7 +120,10 @@ function compileRule(rule: SpecRule): RuleCompileResult {
   // Split tiles into trigger clause + action clause at the first ACTION tile.
   const actionIdx = rule.tiles.findIndex((t) => t.kind === 'action');
   if (actionIdx === -1) {
-    return { source: '', error: 'Rule has no action — add an action tile like "Open" or "Modulate".' };
+    return {
+      source: '',
+      error: 'Rule has no action — add an action tile like "Open", "Close", "Set", or "Modulate" to specify what should happen.',
+    };
   }
   if (actionIdx === 0) {
     return { source: '', error: 'Rule starts with an action — add a trigger like "When" first.' };
@@ -128,6 +140,11 @@ function compileRule(rule: SpecRule): RuleCompileResult {
   const actResult = compileAction(actionTiles);
   if (actResult.error) return { source: '', error: actResult.error };
 
+  // Collect any soft warnings from both halves.
+  const warnings: string[] = [];
+  if (condResult.warning) warnings.push(condResult.warning);
+  if (actResult.warning) warnings.push(actResult.warning);
+
   // Emit IF/THEN. For "While" triggers we wrap exactly the same way —
   // ST is evaluated every tick, so IF-THEN already gives continuous
   // behavior. The trigger keyword choice is just for human readability.
@@ -139,17 +156,19 @@ function compileRule(rule: SpecRule): RuleCompileResult {
     `END_IF;`,
   ].join('\n');
 
-  return { source };
+  return { source, warnings: warnings.length > 0 ? warnings : undefined };
 }
 
 interface ExprResult {
   expr: string;
   error?: string;
+  warning?: string;
 }
 
 interface StmtResult {
   statement: string;
   error?: string;
+  warning?: string;
 }
 
 function compileTrigger(tiles: readonly Tile[]): ExprResult {
@@ -159,7 +178,13 @@ function compileTrigger(tiles: readonly Tile[]): ExprResult {
   }
   const body = tiles.slice(1);
   if (body.length === 0) {
-    return { expr: '', error: 'Trigger has no condition — add a subject like "zone temp" after "When".' };
+    // Permissive: a bare "When" with no condition fires every tick. Useful
+    // for absolute overrides ("always set damper to 50%"). Warn so the user
+    // knows that's the semantic.
+    return {
+      expr: 'TRUE',
+      warning: 'Trigger has no condition — this rule fires every tick. Add a subject after "When" (e.g., "When zone temp exceeds setpoint") if that\'s not what you want.',
+    };
   }
 
   // ── Shape 1: SUBJECT is LITERAL  (eg "occupancy is vacant") ──────────
@@ -220,17 +245,70 @@ function compileAction(tiles: readonly Tile[]): StmtResult {
   }
   const rest = tiles.slice(1);
 
-  // ── Open / Close / Set ACTUATOR to VALUE  ────────────────────────────
+  // ── Open / Close / Set TARGET (to|equals) VALUE  ─────────────────────
+  // Permissive shape: target can be ACTUATOR (normal) or SUBJECT (override
+  // a sensor — diagnostic / sim-only). Connector can be "to" or "equals".
+  // Extra trailing tiles become a soft warning.
   if (verb.token === 'open' || verb.token === 'close' || verb.token === 'set') {
-    if (rest.length !== 3 || rest[0].kind !== 'actuator' || rest[1].token !== 'to' || rest[2].kind !== 'value') {
-      return { statement: '', error: `"${verb.display}" must be followed by ACTUATOR + "to" + VALUE.` };
+    if (rest.length < 3) {
+      return {
+        statement: '',
+        error: `"${verb.display}" must be followed by a target (an actuator or subject), a connector ("to" or "equals"), and a value.`,
+      };
     }
-    const tgt = envKeyOrFail(rest[0]);
-    if (!tgt) return { statement: '', error: `Unknown actuator "${rest[0].display}".` };
-    const val = rest[2].numericValue ?? 0;
+    const target = rest[0];
+    const connector = rest[1];
+    const value = rest[2];
+    const extras = rest.slice(3);
+
+    if (target.kind !== 'actuator' && target.kind !== 'subject') {
+      return {
+        statement: '',
+        error: `"${verb.display}" target should be an actuator like "primary damper" or a subject like "zone temp" (got ${target.kind}).`,
+      };
+    }
+    if (connector.token !== 'to' && connector.token !== 'equals') {
+      return {
+        statement: '',
+        error: `"${verb.display}" needs "to" or "equals" before the value (got "${connector.display}").`,
+      };
+    }
+    if (value.kind !== 'value') {
+      return {
+        statement: '',
+        error: `"${verb.display}" needs a numeric value tile last (got ${value.kind} "${value.display}").`,
+      };
+    }
+
+    const tgt = envKeyOrFail(target);
+    if (!tgt) {
+      return { statement: '', error: `Unknown target "${target.display}".` };
+    }
+    const val = value.numericValue ?? 0;
     // Percent values normalize to 0..1 for the sim's actuator field.
-    const normalized = (rest[2].units === '%') ? val / 100 : val;
-    return { statement: `${tgt} := ${formatNum(normalized)};` };
+    const normalized = (value.units === '%') ? val / 100 : val;
+
+    // Build warnings for "monstrosities" — rules that compile but do
+    // something the user should be aware of.
+    const warnings: string[] = [];
+    if (target.kind === 'subject') {
+      warnings.push(`"${verb.display}" on "${target.display}" overrides a sensor reading. The sim will honor it; real hardware would no-op because sensor values are read-only.`);
+    }
+    // Plausibility check: zone temp = 0°F means the room is below the
+    // freezing point of brine. Almost certainly a mistake (or, in our
+    // user's case, an explicit decision to terrorize the tenants).
+    if (target.token === 'zone-temp' && val <= 32 && value.units === '°F') {
+      warnings.push(`Setting zone temp to ${val}°F is physically extreme — water freezes at 32°F. Did you mean a setpoint, or are you intentionally stress-testing the safeties?`);
+    }
+    if (extras.length > 0) {
+      const extraNames = extras.map((t) => t.display).join(', ');
+      warnings.push(`Extra tiles ignored after the value: ${extraNames}. Drop them or move them into the trigger half before "${verb.display}".`);
+    }
+
+    return {
+      statement: `${tgt} := ${formatNum(normalized)};`,
+      warning: warnings.length > 0 ? warnings.join(' ') : undefined,
+    };
   }
 
   // ── Shut down ACTUATOR  ──────────────────────────────────────────────
