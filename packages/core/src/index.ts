@@ -142,6 +142,18 @@ export type {
   CompileResult as SpecCompileResult,
 } from './speclang/index.js';
 
+export {
+  synthesizeBacnetObjects,
+  bacnetObjectId,
+  bacnetUnitsForRole,
+  BACNET_TYPE_PREFIX,
+} from './bacnet/index.js';
+export type {
+  BacnetObject,
+  BacnetObjectType,
+  SynthesizeInputs as BacnetSynthesizeInputs,
+} from './bacnet/index.js';
+
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';
 export type {
   ScenarioDefinition,

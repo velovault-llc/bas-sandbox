@@ -40,12 +40,19 @@ interface BridgeState {
   runStPrograms?: (snapshots: Map<string, ControllerSnapshot>) => void;
   /** Map of controller programs the canvas should run each tick. */
   programs: Map<string, ControllerProgram>;
+  /** Latest env.inputs snapshot per controller — used by the BACnet
+   *  inspector to surface live values. Refreshed each tick. */
+  envInputsByCtrl: Map<string, Record<string, number | boolean>>;
+  /** Latest env.outputs snapshot per controller. */
+  envOutputsByCtrl: Map<string, Record<string, number>>;
 }
 
 export const controllerBridge = $state<BridgeState>({
   impl: null,
   tick: 0,
   programs: new Map(),
+  envInputsByCtrl: new Map(),
+  envOutputsByCtrl: new Map(),
 });
 
 export function registerBridge(impl: ControllerBridge): void {

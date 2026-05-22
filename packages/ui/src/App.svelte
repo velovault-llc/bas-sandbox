@@ -9,6 +9,7 @@
   import CLIPanel from './lib/cli/CLIPanel.svelte';
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
   import SpecLangCanvas from './lib/speclang/SpecLangCanvas.svelte';
+  import BacnetInspector from './lib/bacnet/BacnetInspector.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
@@ -425,6 +426,9 @@
           {/if}
           {#if programStore.activeSpecLangControllerId}
             <SpecLangCanvas />
+          {/if}
+          {#if programStore.activeBacnetControllerId}
+            <BacnetInspector />
           {/if}
           <ModelPickerModal />
           <ScenarioPanel />

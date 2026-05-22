@@ -60,6 +60,9 @@ interface ProgramStore {
   /** Controller currently focused in the SpecLang editor (null when closed). */
   activeSpecLangControllerId: string | null;
   activeSpecLangControllerLabel: string | null;
+  /** Controller currently focused in the BACnet objects inspector. */
+  activeBacnetControllerId: string | null;
+  activeBacnetControllerLabel: string | null;
 }
 
 export const programStore = $state<ProgramStore>({
@@ -70,6 +73,8 @@ export const programStore = $state<ProgramStore>({
   activeFbdControllerLabel: null,
   activeSpecLangControllerId: null,
   activeSpecLangControllerLabel: null,
+  activeBacnetControllerId: null,
+  activeBacnetControllerLabel: null,
 });
 
 /** Close every programming surface (CLI, FBD, SpecLang). Used when
@@ -82,6 +87,23 @@ function closeAllProgrammingSurfaces(): void {
   programStore.activeFbdControllerLabel = null;
   programStore.activeSpecLangControllerId = null;
   programStore.activeSpecLangControllerLabel = null;
+  programStore.activeBacnetControllerId = null;
+  programStore.activeBacnetControllerLabel = null;
+}
+
+/** Open the BACnet objects inspector pointed at this controller. */
+export function openBacnet(controllerId: string, label: string): void {
+  if (!(controllerId in programStore.byId)) {
+    programStore.byId[controllerId] = loadFromStorage(controllerId);
+  }
+  closeAllProgrammingSurfaces();
+  programStore.activeBacnetControllerId = controllerId;
+  programStore.activeBacnetControllerLabel = label;
+}
+
+export function closeBacnet(): void {
+  programStore.activeBacnetControllerId = null;
+  programStore.activeBacnetControllerLabel = null;
 }
 
 /** Open the CLI panel pointed at this controller. */

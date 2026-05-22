@@ -29,10 +29,10 @@
   import { importStore, canvasActions, openModelPicker, selectionStore, canvasSnapshot } from './canvasStore.svelte';
   import { log as logEvent } from './runtime/runtimeLogStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
-  import { openCli, openFbd, openSpecLang, programStore } from './cli/programStore.svelte';
+  import { openCli, openFbd, openSpecLang, openBacnet, programStore } from './cli/programStore.svelte';
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
-  import { registerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
+  import { registerBridge, controllerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import {
     runProgram,
     makeEnv,
@@ -1112,6 +1112,15 @@
             if (typeof v === 'number' && Number.isFinite(v)) snap[k] = v;
           }
           programOutputsByCtrl.set(target.controllerId, snap);
+          // Publish env snapshots into the controllerBridge so the BACnet
+          // inspector (and any other consumer) can read live values.
+          controllerBridge.envOutputsByCtrl.set(target.controllerId, snap);
+          const inSnap: Record<string, number | boolean> = {};
+          for (const [k, v] of Object.entries(env.inputs)) {
+            if (typeof v === 'number' && Number.isFinite(v)) inSnap[k] = v;
+            else if (typeof v === 'boolean') inSnap[k] = v;
+          }
+          controllerBridge.envInputsByCtrl.set(target.controllerId, inSnap);
           // Clear any prior runtime error
           userProgram.error = null;
         } catch (err) {
@@ -4040,6 +4049,14 @@
                   onclick={() => openSpecLang(selectedController.id, nodeLabel(selectedController))}
                 >
                   📝 SpecLang
+                </button>
+                <button
+                  type="button"
+                  class="inspector-bacnet"
+                  title="BACnet objects — see what a supervisor (YABE, Niagara Spy) would discover on this controller."
+                  onclick={() => openBacnet(selectedController.id, nodeLabel(selectedController))}
+                >
+                  🔌 BACnet
                 </button>
                 <button
                   type="button"
