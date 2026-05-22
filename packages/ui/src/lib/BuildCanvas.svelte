@@ -1082,6 +1082,52 @@
     // a possibly-frozen sensor read).
     const sampleByCtrlForAlarm = sampleByCtrl;
 
+    // ── Actuator dynamics ─────────────────────────────────────────────
+    // For each controller → actuator edge, advance the actuator's actual
+    // position toward the controller's commanded value at the actuator's
+    // own stroke rate (Belimo AF24-MFT takes ~95s end-to-end; a contactor
+    // latches in ~0.05s). This produces the slow-ramp realism techs see in
+    // the field: command 100%, watch the damper crawl open over 90 seconds.
+    const actuatorStateUpdates = new Map<string, { commanded: number; actual: number }>();
+    for (const edge of edges) {
+      const srcN = nodes.find((n) => n.id === edge.source);
+      const tgtN = nodes.find((n) => n.id === edge.target);
+      if (!srcN || !tgtN) continue;
+      if (nodeKind(srcN) !== 'controller' || nodeKind(tgtN) !== 'actuator') continue;
+
+      const sample = sampleByCtrl.get(srcN.id);
+      if (!sample) continue;
+
+      // First-cut routing: the controller's primary `actuator` output drives
+      // every wired actuator. Multi-actuator routing via the Point Assignment
+      // bindings is the next iteration (Session 4).
+      const commanded = Math.max(0, Math.min(1, sample.actuator));
+
+      const tgtData = tgtN.data as { actuatorState?: { actual: number }; actuatorModelId?: string };
+      const prevActual = tgtData.actuatorState?.actual ?? 0;
+
+      const actuatorModelId = tgtData.actuatorModelId;
+      const actuatorModel = actuatorModelId ? findActuatorModel(actuatorModelId) : undefined;
+      const strokeSec = actuatorModel?.strokeSeconds ?? 60;
+
+      // Linear stroke (good enough for v1). Real actuators are slightly
+      // S-curve (acceleration + deceleration); we can refine later.
+      const maxStep = dtSeconds / strokeSec;
+      const diff = commanded - prevActual;
+      const actual = Math.abs(diff) <= maxStep ? commanded : prevActual + Math.sign(diff) * maxStep;
+
+      actuatorStateUpdates.set(tgtN.id, { commanded, actual });
+
+      // Show the actuator's live state on its canvas node.
+      const pct = Math.round(actual * 100);
+      const cmdPct = Math.round(commanded * 100);
+      const verb = actual >= commanded - 0.001 && actual <= commanded + 0.001 ? '' : ' ↑';
+      physicsValueByNode.set(tgtN.id, {
+        value: pct === cmdPct ? `${pct}%` : `${pct}% (cmd ${cmdPct}%${verb})`,
+        status: 'responded',
+      });
+    }
+
     nodes = nodes.map((n) => {
       const data = n.data as {
         kind: Kind;
@@ -1137,6 +1183,7 @@
       }
 
       const physVal = physicsValueByNode.get(n.id);
+      const actuatorUpdate = actuatorStateUpdates.get(n.id);
       if (physVal) {
         return {
           ...n,
@@ -1146,6 +1193,7 @@
             staleSec: staleNext,
             ageSinceLastPollSec: ageNext,
             ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
+            ...(actuatorUpdate ? { actuatorState: actuatorUpdate } : {}),
           },
         };
       }
