@@ -42,6 +42,7 @@
     findExpansionModule,
     findActuatorModel,
     findEquipmentModel,
+    findTileTemplate,
     formatPointBreakdown,
     computeSensorReading,
     type StEnv,
@@ -1118,12 +1119,28 @@
 
       actuatorStateUpdates.set(tgtN.id, { commanded, actual });
 
-      // Show the actuator's live state on its canvas node.
+      // Show the actuator's live state on its canvas node. Include the
+      // source terminal (AO-1, BO-2, etc.) and any role binding from the
+      // controller's Point Assignments — that's what answers the user's
+      // "which actuator IS this?" question without making them re-trace
+      // the wire visually.
       const pct = Math.round(actual * 100);
       const cmdPct = Math.round(commanded * 100);
-      const verb = actual >= commanded - 0.001 && actual <= commanded + 0.001 ? '' : ' ↑';
+      const slewing = actual < commanded - 0.001 || actual > commanded + 0.001;
+      const srcTerminal = edge.sourceHandle && edge.sourceHandle !== 'net-in' && edge.sourceHandle !== 'net-out'
+        ? edge.sourceHandle
+        : null;
+      const ctrlProgram = programStore.byId[srcN.id];
+      const binding = srcTerminal
+        ? ctrlProgram?.bindings?.bindings.find((b) => b.terminalId === srcTerminal)
+        : undefined;
+      const roleTpl = binding ? findTileTemplate(binding.role) : undefined;
+      const roleSuffix = srcTerminal
+        ? ` · ${srcTerminal}${roleTpl ? ` → ${roleTpl.display}` : ' → (unbound role)'}`
+        : '';
+      const positionStr = slewing ? `${pct}% (cmd ${cmdPct}% ↑)` : `${pct}%`;
       physicsValueByNode.set(tgtN.id, {
-        value: pct === cmdPct ? `${pct}%` : `${pct}% (cmd ${cmdPct}%${verb})`,
+        value: positionStr + roleSuffix,
         status: 'responded',
       });
     }

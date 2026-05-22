@@ -3,7 +3,13 @@
   import { canvasSnapshot, showInDevices } from '../canvasStore.svelte';
   import { validateScenario } from './validator';
   import { runRuntimeChecks, type RuntimeChecksResult } from './runtimeChecks';
-  import { programStore, setProgramGraph } from '../cli/programStore.svelte';
+  import { programStore, setProgramGraph, setProgramBindings } from '../cli/programStore.svelte';
+  import {
+    TILE_CATALOG,
+    findSensorModel,
+    type FbdGraph,
+    type PointBinding,
+  } from '@bas/core';
 
   function tabForKind(kind: string): 'controllers' | 'sensors' | 'safeties' | 'expansions' {
     if (kind === 'controller') return 'controllers';
@@ -38,8 +44,106 @@
       return;
     }
     setProgramGraph(nodeId, sc.program.starterGraph);
+    // Seed Point Assignments from the starter graph so the user can SEE
+    // which terminal carries which role (eg "AO-1 → primary damper")
+    // without having to reverse-engineer the FBD wiring. Only seeds when
+    // the controller has no existing bindings — never overwrites user picks.
+    seedBindingsFromStarter(nodeId, sc.program.starterGraph);
     // Auto-run checks so the user sees instant green
     runChecks();
+  }
+
+  /** Walk the starter FBD graph and the canvas wiring to build a sensible
+   *  default Point Assignments table. For each INPUT block source env-key
+   *  in the graph, find a wired sensor whose subject matches a tile whose
+   *  envKey is that env-key, and bind the sensor's terminal → that role.
+   *  Same for OUTPUT block target env-keys + wired actuators. */
+  function seedBindingsFromStarter(controllerId: string, graph: FbdGraph): void {
+    const existing = programStore.byId[controllerId]?.bindings;
+    if (existing && existing.bindings.length > 0) return; // never overwrite user picks
+
+    // Map env key → role token (eg 'sensed' → 'zone-temp', 'actuator' → 'primary-damper').
+    const envKeyToRole = new Map<string, string>();
+    for (const t of TILE_CATALOG) {
+      if (t.envKey && !envKeyToRole.has(t.envKey)) {
+        envKeyToRole.set(t.envKey, t.token);
+      }
+    }
+
+    const inputEnvKeys = new Set<string>();
+    const outputEnvKeys = new Set<string>();
+    for (const node of graph.nodes) {
+      if (node.blockType === 'INPUT') {
+        const src = String((node.params as { source?: string } | undefined)?.source ?? '');
+        if (src) inputEnvKeys.add(src);
+      } else if (node.blockType === 'OUTPUT') {
+        const tgt = String((node.params as { target?: string } | undefined)?.target ?? '');
+        if (tgt) outputEnvKeys.add(tgt);
+      }
+    }
+
+    const bindings: PointBinding[] = [];
+
+    // Inputs: walk sensor → controller edges, match sensor.subject → role → env key.
+    for (const edge of canvasSnapshot.edges) {
+      if (edge.target !== controllerId) continue;
+      if (!edge.targetHandle) continue;
+      const sensor = canvasSnapshot.nodes.find((n) => n.id === edge.source);
+      if (!sensor) continue;
+      const sData = sensor.data as { sensorModelId?: string };
+      const sModel = sData.sensorModelId ? findSensorModel(sData.sensorModelId) : undefined;
+      if (!sModel) continue;
+      // Find the tile whose token matches the sensor subject (e.g., subject=temp → 'zone-temp').
+      // Subjects don't 1:1-match tile tokens directly — temp = zone-temp/oa-temp ambiguous —
+      // so prefer tokens whose envKey is actually used by the starter program.
+      const candidate = TILE_CATALOG.find((t) => {
+        if (t.kind !== 'subject') return false;
+        if (!t.envKey || !inputEnvKeys.has(t.envKey)) return false;
+        // Subject heuristics: 'temp' subject → prefer 'zone-temp' over 'oa-temp'
+        // when the starter reads 'sensed' (primary zone), or 'oa-temp' when it reads 'oat'.
+        if (sModel.subject === 'temp') {
+          if (t.envKey === 'sensed' || t.envKey === 'oat') return true;
+          return false;
+        }
+        if (sModel.subject === 'occupancy' && t.envKey === 'occ') return true;
+        if (sModel.subject === 'damper-position' && t.envKey === 'damper') return true;
+        if (sModel.subject === 'co2' && t.envKey === 'co2') return true;
+        if (sModel.subject === 'humidity' && t.envKey === 'rh') return true;
+        if (sModel.subject === 'air-flow' && t.envKey === 'cfm') return true;
+        return false;
+      });
+      if (candidate) {
+        // Avoid duplicate role bindings — first wired sensor wins on each role.
+        if (!bindings.some((b) => b.role === candidate.token)) {
+          bindings.push({ terminalId: edge.targetHandle, role: candidate.token, sourceNodeId: sensor.id });
+        }
+      }
+    }
+
+    // Outputs: walk controller → actuator edges. The starter graph writes to
+    // a small set of env keys; pick the actuator-kind tile whose envKey
+    // matches and bind that terminal.
+    for (const edge of canvasSnapshot.edges) {
+      if (edge.source !== controllerId) continue;
+      if (!edge.sourceHandle) continue;
+      const downstream = canvasSnapshot.nodes.find((n) => n.id === edge.target);
+      if (!downstream) continue;
+      const dkind = (downstream.data as { kind?: string }).kind;
+      if (dkind !== 'actuator') continue;
+      // The first actuator wire claims the FIRST output env key. With only
+      // one actuator typically, this is the primary actuator (eg 'actuator'
+      // / primary-damper). Future iterations can map by actuator subject.
+      const candidate = TILE_CATALOG.find((t) => {
+        return t.kind === 'actuator' && t.envKey && outputEnvKeys.has(t.envKey);
+      });
+      if (candidate && !bindings.some((b) => b.role === candidate.token)) {
+        bindings.push({ terminalId: edge.sourceHandle, role: candidate.token });
+      }
+    }
+
+    if (bindings.length > 0) {
+      setProgramBindings(controllerId, { bindings });
+    }
   }
 
   function runChecks(): void {
