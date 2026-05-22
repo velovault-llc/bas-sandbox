@@ -152,6 +152,10 @@ export {
   tokenHoldSeconds,
   formatMstpDevice,
   defaultDeviceInstance,
+  validateMstpTrunks,
+  MSTP_TRUNK_RECOMMENDED_MAX_DEVICES,
+  MSTP_MAC_MIN,
+  MSTP_MAC_MAX,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
@@ -159,6 +163,9 @@ export type {
   SynthesizeInputs as BacnetSynthesizeInputs,
   MstpDevice,
   MstpTrunkState,
+  MstpFinding,
+  MstpFindingId,
+  MstpTrunkSnapshot,
 } from './bacnet/index.js';
 
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';

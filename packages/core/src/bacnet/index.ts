@@ -16,3 +16,11 @@ export {
   defaultDeviceInstance,
 } from './mstp.js';
 export type { MstpDevice, MstpTrunkState } from './mstp.js';
+
+export {
+  validateMstpTrunks,
+  MSTP_TRUNK_RECOMMENDED_MAX_DEVICES,
+  MSTP_MAC_MIN,
+  MSTP_MAC_MAX,
+} from './validate.js';
+export type { MstpFinding, MstpFindingId, MstpTrunkSnapshot } from './validate.js';

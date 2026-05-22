@@ -34,7 +34,7 @@
   import { validateScenario } from './scenarios/validator';
   import { registerBridge, controllerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import { logPacket as logBacnetPacket } from './bacnet/bacnetPacketLog.svelte';
-  import { openTrunkInspector, publishTrunkStates } from './bacnet/trunkInspectorStore.svelte';
+  import { openTrunkInspector, publishTrunkStates, publishMstpFindings } from './bacnet/trunkInspectorStore.svelte';
   import {
     runProgram,
     makeEnv,
@@ -60,7 +60,9 @@
     stepMstpToken,
     initMstpTrunkState,
     defaultDeviceInstance,
+    validateMstpTrunks,
     type StEnv,
+    type MstpFinding,
     type LoopState,
     type ZoneState,
     type MstpDevice,
@@ -765,6 +767,14 @@
   // each child polled every 20s — matches what a typical Niagara supervisor
   // does on a healthy FEC bus.
   const APP_LAYER_POLL_CADENCE_S = 5;
+  // MS/TP validation findings keyed by trunk id. Recomputed each tick
+  // from the trunk membership; we de-dup against the previous tick so the
+  // runtime log only logs new fault transitions, not the same warning
+  // forever. Empty array = trunk is healthy.
+  let mstpFindingsByTrunk = $state<Map<string, MstpFinding[]>>(new Map());
+  // Set of "trunkId:findingId" pairs we've already announced in the
+  // runtime log this session — keeps re-logging quiet across ticks.
+  const announcedMstpFindings = new Set<string>();
   // Hard cap on Token-Pass packets emitted per trunk per tick. At 300×
   // sim-speed a 32-device trunk would emit hundreds of hops per tick;
   // capping keeps the log readable and the buffer from churning.
@@ -1867,6 +1877,36 @@
       // can re-render against live values without reaching back into
       // BuildCanvas. Cheap — both maps share the same MstpTrunkState objs.
       publishTrunkStates(nextStates);
+
+      // ── MS/TP config validation. Run every tick (cheap — pure
+      // function over a small device list), but only log NEW findings to
+      // the runtime log to avoid flooding.
+      const findingsByTrunk = new Map<string, MstpFinding[]>();
+      const snapshots = [...nextStates.entries()].map(([trunkId, st]) => ({
+        trunkId,
+        devices: st.devices,
+      }));
+      const allFindings = validateMstpTrunks(snapshots);
+      for (const f of allFindings) {
+        const list = findingsByTrunk.get(f.trunkId) ?? [];
+        list.push(f);
+        findingsByTrunk.set(f.trunkId, list);
+        const key = `${f.trunkId}:${f.id}`;
+        if (!announcedMstpFindings.has(key)) {
+          announcedMstpFindings.add(key);
+          const level = f.severity === 'error' ? 'error' : 'warn';
+          logEvent(simSecondsElapsed, level, 'mstp', `${f.title} — ${f.description}`);
+        }
+      }
+      // Drop announced flags for trunks/findings that have cleared, so
+      // re-introducing the fault later re-announces it.
+      for (const key of [...announcedMstpFindings]) {
+        const [trunkId, fid] = key.split(':');
+        const stillPresent = findingsByTrunk.get(trunkId)?.some((f) => f.id === fid);
+        if (!stillPresent) announcedMstpFindings.delete(key);
+      }
+      mstpFindingsByTrunk = findingsByTrunk;
+      publishMstpFindings(findingsByTrunk);
     }
 
     // ── Yoke sensor T_sensed to the linked zone ───────────────────────
@@ -4125,13 +4165,22 @@
                 </label>
               {/if}
               {#if currentKind === 'mstp' && mstpTrunkStates.has(selectedEdge.id)}
+                {@const trunkFindings = mstpFindingsByTrunk.get(selectedEdge.id) ?? []}
+                {@const errCount = trunkFindings.filter((f) => f.severity === 'error').length}
+                {@const warnCount = trunkFindings.filter((f) => f.severity === 'warning').length}
                 <button
                   type="button"
                   class="wire-trunk-inspect"
-                  title="Open the Trunk Inspector — see every device on this MS/TP segment, its MAC, Device Instance, and current token state."
+                  class:has-errors={errCount > 0}
+                  class:has-warnings={warnCount > 0 && errCount === 0}
+                  title={trunkFindings.length === 0
+                    ? 'Open the Trunk Inspector — see every device on this MS/TP segment, its MAC, Device Instance, and current token state.'
+                    : `${errCount} error${errCount === 1 ? '' : 's'}, ${warnCount} warning${warnCount === 1 ? '' : 's'} on this trunk. Click for details.`}
                   onclick={() => openTrunkInspector(selectedEdge.id)}
                 >
                   🔍 Trunk inspector
+                  {#if errCount > 0}<span class="badge-err">{errCount}</span>{/if}
+                  {#if warnCount > 0}<span class="badge-warn">{warnCount}</span>{/if}
                 </button>
               {/if}
               <button
@@ -6361,6 +6410,36 @@
   .wire-trunk-inspect:hover {
     background: color-mix(in srgb, #06b6d4 22%, transparent);
     color: #06b6d4;
+  }
+
+  .wire-trunk-inspect.has-errors {
+    border-color: color-mix(in srgb, #e74c3c 70%, transparent);
+    background: color-mix(in srgb, #e74c3c 15%, transparent);
+    color: color-mix(in srgb, #e74c3c 95%, CanvasText);
+  }
+
+  .wire-trunk-inspect.has-warnings {
+    border-color: color-mix(in srgb, #f39c12 70%, transparent);
+    background: color-mix(in srgb, #f39c12 15%, transparent);
+    color: color-mix(in srgb, #f39c12 95%, CanvasText);
+  }
+
+  .wire-trunk-inspect .badge-err,
+  .wire-trunk-inspect .badge-warn {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.35rem;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: white;
+  }
+
+  .wire-trunk-inspect .badge-err {
+    background: #e74c3c;
+  }
+  .wire-trunk-inspect .badge-warn {
+    background: #f39c12;
   }
 
   .wire-break:hover {

@@ -32,6 +32,11 @@
     if (!trunkId) return null;
     return trunkInspectorStore.byTrunkId.get(trunkId) ?? null;
   });
+  const findings = $derived.by(() => {
+    void trunkInspectorStore.tick;
+    if (!trunkId) return [];
+    return trunkInspectorStore.findingsByTrunkId.get(trunkId) ?? [];
+  });
 
   function formatHold(s: number): string {
     if (s < 0.01) return '0 ms';
@@ -60,6 +65,20 @@
         {/if}
         <button type="button" class="close" onclick={closeTrunkInspector} title="Close (Esc)">✕</button>
       </header>
+
+      {#if findings.length > 0}
+        <div class="findings">
+          {#each findings as f (f.id + (f.nodeIds ?? []).join(','))}
+            <div class="finding sev-{f.severity}" title={f.description}>
+              <span class="sev-glyph">{f.severity === 'error' ? '⛔' : f.severity === 'warning' ? '⚠' : 'ℹ'}</span>
+              <div class="finding-body">
+                <strong>{f.title}</strong>
+                <span class="finding-desc">{f.description}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       {#if !trunkState}
         <div class="empty">Trunk not active — wire two or more devices with MS/TP and start the sim.</div>
@@ -246,5 +265,60 @@
     font-size: 0.78rem;
     color: color-mix(in srgb, CanvasText 65%, transparent);
     line-height: 1.45;
+  }
+
+  .findings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid color-mix(in srgb, CanvasText 8%, transparent);
+    background: color-mix(in srgb, Canvas 97%, CanvasText 2%);
+  }
+
+  .finding {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .finding.sev-error {
+    background: color-mix(in srgb, #e74c3c 12%, transparent);
+    border-left: 3px solid #e74c3c;
+  }
+  .finding.sev-warning {
+    background: color-mix(in srgb, #f39c12 12%, transparent);
+    border-left: 3px solid #f39c12;
+  }
+  .finding.sev-info {
+    background: color-mix(in srgb, #3498db 10%, transparent);
+    border-left: 3px solid #3498db;
+  }
+
+  .sev-glyph {
+    font-size: 0.95rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .finding-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .finding-body strong {
+    font-family: system-ui, sans-serif;
+    font-size: 0.83rem;
+  }
+
+  .finding-desc {
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font-family: system-ui, sans-serif;
   }
 </style>
