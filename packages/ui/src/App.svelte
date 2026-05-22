@@ -13,6 +13,8 @@
   import BacnetPacketLogPanel from './lib/bacnet/BacnetPacketLogPanel.svelte';
   import TrunkInspector from './lib/bacnet/TrunkInspector.svelte';
   import NetworkHealthPill from './lib/bacnet/NetworkHealthPill.svelte';
+  import LlmAssistantPanel from './lib/llm/LlmAssistantPanel.svelte';
+  import { togglePanel as toggleLlmPanel, llmStore } from './lib/llm/llmStore.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
@@ -193,6 +195,14 @@
 
     {#if mode === 'build'}
       <div class="header-actions">
+        <button
+          type="button"
+          class="hdr-btn hdr-btn-llm"
+          onclick={toggleLlmPanel}
+          title="Open the local LLM assistant — runs against your own Ollama instance. No cloud, no telemetry."
+        >
+          🤖 Assistant{#if llmStore.connection.kind === 'up'} <span class="pill-ok">●</span>{/if}
+        </button>
         <button
           type="button"
           class="hdr-btn"
@@ -464,6 +474,7 @@
           <RuntimeLogPanel />
           <BacnetPacketLogPanel />
           <NetworkHealthPill />
+          <LlmAssistantPanel />
           <button
             type="button"
             class="dock-toggle"
@@ -596,6 +607,21 @@
   .hdr-btn-danger:hover:not(:disabled) {
     background: color-mix(in srgb, #e74c3c 14%, transparent);
     color: #e74c3c;
+  }
+
+  .hdr-btn-llm {
+    border-color: color-mix(in srgb, #9b59b6 45%, transparent);
+    color: color-mix(in srgb, #9b59b6 95%, CanvasText);
+  }
+
+  .hdr-btn-llm:hover:not(:disabled) {
+    background: color-mix(in srgb, #9b59b6 14%, transparent);
+    color: #9b59b6;
+  }
+
+  .pill-ok {
+    color: #2ecc71;
+    margin-left: 0.15rem;
   }
 
   .lede {
