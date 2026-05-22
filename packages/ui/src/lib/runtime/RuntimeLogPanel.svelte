@@ -13,11 +13,47 @@
     type LogLevel,
   } from './runtimeLogStore.svelte';
 
+  /** Bound to the panel <aside> so we can measure its actual rendered
+   *  height. Used by clampPos() to keep the header reachable even when
+   *  the panel is expanded and taller than the static headroom guess. */
+  let panelEl: HTMLElement | null = $state(null);
+
+  /** DOM-aware clamp. The header must stay in the viewport, so the
+   *  ceiling on offsetY depends on the panel's CURRENT rendered height
+   *  (an expanded panel with 500 entries is much taller than a
+   *  collapsed one). Falls back to a static estimate before the DOM is
+   *  ready. */
+  function clampPos(x: number, y: number): { x: number; y: number } {
+    if (typeof window === 'undefined') return { x: Math.max(0, x), y: Math.max(0, y) };
+    const panelH = panelEl?.offsetHeight ?? 80;
+    const panelW = panelEl?.offsetWidth ?? 320;
+    const margin = 12;
+    const maxY = Math.max(0, window.innerHeight - panelH - margin);
+    const maxX = Math.max(0, window.innerWidth - panelW - margin);
+    return {
+      x: Math.min(maxX, Math.max(0, x)),
+      y: Math.min(maxY, Math.max(0, y)),
+    };
+  }
+
   // Re-clamp on mount + on resize so a saved-from-different-screen
   // position never strands the panel off-screen.
   onMount(() => {
     rehydratePanelPosition();
-    const onResize = () => rehydratePanelPosition();
+    // Re-clamp once the DOM has measured the panel — the store-level
+    // clamp uses a static height estimate, but the real panel might be
+    // taller (especially when expanded).
+    queueMicrotask(() => {
+      const { x, y } = clampPos(runtimeLog.offsetX, runtimeLog.offsetY);
+      if (x !== runtimeLog.offsetX || y !== runtimeLog.offsetY) {
+        setPanelPosition(x, y);
+      }
+    });
+    const onResize = () => {
+      rehydratePanelPosition();
+      const { x, y } = clampPos(runtimeLog.offsetX, runtimeLog.offsetY);
+      setPanelPosition(x, y);
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   });
@@ -100,9 +136,13 @@
     if (!didActuallyDrag) return; // tiny jitter — don't move yet
     // offset is from the bottom-right anchor; dragging right/down should
     // SHRINK both offsets (panel moves toward the corner), dragging
-    // left/up should grow them. So invert deltas.
-    runtimeLog.offsetX = Math.max(0, dragStart.originX + dx);
-    runtimeLog.offsetY = Math.max(0, dragStart.originY + dy);
+    // left/up should grow them. So invert deltas. Live-clamp using the
+    // panel's actual rendered size so the header never drags off the
+    // top of the viewport (a static maxY guess can't account for an
+    // expanded panel being taller than the headroom).
+    const { x, y } = clampPos(dragStart.originX + dx, dragStart.originY + dy);
+    runtimeLog.offsetX = x;
+    runtimeLog.offsetY = y;
   }
 
   function endDrag(): void {
@@ -125,6 +165,7 @@
 </script>
 
 <aside
+  bind:this={panelEl}
   class="runtime-log"
   class:open={runtimeLog.panelOpen}
   class:dragging

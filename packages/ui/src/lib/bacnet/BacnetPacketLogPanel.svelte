@@ -27,9 +27,37 @@
     type BacnetPacket,
   } from './bacnetPacketLog.svelte';
 
+  /** Bound to the panel <aside> for DOM-aware clamping (same pattern as
+   *  the runtime log panel — see comment there for why a static
+   *  headroom guess can't keep the header reachable when expanded). */
+  let panelEl: HTMLElement | null = $state(null);
+
+  function clampPos(x: number, y: number): { x: number; y: number } {
+    if (typeof window === 'undefined') return { x: Math.max(0, x), y: Math.max(0, y) };
+    const panelH = panelEl?.offsetHeight ?? 80;
+    const panelW = panelEl?.offsetWidth ?? 320;
+    const margin = 12;
+    const maxY = Math.max(0, window.innerHeight - panelH - margin);
+    const maxX = Math.max(0, window.innerWidth - panelW - margin);
+    return {
+      x: Math.min(maxX, Math.max(0, x)),
+      y: Math.min(maxY, Math.max(0, y)),
+    };
+  }
+
   onMount(() => {
     rehydratePanelPosition();
-    const onResize = () => rehydratePanelPosition();
+    queueMicrotask(() => {
+      const { x, y } = clampPos(bacnetPacketLog.offsetX, bacnetPacketLog.offsetY);
+      if (x !== bacnetPacketLog.offsetX || y !== bacnetPacketLog.offsetY) {
+        setPanelPosition(x, y);
+      }
+    });
+    const onResize = () => {
+      rehydratePanelPosition();
+      const { x, y } = clampPos(bacnetPacketLog.offsetX, bacnetPacketLog.offsetY);
+      setPanelPosition(x, y);
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   });
@@ -117,8 +145,11 @@
     const dy = dragStart.y - e.clientY;
     if (!didActuallyDrag && Math.hypot(dx, dy) >= DRAG_THRESHOLD) didActuallyDrag = true;
     if (!didActuallyDrag) return;
-    bacnetPacketLog.offsetX = Math.max(0, dragStart.originX + dx);
-    bacnetPacketLog.offsetY = Math.max(0, dragStart.originY + dy);
+    // Live-clamp against the panel's actual rendered size so the
+    // drag-handle header can never get pushed off-screen mid-drag.
+    const { x, y } = clampPos(dragStart.originX + dx, dragStart.originY + dy);
+    bacnetPacketLog.offsetX = x;
+    bacnetPacketLog.offsetY = y;
   }
 
   function endDrag(): void {
@@ -140,6 +171,7 @@
 </script>
 
 <aside
+  bind:this={panelEl}
   class="bacnet-log"
   class:open={bacnetPacketLog.panelOpen}
   class:dragging

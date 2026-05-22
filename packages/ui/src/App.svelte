@@ -17,6 +17,7 @@
   import { togglePanel as toggleLlmPanel, llmStore } from './lib/llm/llmStore.svelte';
   import AboutPage from './lib/about/AboutPage.svelte';
   import DevicesPalette from './lib/equipment/DevicesPalette.svelte';
+  import NetworkPalette from './lib/network/NetworkPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
   import ScenariosTab from './lib/scenarios/ScenariosTab.svelte';
   import ScenarioPanel from './lib/scenarios/ScenarioPanel.svelte';
@@ -65,7 +66,7 @@
     else if (window.location.hash === '#about') window.history.replaceState(null, '', window.location.pathname);
   });
 
-  type LeftDrawerTab = 'weather' | 'devices' | 'scenarios' | 'settings';
+  type LeftDrawerTab = 'weather' | 'devices' | 'network' | 'scenarios' | 'settings';
   let leftDrawerOpen = $state(true);
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
@@ -408,6 +409,16 @@
           <button
             type="button"
             class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'network'}
+            onclick={() => pickLeftDrawerTab('network')}
+            title="Network gear — subnet zones, IP routers, BBMDs"
+          >
+            <span class="rail-icon">⌖</span>
+            <span class="rail-label">Network</span>
+          </button>
+          <button
+            type="button"
+            class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'scenarios'}
             onclick={() => pickLeftDrawerTab('scenarios')}
             title="Guided BAS-tech training scenarios"
@@ -441,6 +452,8 @@
             <WeatherPanel />
           {:else if leftDrawerTab === 'devices'}
             <DevicesPalette />
+          {:else if leftDrawerTab === 'network'}
+            <NetworkPalette />
           {:else if leftDrawerTab === 'scenarios'}
             <ScenariosTab />
           {:else if leftDrawerTab === 'settings'}

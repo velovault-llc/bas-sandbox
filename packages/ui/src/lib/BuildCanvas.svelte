@@ -3892,6 +3892,43 @@
     });
   }
 
+  /** Set the IP address field, accepting either a plain dotted-quad
+   *  ("10.0.1.10") OR a CIDR notation ("10.0.1.10/24"). If a slash is
+   *  present and the prefix parses, we auto-populate the subnet mask
+   *  too. This is the form a network engineer naturally types, so
+   *  rejecting it as "Invalid IP" is a UX footgun. */
+  function setIpAddressOrCidr(nodeId: string, raw: string): void {
+    const trimmed = raw.trim();
+    const slash = trimmed.indexOf('/');
+    if (slash > 0) {
+      const ipPart = trimmed.slice(0, slash);
+      const prefixPart = trimmed.slice(slash + 1);
+      const prefix = Number(prefixPart);
+      if (
+        Number.isInteger(prefix) &&
+        prefix >= 0 &&
+        prefix <= 32 &&
+        /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(ipPart)
+      ) {
+        const maskBits = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+        const mask = [
+          (maskBits >>> 24) & 0xff,
+          (maskBits >>> 16) & 0xff,
+          (maskBits >>> 8) & 0xff,
+          maskBits & 0xff,
+        ].join('.');
+        nodes = nodes.map((n) => {
+          if (n.id !== nodeId) return n;
+          const d = n.data as Record<string, unknown>;
+          return { ...n, data: { ...d, ipAddress: ipPart, subnetMask: mask } };
+        });
+        return;
+      }
+    }
+    // Plain IP path — defer to the generic field updater.
+    updateNodeField(nodeId, 'ipAddress', raw);
+  }
+
   /** Mutate a single field on a node's data, immutably. Used by the
    *  Net.2 IP / BBMD config panel and the subnet-zone edit panel. */
   function updateNodeField(nodeId: string, field: string, value: unknown): void {
@@ -4480,6 +4517,7 @@
     canvasActions.clear = clearAll;
     canvasActions.reset = resetCanvas;
     canvasActions.saveScenario = saveScenario;
+    canvasActions.addSubnetZone = createSubnetZone;
     registerBridge({
       getSnapshot(controllerId): ControllerSnapshot | null {
         const target = wiredTargets.find((t) => t.controllerId === controllerId);
@@ -4987,7 +5025,22 @@
           {@const ifs = rData.routerInterfaces ?? []}
           <Panel position="top-center">
             <div class="router-panel">
-              <span class="router-title">Router — {nodeLabel(selectedRouter)}</span>
+              <span class="router-title">Router —</span>
+              <input
+                class="ip-rename"
+                type="text"
+                value={nodeLabel(selectedRouter)}
+                onblur={(e) => renameNode(selectedRouter.id, (e.currentTarget as HTMLInputElement).value)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                  if (e.key === 'Escape') {
+                    (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedRouter);
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+                title="Rename this router — Enter to commit, Esc to cancel."
+                aria-label="Router name"
+              />
               <div class="router-ifaces-edit">
                 {#each ifs as iface, i (i)}
                   <div class="router-iface-row">
@@ -5030,6 +5083,12 @@
                 onclick={() => addRouterInterface(selectedRouter.id)}
                 title="Add another network interface."
               >+ interface</button>
+              <button
+                type="button"
+                class="ip-delete"
+                title="Delete this router."
+                onclick={() => deleteNodeById(selectedRouter.id)}
+              >✕ Delete</button>
             </div>
           </Panel>
         {/if}
@@ -5043,17 +5102,34 @@
             bdtPeers?: string[];
           }}
           {@const isBb = !!ipData.isBBMD}
+          {@const ipDeviceKind = nodeKind(selectedIpDevice)}
+          {@const bbmdToggleDisabled = ipDeviceKind === 'bbmd'}
           <Panel position="top-center">
             <div class="ip-config-panel">
-              <span class="ip-config-title">Network — {nodeLabel(selectedIpDevice)}</span>
-              <label class="ip-field" title="IPv4 address — dotted-quad, e.g. 10.0.1.10.">
+              <span class="ip-config-title">Network —</span>
+              <input
+                class="ip-rename"
+                type="text"
+                value={nodeLabel(selectedIpDevice)}
+                onblur={(e) => renameNode(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).value)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                  if (e.key === 'Escape') {
+                    (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedIpDevice);
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+                title="Rename this device — press Enter to commit, Esc to cancel."
+                aria-label="Device name"
+              />
+              <label class="ip-field" title="IPv4 address — accepts dotted-quad (10.0.1.10) OR CIDR notation (10.0.1.10/24, which auto-populates the mask).">
                 <span>IP</span>
                 <input
                   class="ip-input"
                   type="text"
                   value={ipData.ipAddress ?? ''}
-                  placeholder="10.0.1.10"
-                  oninput={(e) => updateNodeField(selectedIpDevice.id, 'ipAddress', (e.currentTarget as HTMLInputElement).value)}
+                  placeholder="10.0.1.10  or  10.0.1.10/24"
+                  oninput={(e) => setIpAddressOrCidr(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).value)}
                   spellcheck="false"
                   autocapitalize="off"
                 />
@@ -5086,14 +5162,18 @@
               <label
                 class="bbmd-toggle"
                 class:active={isBb}
-                title="Mark this device as a BACnet Broadcast Management Device. BBMDs bridge BACnet broadcasts (Who-Is, I-Am) between subnets. Required when cross-subnet BACnet/IP is in play."
+                class:dedicated={bbmdToggleDisabled}
+                title={bbmdToggleDisabled
+                  ? 'This IS a dedicated BBMD appliance — the BBMD role is intrinsic and cannot be turned off. To remove BBMD function, delete this node.'
+                  : 'Run BBMD service on this device. Enable when a JACE / NCE / supervisor should also bridge BACnet broadcasts between subnets. For a dedicated BBMD appliance (Contemporary Controls BAS Router, etc.), drag the BBMD tile from the device palette.'}
               >
                 <input
                   type="checkbox"
                   checked={isBb}
+                  disabled={bbmdToggleDisabled}
                   onchange={(e) => toggleBbmd(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).checked)}
                 />
-                <span>BBMD</span>
+                <span>{bbmdToggleDisabled ? 'BBMD appliance' : 'Run BBMD service'}</span>
               </label>
               {#if isBb}
                 <label class="bdt-field" title="Broadcast Distribution Table — comma-separated IPs of peer BBMDs on remote subnets. Each peer must list this BBMD back, or broadcasts only flow one direction.">
@@ -5109,6 +5189,15 @@
                   />
                 </label>
               {/if}
+              <span class="ip-divider"></span>
+              <button
+                type="button"
+                class="ip-delete"
+                title="Delete this device (also: select + press Delete or Backspace)."
+                onclick={() => deleteNodeById(selectedIpDevice.id)}
+              >
+                ✕ Delete
+              </button>
             </div>
           </Panel>
         {/if}
@@ -5906,14 +5995,6 @@
               title="Download the canvas as a .bas-scenario JSON file"
             >
               💾 Save
-            </button>
-            <button
-              type="button"
-              class="ca-btn"
-              onclick={createSubnetZone}
-              title="Add a subnet zone — a labeled, resizable rectangle that names the VLAN / IP subnet underneath. Drop devices inside it; the validator will flag IP-vs-zone mismatches."
-            >
-              ▢ + Subnet
             </button>
             <button
               type="button"
@@ -7393,6 +7474,41 @@
     letter-spacing: 0.04em;
     font-weight: 600;
     color: color-mix(in srgb, CanvasText 75%, transparent);
+  }
+  /* Rename input lives in the IP config panel + router panel — looks
+     like a label until you click it. */
+  .ip-rename {
+    background: transparent;
+    color: CanvasText;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    width: 7rem;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .ip-rename:hover {
+    border-color: color-mix(in srgb, CanvasText 20%, transparent);
+  }
+  .ip-rename:focus {
+    outline: none;
+    border-color: #4a9eff;
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+  }
+  .ip-delete {
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.55rem;
+    background: transparent;
+    color: #e74c3c;
+    border: 1px solid color-mix(in srgb, #e74c3c 60%, transparent);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .ip-delete:hover {
+    background: color-mix(in srgb, #e74c3c 15%, transparent);
   }
   .ip-field {
     display: inline-flex;

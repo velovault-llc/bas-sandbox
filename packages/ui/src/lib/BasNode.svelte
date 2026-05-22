@@ -291,8 +291,8 @@
     </div>
   {/if}
   {#if data.isBBMD && (data.kind === 'supervisor' || data.kind === 'controller')}
-    <div class="bbmd-badge" title="BACnet Broadcast Management Device — bridges BACnet broadcasts to peer BBMDs on remote subnets.">
-      BBMD
+    <div class="bbmd-badge" title="This {data.kind === 'supervisor' ? 'supervisor' : 'controller'} also runs BBMD service — bridges BACnet broadcasts to peer BBMDs on remote subnets.">
+      ◫ BBMD service
     </div>
   {/if}
   {#if data.kind === 'router' && data.routerInterfaces && data.routerInterfaces.length > 0}

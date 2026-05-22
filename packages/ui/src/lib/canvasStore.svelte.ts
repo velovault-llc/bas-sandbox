@@ -17,10 +17,12 @@ export const canvasActions = $state<{
   clear: (() => void) | null;
   reset: (() => void) | null;
   saveScenario: (() => void) | null;
+  addSubnetZone: (() => void) | null;
 }>({
   clear: null,
   reset: null,
   saveScenario: null,
+  addSubnetZone: null,
 });
 
 /**
