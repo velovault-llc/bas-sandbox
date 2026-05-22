@@ -1551,6 +1551,10 @@
       const prev = zData.zoneState ?? initZoneState(zoneConfig, oatForZones);
 
       // Sum heat from neighboring zones via shared-wall edges (zone↔zone).
+      // ΔT is clamped so a temporarily-explosive neighbor temp can't
+      // propagate the instability — walls in real buildings can only
+      // carry so much heat per square foot before the surface temp itself
+      // limits the gradient.
       let neighborHeat_btu = 0;
       const neighborTags: string[] = [];
       for (const edge of edges) {
@@ -1560,7 +1564,7 @@
         if (!otherId) continue;
         const otherTemp = zoneTempByNode.get(otherId);
         if (otherTemp === undefined) continue;
-        const dT = otherTemp - prev.T_zone;
+        const dT = Math.max(-40, Math.min(40, otherTemp - prev.T_zone));
         const q = WALL_U * WALL_AREA * dT;
         neighborHeat_btu += q;
         const otherNode = nodes.find((n) => n.id === otherId);

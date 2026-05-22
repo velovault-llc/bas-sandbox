@@ -169,6 +169,32 @@ export const ACTUATOR_CATALOG: readonly ActuatorModel[] = [
     notes: '3-point floating: one BO opens, another BO closes, neither energized = hold. Older sequence still common on retrofits. Modulation precision is limited.',
   },
 
+  // ── Burner / plant control valves ─────────────────────────────────────
+  {
+    id: 'maxitrol-m611',
+    vendor: 'Maxitrol',
+    model: 'M611 modulating gas valve',
+    kind: 'valve-modulating',
+    signal: 'analog-4-20ma',
+    strokeSeconds: 30,
+    failSafe: 'closed',
+    hasPositionFeedback: true,
+    currentDraw: '4-20 mA loop',
+    notes: 'Modulating gas valve for boiler burner-rate control. 4-20mA fail-safe-close. Pair with a Honeywell flame-safety relay on the BAS side — burner-mod role binds the controller AO to this actuator.',
+  },
+  {
+    id: 'honeywell-v4055',
+    vendor: 'Honeywell',
+    model: 'V4055 burner control valve',
+    kind: 'valve-modulating',
+    signal: 'analog-2-10v',
+    strokeSeconds: 35,
+    failSafe: 'closed',
+    hasPositionFeedback: false,
+    currentDraw: '24 VAC, ~3 VA',
+    notes: 'Classic burner-modulation valve for low/high-fire control on commercial boilers. Spring-return closed on power loss for flame safety. Binds to the "burner modulation" role in SpecLang.',
+  },
+
   // ── 2-position valves (FCU isolation, etc.) ───────────────────────────
   {
     id: 'honeywell-v8043',

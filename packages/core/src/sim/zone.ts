@@ -90,8 +90,23 @@ export function defaultOccupancySchedule(hour: number): number {
   return 0;
 }
 
-/** Advance a zone by `dt` seconds. */
+/** Advance a zone by `dt` seconds. Substeps internally when `dt` is large
+ *  (fast-forward modes) to keep the explicit-Euler integration stable.
+ *  Without substeps, a 1500-second tick at 300× speed makes wall heat-
+ *  transfer overshoot the zone's thermal capacity and the temp explodes. */
 export function stepZone(state: ZoneState, config: ZoneConfig, inputs: ZoneInputs, dt: number): ZoneState {
+  const MAX_SUBSTEP_S = 60;
+  if (dt > MAX_SUBSTEP_S) {
+    const steps = Math.ceil(dt / MAX_SUBSTEP_S);
+    const sub_dt = dt / steps;
+    let s = state;
+    for (let i = 0; i < steps; i++) s = stepZoneInner(s, config, inputs, sub_dt);
+    return s;
+  }
+  return stepZoneInner(state, config, inputs, dt);
+}
+
+function stepZoneInner(state: ZoneState, config: ZoneConfig, inputs: ZoneInputs, dt: number): ZoneState {
   // 1. Envelope loss (BTU/hr). Positive Q means heat IN.
   const envelope_btu = -config.exterior_u_value * config.exterior_wall_area_sqft * (state.T_zone - inputs.outsideTemp);
 
@@ -120,12 +135,19 @@ export function stepZone(state: ZoneState, config: ZoneConfig, inputs: ZoneInput
 
   // Apply over dt to compute ΔT.
   // Air mass = volume × 0.075 lb/ft³; effective mass = air × multiplier.
-  // Cp of air ≈ 0.24 BTU/lb·°F.
-  const air_mass = config.volume_cu_ft * 0.075;
-  const effective_mass = air_mass * config.mass_multiplier;
+  // Cp of air ≈ 0.24 BTU/lb·°F. Guard against zero/negative inputs that
+  // would NaN/Infinity the result (user can set floor_area=0 via the
+  // inspector, which used to blow the sim up).
+  const safe_volume = Math.max(50, config.volume_cu_ft);
+  const safe_mass_mult = Math.max(1, config.mass_multiplier);
+  const air_mass = safe_volume * 0.075;
+  const effective_mass = air_mass * safe_mass_mult;
   const cp = 0.24;
   const dt_hours = dt / 3600;
-  const dT = (net_btu * dt_hours) / (effective_mass * cp);
+  const raw_dT = (net_btu * dt_hours) / (effective_mass * cp);
+  // Clamp per-substep ΔT to ±5°F. Real zones don't change temp faster
+  // than this — anything bigger is numerical instability, not physics.
+  const dT = Math.max(-5, Math.min(5, raw_dT));
 
   return { T_zone: state.T_zone + dT };
 }
