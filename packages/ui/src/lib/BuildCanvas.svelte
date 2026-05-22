@@ -138,7 +138,7 @@
     //   - equipment units connect mechanically to actuators (still hardwired
     //     for our wire-kind purposes — the abstraction is "physical cable")
     if (involves('sensor') || involves('safety') || involves('expansion') ||
-        involves('actuator') || involves('equipment')) return 'hardwired';
+        involves('actuator') || involves('equipment') || involves('zone')) return 'hardwired';
     // Supervisor pairs and controller↔supervisor go BACnet/IP by default
     // (modern installs are mostly IP-backbone with MS/TP only at field tier).
     if (involves('supervisor')) return 'bacnet-ip';
@@ -1406,28 +1406,67 @@
     // ── Zone (room) thermal dynamics ─────────────────────────────────
     // Each zone node on the canvas runs its own envelope + load model.
     // Multi-zone scenarios become possible: drop 3 zones, each drifts
-    // independently based on OAT, occupancy schedule, and (eventually
-    // in B.4) supply air from its VAV. For now, supply air = 0 since the
-    // air-side coupling is the next session.
+    // independently based on OAT, occupancy schedule, neighbors via
+    // shared walls (zone→zone wires), and (eventually in B.4) supply
+    // air from its VAV.
     const zoneStateUpdates = new Map<string, ZoneState>();
     const oatForZones = runningSnapshot[0]
       ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60)
       : 60;
     const simHourForZones = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
+
+    // Build current zone-temp map for neighbor heat-exchange calc.
+    const zoneTempByNode = new Map<string, number>();
+    for (const node of nodes) {
+      if (nodeKind(node) !== 'zone') continue;
+      const zData = node.data as { zoneState?: ZoneState };
+      zoneTempByNode.set(node.id, zData.zoneState?.T_zone ?? oatForZones);
+    }
+
+    // Default partition wall: ~9' tall × 12' shared = ~108 sqft, gyp+
+    // stud U-value 0.3 BTU/hr·ft²·°F. Heat flows from warmer to cooler
+    // each tick — that's how a server room cooks the adjacent conf room.
+    const WALL_U = 0.3;
+    const WALL_AREA = 108;
+
     for (const node of nodes) {
       if (nodeKind(node) !== 'zone') continue;
       const zData = node.data as { zoneState?: ZoneState };
       const prev = zData.zoneState ?? initZoneState(DEFAULT_ZONE_CONFIG, oatForZones);
+
+      // Sum heat from neighboring zones via shared-wall edges.
+      // Wire direction doesn't matter — walls conduct both ways.
+      let neighborHeat_btu = 0;
+      const neighborTags: string[] = [];
+      for (const edge of edges) {
+        const otherId = edge.source === node.id ? edge.target
+          : edge.target === node.id ? edge.source
+          : null;
+        if (!otherId) continue;
+        const otherTemp = zoneTempByNode.get(otherId);
+        if (otherTemp === undefined) continue;
+        const dT = otherTemp - prev.T_zone;
+        const q = WALL_U * WALL_AREA * dT; // positive = heat coming in
+        neighborHeat_btu += q;
+        const otherNode = nodes.find((n) => n.id === otherId);
+        if (otherNode) {
+          neighborTags.push((otherNode.data as { label?: string }).label ?? otherId);
+        }
+      }
+
       const next = stepZone(prev, DEFAULT_ZONE_CONFIG, {
         outsideTemp: oatForZones,
         hour: simHourForZones,
         occupancy_frac: defaultOccupancySchedule(simHourForZones),
-        supplyAir_btu_per_hr: 0, // Session B.4: couple to VAV/AHU supply air
+        supplyAir_btu_per_hr: neighborHeat_btu, // walls are the only "supply" until B.4
       }, dtSeconds);
       zoneStateUpdates.set(node.id, next);
       const occPct = Math.round(defaultOccupancySchedule(simHourForZones) * 100);
+      const neighborTag = neighborTags.length > 0
+        ? ` · neighbors: ${neighborTags.join(', ')} (${neighborHeat_btu >= 0 ? '+' : ''}${neighborHeat_btu.toFixed(0)} BTU/hr)`
+        : '';
       physicsValueByNode.set(node.id, {
-        value: `${next.T_zone.toFixed(1)}°F · OAT ${oatForZones.toFixed(0)}°F · occ ${occPct}%`,
+        value: `${next.T_zone.toFixed(1)}°F · OAT ${oatForZones.toFixed(0)}°F · occ ${occPct}%${neighborTag}`,
         status: 'responded',
       });
     }
