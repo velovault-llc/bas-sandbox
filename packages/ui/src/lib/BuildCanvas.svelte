@@ -4350,7 +4350,11 @@
                  takes one input. -->
             <label
               class="sim-clock-input"
-              title="Wall-clock hour the sim starts at — used to test occupancy schedules"
+              title={running
+                ? 'Stop the sim to change the start hour'
+                : tick > 0
+                  ? 'Changing the start hour resets the sim and re-runs the warmup'
+                  : 'Wall-clock hour the sim starts at — drives occupancy schedules + solar gain'}
             >
               <span>start</span>
               <input
@@ -4358,8 +4362,17 @@
                 min="0"
                 max="23.5"
                 step="0.5"
-                bind:value={simStartHour}
-                disabled={running || tick > 0}
+                value={simStartHour}
+                onchange={(e) => {
+                  const v = Number((e.currentTarget as HTMLInputElement).value);
+                  if (Number.isFinite(v)) {
+                    simStartHour = Math.max(0, Math.min(23.5, v));
+                    // If the sim has already produced ticks, reset so the
+                    // new start hour actually takes effect on next Run.
+                    if (tick > 0 && !running) resetSim();
+                  }
+                }}
+                disabled={running}
               />
               <span class="ctrl-unit">h</span>
             </label>
