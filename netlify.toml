@@ -6,12 +6,26 @@
   NODE_VERSION = "22"
   PNPM_VERSION = "10"
 
-# SharedArrayBuffer + cross-origin isolation required for WASM sim threads (Phase 3+).
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Cross-Origin-Opener-Policy = "same-origin"
-    Cross-Origin-Embedder-Policy = "require-corp"
+# Cross-origin isolation headers are intentionally OFF for now.
+#
+# We set these originally for Phase 3 WASM sim threads (SharedArrayBuffer
+# needs cross-origin isolation), but they have a nasty side effect on the
+# local-LLM and OpenPLC integrations we're building in N.3a/b: COEP
+# `require-corp` makes the browser refuse to fetch any cross-origin
+# resource that doesn't explicitly set Cross-Origin-Resource-Policy
+# (Ollama, OpenPLC's Modbus shim, anything self-hosted on localhost).
+# That kills the entire local-bridge story.
+#
+# When we actually ship SharedArrayBuffer-dependent code (real CFD-lite
+# in a worker, multi-PLC parallel exec), restore these headers and proxy
+# the local bridges through a route on this origin that adds the CORP
+# header on the way out.
+#
+# [[headers]]
+#   for = "/*"
+#   [headers.values]
+#     Cross-Origin-Opener-Policy = "same-origin"
+#     Cross-Origin-Embedder-Policy = "require-corp"
 
 [[redirects]]
   from = "/*"
