@@ -1541,8 +1541,14 @@
 
     for (const node of nodes) {
       if (nodeKind(node) !== 'zone') continue;
-      const zData = node.data as { zoneState?: ZoneState };
-      const prev = zData.zoneState ?? initZoneState(DEFAULT_ZONE_CONFIG, oatForZones);
+      const zData = node.data as {
+        zoneState?: ZoneState;
+        zoneConfig?: Partial<typeof DEFAULT_ZONE_CONFIG>;
+      };
+      // Per-zone config — overrides default field-by-field so the
+      // inspector can edit just peak_occupants without touching volume.
+      const zoneConfig = { ...DEFAULT_ZONE_CONFIG, ...(zData.zoneConfig ?? {}) };
+      const prev = zData.zoneState ?? initZoneState(zoneConfig, oatForZones);
 
       // Sum heat from neighboring zones via shared-wall edges (zone↔zone).
       let neighborHeat_btu = 0;
@@ -1567,7 +1573,7 @@
       const coil = computeCoilHeatForZone(node);
 
       const totalSupplyHeat = neighborHeat_btu + coil.btu;
-      const next = stepZone(prev, DEFAULT_ZONE_CONFIG, {
+      const next = stepZone(prev, zoneConfig, {
         outsideTemp: oatForZones,
         hour: simHourForZones,
         occupancy_frac: defaultOccupancySchedule(simHourForZones),
@@ -2788,6 +2794,24 @@
     return selectedNode;
   });
 
+  const selectedZone = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'zone') return null;
+    return selectedNode;
+  });
+
+  /** Update a single zoneConfig field on the selected zone. Live — the
+   *  next sim tick picks it up. */
+  function updateZoneConfig(zoneId: string, field: string, value: number): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== zoneId) return n;
+      const data = n.data as { zoneConfig?: Record<string, number>; label?: string };
+      const cfg = { ...(data.zoneConfig ?? {}) };
+      cfg[field] = value;
+      return { ...n, data: { ...data, zoneConfig: cfg } };
+    });
+  }
+
   // Broadcast the selected controller's vendor to the Devices drawer so the
   // Expansions sub-tab can grey out incompatible modules.
   $effect(() => {
@@ -3856,6 +3880,100 @@
                   >Not wired to a controller — fault won't affect any sim yet.</span
                 >
               {/if}
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedZone}
+          {@const zCfg = {
+            ...DEFAULT_ZONE_CONFIG,
+            ...((selectedZone.data as { zoneConfig?: Partial<typeof DEFAULT_ZONE_CONFIG> }).zoneConfig ?? {}),
+          }}
+          {@const zState = (selectedZone.data as { zoneState?: ZoneState }).zoneState}
+          <Panel position="bottom-left">
+            <div class="zone-panel inspector-panel">
+              <div class="inspector-head">
+                <span class="sensor-title">Zone —</span>
+                <input
+                  class="rename-input"
+                  type="text"
+                  value={nodeLabel(selectedZone)}
+                  onblur={(e) => renameNode(selectedZone.id, (e.currentTarget as HTMLInputElement).value)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                    if (e.key === 'Escape') {
+                      (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedZone);
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  title="Rename this zone — e.g. ZONE-A, CONF-103, SERVER-RM"
+                  aria-label="Zone name"
+                />
+                <button
+                  type="button"
+                  class="inspector-delete"
+                  title="Delete this zone (also: select + press Delete or Backspace)"
+                  onclick={() => deleteNodeById(selectedZone.id)}
+                >
+                  ✕ Delete
+                </button>
+              </div>
+              {#if zState}
+                <div class="zone-state-row">
+                  <span class="muted">Live:</span>
+                  <strong>{zState.T_zone.toFixed(1)}°F</strong>
+                </div>
+              {/if}
+              <div class="zone-fields">
+                <label class="zone-field" title="Peak number of occupants when fully populated">
+                  <span>peak occupants</span>
+                  <input
+                    type="number" min="0" max="500" step="1"
+                    value={zCfg.peak_occupants}
+                    onchange={(e) => updateZoneConfig(selectedZone.id, 'peak_occupants', Number((e.currentTarget as HTMLInputElement).value))}
+                  />
+                </label>
+                <label class="zone-field" title="Floor area in square feet — drives sqft-based loads">
+                  <span>floor area (sqft)</span>
+                  <input
+                    type="number" min="50" max="50000" step="10"
+                    value={zCfg.floor_area_sqft}
+                    onchange={(e) => updateZoneConfig(selectedZone.id, 'floor_area_sqft', Number((e.currentTarget as HTMLInputElement).value))}
+                  />
+                </label>
+                <label class="zone-field" title="Lighting power density — ~0.5 LED, ~2.0 older fluorescent">
+                  <span>lighting W/sqft</span>
+                  <input
+                    type="number" min="0" max="10" step="0.1"
+                    value={zCfg.lighting_w_per_sqft}
+                    onchange={(e) => updateZoneConfig(selectedZone.id, 'lighting_w_per_sqft', Number((e.currentTarget as HTMLInputElement).value))}
+                  />
+                </label>
+                <label class="zone-field" title="Equipment / plug load — ~1.0 office, ~5+ server room">
+                  <span>equipment W/sqft</span>
+                  <input
+                    type="number" min="0" max="50" step="0.5"
+                    value={zCfg.equipment_w_per_sqft}
+                    onchange={(e) => updateZoneConfig(selectedZone.id, 'equipment_w_per_sqft', Number((e.currentTarget as HTMLInputElement).value))}
+                  />
+                </label>
+                <label class="zone-field" title="Exterior wall area in sqft — drives envelope loss/gain">
+                  <span>exterior wall sqft</span>
+                  <input
+                    type="number" min="0" max="10000" step="10"
+                    value={zCfg.exterior_wall_area_sqft}
+                    onchange={(e) => updateZoneConfig(selectedZone.id, 'exterior_wall_area_sqft', Number((e.currentTarget as HTMLInputElement).value))}
+                  />
+                </label>
+                <label class="zone-field" title="Thermal mass multiplier — 1 bare, 8 heavily furnished">
+                  <span>mass multiplier</span>
+                  <input
+                    type="number" min="1" max="20" step="0.5"
+                    value={zCfg.mass_multiplier}
+                    onchange={(e) => updateZoneConfig(selectedZone.id, 'mass_multiplier', Number((e.currentTarget as HTMLInputElement).value))}
+                  />
+                </label>
+              </div>
             </div>
           </Panel>
         {/if}
@@ -5907,6 +6025,47 @@
   .wire-chip:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+
+  .zone-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.45rem 0.7rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    min-width: 22rem;
+  }
+  .zone-state-row {
+    display: flex;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    align-items: baseline;
+  }
+  .zone-state-row strong { color: #16a085; }
+  .zone-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 0.7rem;
+  }
+  .zone-field {
+    display: grid;
+    grid-template-columns: auto 5.5rem;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+  }
+  .zone-field input {
+    background: color-mix(in srgb, Canvas 98%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    color: CanvasText;
+    padding: 0.15rem 0.3rem;
+    border-radius: 3px;
+    font: inherit;
+    font-size: 0.78rem;
+    text-align: right;
   }
 
   .sensor-panel {
