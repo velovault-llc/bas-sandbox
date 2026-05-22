@@ -723,6 +723,21 @@
   /** Sim seconds elapsed *since* the start hour, ticked alongside `tick`. */
   let simSecondsElapsed = $state(0);
   const TICK_MS = 1000;
+  /** Sim time multiplier. 1× = real time (1 sim-second per real-second);
+   *  5× = 5 sim-seconds per tick; 30× makes long thermal warmups bearable.
+   *  Persisted to localStorage so a deep-debug session doesn't lose it. */
+  let simSpeed = $state<number>(
+    typeof localStorage !== 'undefined'
+      ? Number(localStorage.getItem('bas-sandbox.sim-speed') ?? '1') || 1
+      : 1,
+  );
+  function setSimSpeed(v: number): void {
+    simSpeed = v;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('bas-sandbox.sim-speed', String(v));
+    }
+  }
+  const SIM_SPEED_OPTIONS = [1, 5, 30, 300] as const;
 
   // Per-target running state, keyed by controllerId.
   let runningSystems = $state.raw<Map<string, SingleZoneSystem>>(new Map());
@@ -862,7 +877,12 @@
     // Sim wall-clock advances by `dt` sim-seconds per tick. We mirror the
     // running systems' internal counter at the canvas level so the clock
     // readout works whether or not any target is wired.
-    const dtSeconds = runningSnapshot[0]?.config.dt ?? DEFAULT_CONFIG.dt;
+    // Apply sim-speed multiplier to the effective tick step so 1× = real-time,
+    // 30× compresses 30 sim-seconds into one wall-second of computation. The
+    // multiplier flows through to actuator stroke, plant ramp, zone drift —
+    // everything scales together.
+    const baseDt = runningSnapshot[0]?.config.dt ?? DEFAULT_CONFIG.dt;
+    const dtSeconds = baseDt * simSpeed;
     simSecondsElapsed += dtSeconds;
 
     // Weather drive: when active, advance the weather playback clock by the
@@ -1548,6 +1568,53 @@
         value: `${next.T_zone.toFixed(1)}°F · OAT ${oatForZones.toFixed(0)}°F · occ ${occPct}%${coilTag}${neighborTag}`,
         status: 'responded',
       });
+    }
+
+    // ── Yoke sensor T_sensed to the linked zone ───────────────────────
+    // When a sensor is wired to a controller whose actuators feed
+    // equipment that serves a zone, the sensor PHYSICALLY sits IN that
+    // zone and should read its T_zone. Without this, the controller-paired
+    // SingleZoneSystem runs its own thermal model in isolation — leaving
+    // ZN-T at setpoint while ZONE-1 keeps drifting because the same
+    // actuator command means "cooling" in the old sim and "heating" via
+    // the role binding in the zone sim. Override T_sensed each tick so
+    // the controller program reacts to actual zone reality.
+    for (const target of runningSnapshot) {
+      const sample = sampleByCtrl.get(target.controllerId);
+      if (!sample) continue;
+      // Walk controller → actuator → equipment → zone to find the linked zone.
+      let linkedZoneId: string | null = null;
+      for (const e1 of edges) {
+        if (e1.source !== target.controllerId) continue;
+        const actN = nodes.find((n) => n.id === e1.target);
+        if (!actN || nodeKind(actN) !== 'actuator') continue;
+        for (const e2 of edges) {
+          if (e2.source !== actN.id) continue;
+          const eqN = nodes.find((n) => n.id === e2.target);
+          if (!eqN || nodeKind(eqN) !== 'equipment') continue;
+          for (const e3 of edges) {
+            if (e3.source !== eqN.id) continue;
+            const zN = nodes.find((n) => n.id === e3.target);
+            if (!zN || nodeKind(zN) !== 'zone') continue;
+            linkedZoneId = zN.id;
+            break;
+          }
+          if (linkedZoneId) break;
+        }
+        if (linkedZoneId) break;
+      }
+      if (!linkedZoneId) continue;
+      const zState = zoneStateUpdates.get(linkedZoneId);
+      if (!zState) continue;
+      // Override sample for display this tick, AND sys.T_sensed so the
+      // next program run sees the corrected value.
+      const sys = systems.get(target.controllerId);
+      (sample as { T_sensed: number; T_zone: number }).T_sensed = zState.T_zone;
+      (sample as { T_zone: number }).T_zone = zState.T_zone;
+      if (sys) {
+        (sys as unknown as { T_sensed: number; T_zone: number }).T_sensed = zState.T_zone;
+        (sys as unknown as { T_zone: number }).T_zone = zState.T_zone;
+      }
     }
 
     nodes = nodes.map((n) => {
@@ -4384,6 +4451,18 @@
                 sim {h.toString().padStart(2, '0')}:{m.toString().padStart(2, '0')}
               </span>
             {/if}
+            <span
+              class="sim-speed"
+              title="Sim time multiplier — 30× and 300× speed through long thermal warmups. Affects actuator stroke, plant ramp, and zone drift uniformly."
+            >
+              {#each SIM_SPEED_OPTIONS as opt (opt)}
+                <button
+                  type="button"
+                  class:active={simSpeed === opt}
+                  onclick={() => setSimSpeed(opt)}
+                >{opt}×</button>
+              {/each}
+            </span>
             {#if nodes.length > 0}
               <span class="status-divider"></span>
               <span class="status-pill ok" title="Reachable from a supervisor"
@@ -5373,6 +5452,26 @@
     color: #4a9eff;
     border: 1px solid color-mix(in srgb, #4a9eff 35%, transparent);
     white-space: nowrap;
+  }
+
+  .sim-speed { display: inline-flex; gap: 0.1rem; }
+  .sim-speed button {
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    padding: 0.1rem 0.4rem;
+    font-size: 0.7rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.7rem;
+  }
+  .sim-speed button:hover { color: CanvasText; }
+  .sim-speed button.active {
+    background: color-mix(in srgb, #16a085 22%, transparent);
+    border-color: #16a085;
+    color: #16a085;
+    font-weight: 600;
   }
 
   .status-divider {
