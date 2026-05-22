@@ -73,11 +73,15 @@ export function compileSpecLang(program: SpecProgram, bindings?: ControllerBindi
     // overrides, extreme values, extra tiles ignored, etc.)
     if (result.warnings) ruleWarnings.push(...result.warnings);
     // Point-binding warnings: collect any subject/actuator tile referenced
-    // by this rule whose role isn't bound to a physical terminal.
+    // by this rule whose role isn't bound to a physical terminal. Skip
+    // INTERNAL subjects (setpoints, schedules) — those are config values,
+    // not physical points, so binding doesn't apply.
     if (boundRoles) {
       const unbound: string[] = [];
       for (const t of rule.tiles) {
         if (t.kind === 'subject' || t.kind === 'actuator') {
+          const tpl = findTileTemplate(t.token);
+          if (tpl?.internal) continue; // setpoints etc. don't need a physical binding
           if (!boundRoles.has(t.token)) {
             unbound.push(t.display);
           }

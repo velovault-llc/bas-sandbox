@@ -80,8 +80,13 @@
 
   // Role catalogs — derived from the tile palette so adding a new subject
   // tile automatically exposes it as an assignable role.
+  // Skip internal subjects (setpoints, schedules) — they're controller
+  // config values, not physical inputs, so they shouldn't appear in the
+  // Point Assignment role dropdowns.
   const subjectRoles = $derived(
-    (palette.get('subject') ?? []).map((t) => ({ token: t.token, display: t.display, description: t.description })),
+    (palette.get('subject') ?? [])
+      .filter((t) => !t.internal)
+      .map((t) => ({ token: t.token, display: t.display, description: t.description })),
   );
   const actuatorRoles = $derived(
     (palette.get('actuator') ?? []).map((t) => ({ token: t.token, display: t.display, description: t.description })),
@@ -267,9 +272,20 @@
   }
 
   /** Push the assembled program to the controller's live runtime. */
+  let deployToast = $state<{ msg: string; at: number } | null>(null);
   function deployToController(): void {
     if (!ctrlId) return;
-    setProgramSpec(ctrlId, { rules });
+    const prog = setProgramSpec(ctrlId, { rules });
+    const errBits = prog.error ? ` (compile error: ${prog.error})` : '';
+    const okBits = `${rules.length} rule${rules.length === 1 ? '' : 's'} · ${ctrlLabel}`;
+    deployToast = {
+      msg: prog.compiled ? `✓ Downloaded — ${okBits}` : `⚠ Stored but not running — ${okBits}${errBits}`,
+      at: Date.now(),
+    };
+    // Auto-hide after 4 seconds.
+    setTimeout(() => {
+      if (deployToast && Date.now() - deployToast.at >= 3900) deployToast = null;
+    }, 4000);
   }
 
 
@@ -318,6 +334,12 @@
         </button>
       </div>
     </header>
+
+    {#if deployToast}
+      <div class="deploy-toast" class:err={deployToast.msg.startsWith('⚠')}>
+        {deployToast.msg}
+      </div>
+    {/if}
 
     {#if showPoints}
       <section class="points-panel" aria-label="Point assignments">
@@ -769,6 +791,27 @@
     cursor: pointer;
   }
   .role-select:focus { outline: 1px solid #27ae60; outline-offset: 1px; }
+
+  .deploy-toast {
+    padding: 0.45rem 0.9rem;
+    background: color-mix(in srgb, #16a085 18%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, #16a085 50%, transparent);
+    color: #16a085;
+    font-size: 0.82rem;
+    font-weight: 500;
+    animation: toast-fade 4s ease forwards;
+  }
+  .deploy-toast.err {
+    background: color-mix(in srgb, #e67e22 18%, transparent);
+    border-bottom-color: color-mix(in srgb, #e67e22 50%, transparent);
+    color: #e67e22;
+  }
+  @keyframes toast-fade {
+    0% { opacity: 0; transform: translateY(-4px); }
+    8% { opacity: 1; transform: translateY(0); }
+    85% { opacity: 1; }
+    100% { opacity: 0; }
+  }
   .rule-delete {
     background: transparent; border: none; cursor: pointer;
     color: color-mix(in srgb, CanvasText 50%, transparent);

@@ -82,6 +82,12 @@ export interface TileTemplate {
   /** For SUBJECT / ACTUATOR tiles: the env input key the compiler
    *  references. Eg 'sensed' for zone temp, 'occ' for occupancy. */
   readonly envKey?: string;
+  /** True for SUBJECT tiles that represent controller-internal values
+   *  (setpoints, schedules, calculated values) rather than physical
+   *  inputs. The Point Assignment validator skips these — you can't
+   *  bind "cooling setpoint" to a UI terminal because it's not a
+   *  physical signal. */
+  readonly internal?: boolean;
   /** Default value for VALUE tiles. */
   readonly defaultNumeric?: number;
   readonly defaultUnits?: string;

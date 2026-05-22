@@ -1059,8 +1059,19 @@
     for (const target of runningSnapshot) {
       const sample = sampleByCtrl.get(target.controllerId);
       if (!sample) continue;
+      // Label the controller output with the active program source so the
+      // user can tell at a glance whether they're watching the default PI
+      // loop or the program they just downloaded. "(PI)" used to be
+      // hardcoded — misleading once any user program took over.
+      const userProgramAtCtrl = programStore.byId[target.controllerId];
+      let progSource = 'PI';
+      if (userProgramAtCtrl?.compiled) {
+        if (userProgramAtCtrl.specProgram) progSource = 'SpecLang';
+        else if (userProgramAtCtrl.fbdGraph) progSource = 'FBD';
+        else if (userProgramAtCtrl.source) progSource = 'ST';
+      }
       physicsValueByNode.set(target.controllerId, {
-        value: `Out ${Math.round(sample.actuator * 100)}% (PI)`,
+        value: `Out ${Math.round(sample.actuator * 100)}% (${progSource})`,
         status: 'polling',
       });
       // Sensor node displays what the SENSOR reports — not the true zone.
