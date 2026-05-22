@@ -20,6 +20,10 @@ type SpecNode = {
   label: string;
   x: number;
   y: number;
+  /** Force a specific MS/TP MAC on this device (overrides auto-assignment).
+   *  Use this to bake in a deliberate duplicate-MAC fault, or to mirror
+   *  the dip-switch settings of a real-world FEC. */
+  forcedMac?: number;
   /** Extra fields slipped onto data (fault, signal, alarm thresholds, etc.). */
   data?: Record<string, unknown>;
 };
@@ -51,7 +55,12 @@ function buildScenario(spec: ScenarioSpec): BasScenarioV1 {
     id: n.id,
     type: 'bas',
     position: { x: n.x, y: n.y },
-    data: { kind: n.kind, label: n.label, ...(n.data ?? {}) },
+    data: {
+      kind: n.kind,
+      label: n.label,
+      ...(n.forcedMac !== undefined ? { forcedMac: n.forcedMac } : {}),
+      ...(n.data ?? {}),
+    },
   }));
   const edges: Edge[] = spec.edges.map((e, idx) => ({
     id: `de-${idx}-${e.source}-${e.target}`,
@@ -293,6 +302,54 @@ export const DEMOS: readonly Demo[] = [
         },
       ],
       focused: 'vav',
+    }),
+  },
+
+  {
+    id: 'mstp-commissioning',
+    name: 'MS/TP commissioning fault',
+    blurb:
+      '1 NAE + 4 FECs on one BACnet MS/TP trunk — but VAV-103 and VAV-104 ship with dip switches both set to MAC 5. Open the trunk inspector to spot the duplicate.',
+    scenario: buildScenario({
+      nodes: [
+        { id: 'sup', kind: 'supervisor', label: 'NAE-X', x: 420, y: 40 },
+        // FECs daisy-chained off the supervisor on one MS/TP trunk.
+        // First three get clean MACs; last two share MAC 5 — the bug
+        // a tech would otherwise spend an hour chasing in the field.
+        { id: 'fec1', kind: 'controller', label: 'VAV-101', x: 140, y: 220, forcedMac: 1 },
+        { id: 'fec2', kind: 'controller', label: 'VAV-102', x: 280, y: 220, forcedMac: 2 },
+        { id: 'fec3', kind: 'controller', label: 'VAV-103', x: 420, y: 220, forcedMac: 5 },
+        { id: 'fec4', kind: 'controller', label: 'VAV-104', x: 560, y: 220, forcedMac: 5 },
+        { id: 'fec5', kind: 'controller', label: 'VAV-105', x: 700, y: 220, forcedMac: 7 },
+        {
+          id: 's1',
+          kind: 'sensor',
+          label: 'ZN-101',
+          x: 140,
+          y: 400,
+          data: { signal: 'rtd-pt1000' },
+        },
+      ],
+      edges: [
+        // Bus topology: NAE → FEC1 → FEC2 → … last FEC, modeled as a
+        // chain of MS/TP edges (BFS will collapse them into one trunk).
+        { source: 'sup', target: 'fec1', wireKind: 'mstp', baud: 38400 },
+        { source: 'fec1', target: 'fec2', wireKind: 'mstp', baud: 38400 },
+        { source: 'fec2', target: 'fec3', wireKind: 'mstp', baud: 38400 },
+        { source: 'fec3', target: 'fec4', wireKind: 'mstp', baud: 38400 },
+        { source: 'fec4', target: 'fec5', wireKind: 'mstp', baud: 38400 },
+        // One sensor wired to one VAV so the canvas has at least one
+        // closed-loop target the sim can run.
+        { source: 'fec1', target: 's1', wireKind: 'hardwired' },
+      ],
+      wires: [
+        {
+          controllerId: 'fec1',
+          sensorId: 's1',
+          config: { initialZone: 75, setpoint: 72, outdoorAir: 88 },
+        },
+      ],
+      focused: 'fec1',
     }),
   },
 

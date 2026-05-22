@@ -1694,10 +1694,17 @@
           .filter((n): n is NonNullable<typeof n> => !!n)
           .sort((a, b) => (nodeLabel(a) || a.id).localeCompare(nodeLabel(b) || b.id))
           .map((n, idx) => {
-            const mac = nodeKind(n) === 'supervisor' ? 0 : idx + 1;
+            // `forcedMac` from node data wins over auto-assignment —
+            // lets scenarios bake in a deliberate duplicate-MAC fault,
+            // and (later) lets the user explicitly set dip-switch
+            // addresses on each device. When unset, supervisors get
+            // MAC 0 and everyone else gets a sequential MAC.
+            const forcedMac = (n.data as { forcedMac?: number } | undefined)?.forcedMac;
+            const mac = typeof forcedMac === 'number'
+              ? forcedMac
+              : (nodeKind(n) === 'supervisor' ? 0 : idx + 1);
             return {
               nodeId: n.id,
-              // Supervisors get MAC 0, others get sequential MACs (1-127).
               mac,
               label: nodeLabel(n) || n.id,
               // Network-wide BACnet Device Instance — distinct from MAC,
