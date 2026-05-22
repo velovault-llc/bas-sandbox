@@ -28,6 +28,9 @@ export const TILE_CATALOG: readonly TileTemplate[] = [
   { kind: 'subject', token: 'damper-position',   display: 'damper position',   description: 'Damper feedback (0-100%).',                      envKey: 'damper' },
   { kind: 'subject', token: 'cooling-setpoint',  display: 'cooling setpoint',  description: 'Active cooling setpoint (°F) — internal config from the TUNE panel, not a physical input.', envKey: 'setpoint',   internal: true },
   { kind: 'subject', token: 'heating-setpoint',  display: 'heating setpoint',  description: 'Active heating setpoint (°F) — internal config from the TUNE panel, not a physical input.', envKey: 'heating_sp', internal: true },
+  // Seasonal flags — derived from OAT. 1 = in season, 0 = out of season.
+  { kind: 'subject', token: 'heating-season',    display: 'heating season',    description: 'Heating season active (1 when OAT < changeover, else 0). Use to gate boiler operation.', envKey: 'heating_season', internal: true },
+  { kind: 'subject', token: 'cooling-season',    display: 'cooling season',    description: 'Cooling season active (1 when OAT > changeover, else 0). Use to gate chiller operation.', envKey: 'cooling_season', internal: true },
   { kind: 'subject', token: 'co2',               display: 'CO2',               description: 'Zone CO2 concentration (ppm).',                  envKey: 'co2' },
   { kind: 'subject', token: 'humidity',          display: 'humidity',          description: 'Zone relative humidity (% RH).',                 envKey: 'rh' },
   { kind: 'subject', token: 'airflow',           display: 'airflow',           description: 'Supply airflow (CFM).',                          envKey: 'cfm' },

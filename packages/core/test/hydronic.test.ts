@@ -75,6 +75,35 @@ describe('Chilled-water loop physics', () => {
   });
 });
 
+describe('OA lockout', () => {
+  it('boiler locks out above 65°F changeover', () => {
+    let s = initLoopState(HW_LOOP_DEFAULTS, 70);
+    // Full firing command, hot summer outside.
+    for (let i = 0; i < 60; i++) {
+      s = stepLoop(s, HW_LOOP_DEFAULTS, { plantCommand: 1, pumpCommand: 1, loadCommand: 0, outsideTemp: 88 }, 5);
+    }
+    // Should NOT have warmed up — lockout overrides the command.
+    expect(s.T_supply).toBeLessThan(110);
+  });
+
+  it('boiler fires normally below 65°F', () => {
+    let s = initLoopState(HW_LOOP_DEFAULTS, 70);
+    for (let i = 0; i < 60; i++) {
+      s = stepLoop(s, HW_LOOP_DEFAULTS, { plantCommand: 1, pumpCommand: 1, loadCommand: 0, outsideTemp: 40 }, 5);
+    }
+    expect(s.T_supply).toBeGreaterThan(100);
+  });
+
+  it('chiller has no built-in lockout (runs year-round)', () => {
+    let s = initLoopState(CHW_LOOP_DEFAULTS, 70);
+    // Winter morning — chiller should still cool if commanded.
+    for (let i = 0; i < 60; i++) {
+      s = stepLoop(s, CHW_LOOP_DEFAULTS, { plantCommand: 1, pumpCommand: 1, loadCommand: 0, outsideTemp: 35 }, 5);
+    }
+    expect(s.T_supply).toBeLessThan(70);
+  });
+});
+
 describe('Loop ΔT scales with load', () => {
   const cfg = HW_LOOP_DEFAULTS;
 

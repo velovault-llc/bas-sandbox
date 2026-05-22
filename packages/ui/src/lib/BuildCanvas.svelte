@@ -47,6 +47,7 @@
     computeSensorReading,
     stepLoop,
     initLoopState,
+    computeOaLockout,
     HW_LOOP_DEFAULTS,
     CHW_LOOP_DEFAULTS,
     stepZone,
@@ -1038,6 +1039,13 @@
           });
           secondaryInputs[reading.inputKey] = reading.value;
         }
+
+        // Seasonal flags — derived from OAT vs changeover (65°F default).
+        // Programs can gate plant-side rules on these.
+        const CHANGEOVER = 65;
+        secondaryInputs['heating_season'] = sample.T_OA < CHANGEOVER ? 1 : 0;
+        secondaryInputs['cooling_season'] = sample.T_OA > CHANGEOVER ? 1 : 0;
+
         // Position feedback: walk actuator → controller edges. When an
         // actuator with hasPositionFeedback wires its output (net-out)
         // back to a controller UI/AI input, the controller's bound role
@@ -1416,9 +1424,19 @@
       const loadTag = detectedLoad > 0
         ? ` · load ${loadPct}% (coils)`
         : (loadCommand > 0 ? ` · load ${loadPct}% (idle)` : '');
+      // OA lockout: when active, the plant won't fire regardless of
+      // command. Surface this state up-front so the user can see WHY
+      // their boiler isn't running in July.
+      const loopKind = isHotPlant ? 'hot-water' as const
+        : isCoolPlant ? 'chilled-water' as const
+        : 'condenser-water' as const;
+      const lockout = computeOaLockout(loopKind, oat);
+      const lockoutTag = lockout?.active
+        ? ` · ⚠ LOCKOUT (OAT ${oat.toFixed(0)}°F ${lockout.direction} ${lockout.threshold}°F)`
+        : '';
       const prefix = isHotPlant ? 'HWS/HWR' : isCoolPlant ? 'CHWS/CHWR' : 'CWS/CWR';
       physicsValueByNode.set(node.id, {
-        value: `${prefix} ${supply}/${ret}°F · ΔT ${dT}°F · ${flow} GPM${loadTag}${drivers}`,
+        value: `${prefix} ${supply}/${ret}°F · ΔT ${dT}°F · ${flow} GPM${lockoutTag}${loadTag}${drivers}`,
         status: 'responded',
       });
     }

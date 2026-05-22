@@ -68,6 +68,38 @@ export interface LoopInputs {
   readonly outsideTemp: number;
 }
 
+/** OA lockout state — most commercial boilers / cooling towers have a
+ *  hardware changeover switch that disables firing when ambient is out
+ *  of season. Independent of BAS control. */
+export interface OaLockout {
+  /** True = plant is locked out and won't fire regardless of command. */
+  readonly active: boolean;
+  /** OAT threshold the lockout decision was based on (°F). */
+  readonly threshold: number;
+  /** Direction: 'above' = lockout when OAT > threshold (boiler in summer);
+   *  'below' = lockout when OAT < threshold (tower in winter). */
+  readonly direction: 'above' | 'below';
+}
+
+/** Compute OA lockout for a plant given its config and current OAT.
+ *  Returns null when the plant has no built-in lockout (e.g., chillers,
+ *  which run year-round in commercial buildings with internal IT loads). */
+export function computeOaLockout(
+  kind: LoopKind,
+  oaTemp: number,
+): OaLockout | null {
+  if (kind === 'hot-water') {
+    // Boilers lock out above changeover — default 65°F.
+    return { active: oaTemp > 65, threshold: 65, direction: 'above' };
+  }
+  if (kind === 'condenser-water') {
+    // Cooling towers lock out below ~50°F (freeze risk + basin care).
+    return { active: oaTemp < 50, threshold: 50, direction: 'below' };
+  }
+  // Chillers run year-round — no built-in lockout.
+  return null;
+}
+
 /**
  * Advance a hydronic loop by `dt` seconds. Pure function — no side
  * effects, deterministic. The caller carries `state` across ticks.
@@ -83,9 +115,15 @@ export function stepLoop(
   // infinity in the formula below, so clamp to a small idle flow.
   const flow_gpm = Math.max(0.5, inputs.pumpCommand * config.designFlowGpm);
 
+  // Honor OA lockout: hardware-level disable independent of BAS command.
+  // Boiler in summer + cooling tower in winter = zero firing regardless
+  // of what the program writes.
+  const lockout = computeOaLockout(config.kind, inputs.outsideTemp);
+  const effectivePlantCmd = lockout?.active ? 0 : inputs.plantCommand;
+
   // Heat being added (HW) or removed (CHW) by the plant this tick.
   // BTU/hr at the plant heat exchanger.
-  const plant_btu = inputs.plantCommand * config.capacityBtu * (isCooling ? -1 : 1);
+  const plant_btu = effectivePlantCmd * config.capacityBtu * (isCooling ? -1 : 1);
 
   // Load draw. HW: loads pull heat OUT (cooling the return water).
   //            CHW: loads dump heat IN (warming the return water).
