@@ -11,6 +11,7 @@
   // via per-tile ✕. Value tiles get a small inline number input so the
   // user can set 72°F / 20% / 800 ppm etc.
 
+  import { onMount } from 'svelte';
   import {
     tileCatalogByKind,
     compileSpecLang,
@@ -25,6 +26,19 @@
     closeSpecLang,
     setProgramSpec,
   } from '../cli/programStore.svelte';
+
+  // Escape-key closer — guarantees a recovery path even if the ✕ button
+  // is somehow blocked by an overlapping element.
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && programStore.activeSpecLangControllerId) {
+        console.log('[SpecLang] Escape pressed — closing');
+        closeSpecLang();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const palette = tileCatalogByKind();
   const CATEGORY_ORDER: TileKind[] = ['trigger', 'action', 'subject', 'actuator', 'operator', 'value', 'literal'];
@@ -125,6 +139,17 @@
     setProgramSpec(ctrlId, { rules });
   }
 
+  // ── debug instrumentation (remove once click-blocking is resolved) ──
+  function debugCloseClick(): void {
+    console.log('[SpecLang] close button clicked — calling closeSpecLang');
+    closeSpecLang();
+    console.log('[SpecLang] after closeSpecLang, activeId =', programStore.activeSpecLangControllerId);
+  }
+  function debugPaletteClick(t: TileTemplate): void {
+    console.log('[SpecLang] palette tile clicked:', t.token, 'activeRule:', activeRuleId);
+    appendTile(t);
+  }
+
   function renderTileLabel(tile: Tile): string {
     if (tile.kind === 'value') {
       return `${tile.numericValue ?? 0} ${tile.units ?? ''}`.trim();
@@ -134,6 +159,21 @@
 </script>
 
 {#if ctrlId}
+  <div
+    class="speclang-backdrop"
+    role="presentation"
+    onclick={(e) => {
+      // Click on the backdrop (but not inside the overlay) → close
+      if (e.target === e.currentTarget) {
+        console.log('[SpecLang] backdrop clicked — closing');
+        closeSpecLang();
+      }
+    }}
+    onkeydown={(e) => {
+      if (e.key === 'Escape') closeSpecLang();
+    }}
+    tabindex="-1"
+  >
   <div class="speclang-overlay" role="dialog" aria-label="SpecLang plain-English editor">
     <header class="head">
       <div class="head-title">
@@ -148,7 +188,7 @@
         <button type="button" class="deploy" onclick={deployToController} disabled={!compileResult.ok} title={compileResult.ok ? 'Push this program to the controller runtime' : 'Fix the rule errors first'}>
           ⤓ Download to controller
         </button>
-        <button type="button" class="close" onclick={closeSpecLang} title="Close editor (program kept)">
+        <button type="button" class="close" onclick={debugCloseClick} title="Close editor (program kept)">
           ✕
         </button>
       </div>
@@ -167,7 +207,7 @@
                     type="button"
                     class="tile pal kind-{kind}"
                     title={t.description}
-                    onclick={() => appendTile(t)}
+                    onclick={() => debugPaletteClick(t)}
                   >
                     {t.display}
                   </button>
@@ -258,13 +298,23 @@
       {/if}
     </div>
   </div>
+  </div>
 {/if}
 
 <style>
+  .speclang-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 1rem;
+  }
   .speclang-overlay {
-    position: absolute;
-    inset: 1rem;
-    z-index: 70;
+    position: relative;
+    flex: 1;
     background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
     border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
     border-radius: 10px;
