@@ -869,6 +869,10 @@
     // Step every wired system. Build a fast lookup from controllerId → latest sample
     // so the node-runtime pass below can resolve in O(1).
     const sampleByCtrl = new Map<string, Sample>();
+    // Capture the full env.outputs per controller after running its program,
+    // so the actuator-dynamics loop can route each actuator's commanded
+    // value based on its bound role (rather than always using sample.actuator).
+    const programOutputsByCtrl = new Map<string, Record<string, number>>();
     const samples = runningSamples;
     const systems = runningSystems;
     // Recompute offline status each tick. If a target's controller OR sensor
@@ -963,6 +967,33 @@
           });
           secondaryInputs[reading.inputKey] = reading.value;
         }
+        // Position feedback: walk actuator → controller edges. When an
+        // actuator with hasPositionFeedback wires its output (net-out)
+        // back to a controller UI/AI input, the controller's bound role
+        // for that target terminal receives the actuator's *actual*
+        // position (lagged by stroke time). This closes the control loop
+        // — programs that read "damper position" get the post-stroke
+        // value, not the just-commanded value.
+        for (const edge of edges) {
+          if (edge.target !== target.controllerId) continue;
+          const upstream = nodes.find((n) => n.id === edge.source);
+          if (!upstream || nodeKind(upstream) !== 'actuator') continue;
+          const actState = (upstream.data as { actuatorState?: { actual: number } } | undefined)
+            ?.actuatorState;
+          if (!actState) continue;
+          // Look up the role bound to the target terminal (controller's UI/AI).
+          const tgtCtrlProgram = programStore.byId[target.controllerId];
+          const fbBinding = edge.targetHandle
+            ? tgtCtrlProgram?.bindings?.bindings.find((b) => b.terminalId === edge.targetHandle)
+            : undefined;
+          const fbRoleTpl = fbBinding ? findTileTemplate(fbBinding.role) : undefined;
+          const fbKey = fbRoleTpl?.envKey;
+          if (!fbKey) continue;
+          // Damper/valve feedback comes in as percent (0-100) to match the
+          // damper-position SUBJECT tile's convention; the actuator state
+          // is 0-1, so scale.
+          secondaryInputs[fbKey] = actState.actual * 100;
+        }
         // Inputs are read-only from the program's perspective. `actuator`
         // is exposed via the separate read-only name `pi_out` so users can
         // see what PI commanded this tick without colliding with the
@@ -995,6 +1026,13 @@
             (target.config as { setpoint: number }).setpoint = env.outputs.setpoint;
             (sample as { setpoint: number }).setpoint = env.outputs.setpoint;
           }
+          // Snapshot env.outputs so the actuator-dynamics loop can pull
+          // the right value per role (reheat / fan / cool_valve / etc).
+          const snap: Record<string, number> = {};
+          for (const [k, v] of Object.entries(env.outputs)) {
+            if (typeof v === 'number' && Number.isFinite(v)) snap[k] = v;
+          }
+          programOutputsByCtrl.set(target.controllerId, snap);
           // Clear any prior runtime error
           userProgram.error = null;
         } catch (err) {
@@ -1099,10 +1137,20 @@
       const sample = sampleByCtrl.get(srcN.id);
       if (!sample) continue;
 
-      // First-cut routing: the controller's primary `actuator` output drives
-      // every wired actuator. Multi-actuator routing via the Point Assignment
-      // bindings is the next iteration (Session 4).
-      const commanded = Math.max(0, Math.min(1, sample.actuator));
+      // Multi-actuator routing: look up the binding for the source terminal
+      // (the controller's AO-N / BO-N). If bound to a role, use that role's
+      // envKey to pull the commanded value from the program's outputs.
+      // Falls back to sample.actuator (the primary command) when no binding
+      // exists — so a generic single-output controller still works.
+      const srcCtrlProgram = programStore.byId[srcN.id];
+      const srcOutputs = programOutputsByCtrl.get(srcN.id) ?? {};
+      const srcBinding = edge.sourceHandle
+        ? srcCtrlProgram?.bindings?.bindings.find((b) => b.terminalId === edge.sourceHandle)
+        : undefined;
+      const srcRoleTpl = srcBinding ? findTileTemplate(srcBinding.role) : undefined;
+      const routedKey = srcRoleTpl?.envKey;
+      const routedValue = routedKey && routedKey in srcOutputs ? srcOutputs[routedKey] : undefined;
+      const commanded = Math.max(0, Math.min(1, routedValue ?? sample.actuator));
 
       const tgtData = tgtN.data as { actuatorState?: { actual: number }; actuatorModelId?: string };
       const prevActual = tgtData.actuatorState?.actual ?? 0;
@@ -1130,13 +1178,8 @@
       const srcTerminal = edge.sourceHandle && edge.sourceHandle !== 'net-in' && edge.sourceHandle !== 'net-out'
         ? edge.sourceHandle
         : null;
-      const ctrlProgram = programStore.byId[srcN.id];
-      const binding = srcTerminal
-        ? ctrlProgram?.bindings?.bindings.find((b) => b.terminalId === srcTerminal)
-        : undefined;
-      const roleTpl = binding ? findTileTemplate(binding.role) : undefined;
       const roleSuffix = srcTerminal
-        ? ` · ${srcTerminal}${roleTpl ? ` → ${roleTpl.display}` : ' → (unbound role)'}`
+        ? ` · ${srcTerminal}${srcRoleTpl ? ` → ${srcRoleTpl.display}` : ' → (unbound role)'}`
         : '';
       const positionStr = slewing ? `${pct}% (cmd ${cmdPct}% ↑)` : `${pct}%`;
       physicsValueByNode.set(tgtN.id, {
@@ -1989,15 +2032,22 @@
     let resolvedSourceHandle = connection.sourceHandle ?? undefined;
     let resolvedTargetHandle = connection.targetHandle ?? undefined;
 
-    // Case: sensor/safety → controller. Target is the controller's input terminal.
-    if ((srcKind === 'sensor' || srcKind === 'safety') && tgtKind === 'controller') {
+    // Case: sensor/safety/actuator → controller. Target is the controller's
+    // input terminal. Sensor / safety are pure inputs. Actuator → controller
+    // is the position-feedback path (an AF24-MFT's 2-10V feedback line wires
+    // from the actuator back to a UI/AI on the controller) — same auto-shift
+    // semantics as sensors.
+    if ((srcKind === 'sensor' || srcKind === 'safety' || srcKind === 'actuator') && tgtKind === 'controller') {
       const tgtTermKind = termKindOf(resolvedTargetHandle);
       const targetIsOutput = !!tgtTermKind && OUTPUTS.has(tgtTermKind as 'UO' | 'AO' | 'BO');
       const targetIsTaken = !!resolvedTargetHandle && edges.some(
         (e) => e.target === tgt.id && e.targetHandle === resolvedTargetHandle,
       );
       if (targetIsOutput || targetIsTaken || !isTerminal(resolvedTargetHandle)) {
-        const next = nextFreeTerminal(tgt, preferredInputKinds(srcKind), 'target');
+        // For actuator feedback we want analog inputs first (AI/UI) since
+        // position feedback is typically 2-10V or 4-20mA.
+        const prefKinds = srcKind === 'actuator' ? (['AI', 'UI'] as const) : preferredInputKinds(srcKind);
+        const next = nextFreeTerminal(tgt, prefKinds, 'target');
         if (next) {
           resolvedTargetHandle = next;
         } else {
