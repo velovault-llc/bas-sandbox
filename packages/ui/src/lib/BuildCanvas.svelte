@@ -964,6 +964,40 @@
           const senModelId = (senNode.data as { sensorModelId?: string } | undefined)?.sensorModelId;
           const senModel = senModelId ? findSensorModel(senModelId) : undefined;
           if (!senModel) continue;
+
+          // Plant-sensor override: if the controller binds this sensor's
+          // target terminal to a plant-temp role (hw-supply-temp etc.),
+          // AND the sensor is wired upstream from a boiler/chiller/tower,
+          // read the actual loop temp directly. This is how an immersion
+          // sensor stuck in the boiler header reports HWS to the program.
+          const ctrlProg = programStore.byId[target.controllerId];
+          const tgtBinding = edge.targetHandle
+            ? ctrlProg?.bindings?.bindings.find((b) => b.terminalId === edge.targetHandle)
+            : undefined;
+          let plantTempValue: number | null = null;
+          if (tgtBinding) {
+            // Find equipment → sensor edge feeding THIS sensor.
+            for (const upstream of edges) {
+              if (upstream.target !== senNode.id) continue;
+              const eq = nodes.find((n) => n.id === upstream.source);
+              if (!eq || nodeKind(eq) !== 'equipment') continue;
+              const loopState = (eq.data as { loopState?: { T_supply: number; T_return: number } })?.loopState;
+              if (!loopState) continue;
+              if (tgtBinding.role === 'hw-supply-temp' || tgtBinding.role === 'chw-supply-temp') {
+                plantTempValue = loopState.T_supply;
+              } else if (tgtBinding.role === 'hw-return-temp' || tgtBinding.role === 'chw-return-temp') {
+                plantTempValue = loopState.T_return;
+              }
+            }
+          }
+          if (plantTempValue !== null && tgtBinding) {
+            const roleTpl = findTileTemplate(tgtBinding.role);
+            if (roleTpl?.envKey) {
+              secondaryInputs[roleTpl.envKey] = plantTempValue;
+              continue; // skip the generic per-subject reading
+            }
+          }
+
           const reading = computeSensorReading(senModel.subject, {
             hour: simHour,
             actuator: sample.actuator,

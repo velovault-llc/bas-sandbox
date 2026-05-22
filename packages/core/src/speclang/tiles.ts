@@ -31,6 +31,12 @@ export const TILE_CATALOG: readonly TileTemplate[] = [
   { kind: 'subject', token: 'co2',               display: 'CO2',               description: 'Zone CO2 concentration (ppm).',                  envKey: 'co2' },
   { kind: 'subject', token: 'humidity',          display: 'humidity',          description: 'Zone relative humidity (% RH).',                 envKey: 'rh' },
   { kind: 'subject', token: 'airflow',           display: 'airflow',           description: 'Supply airflow (CFM).',                          envKey: 'cfm' },
+  // Plant-loop sensors — read from boiler / chiller / cooling-tower
+  // equipment via an immersion-temp sensor wired to the equipment.
+  { kind: 'subject', token: 'hw-supply-temp',    display: 'HW supply temp',    description: 'Hot-water supply temp leaving the boiler (°F).',                envKey: 'hws_temp' },
+  { kind: 'subject', token: 'hw-return-temp',    display: 'HW return temp',    description: 'Hot-water return temp coming back to the boiler (°F).',         envKey: 'hwr_temp' },
+  { kind: 'subject', token: 'chw-supply-temp',   display: 'CHW supply temp',   description: 'Chilled-water supply temp leaving the chiller (°F).',           envKey: 'chws_temp' },
+  { kind: 'subject', token: 'chw-return-temp',   display: 'CHW return temp',   description: 'Chilled-water return temp coming back to the chiller (°F).',    envKey: 'chwr_temp' },
 
   // ── ACTUATORS (outputs the controller can drive) ─────────────────────
   // Terminal-unit actuators (VAV / FCU / RTU)

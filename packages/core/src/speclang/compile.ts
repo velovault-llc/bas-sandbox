@@ -360,10 +360,23 @@ function compileAction(tiles: readonly Tile[]): StmtResult {
       ? envKeyOrFail(rest[4])
       : formatNum(rest[4].numericValue ?? 0);
     if (!sp) return { statement: '', error: `Unknown subject "${rest[4].display}".` };
-    // Simple proportional: actuator clamps to [0, 1] based on (pv - sp) * gain.
+    // Direction matters. For COOLING actuators (cooling-valve, primary-damper,
+    // tower-fan, chiller-stage), the actuator OPENS when PV > SP — extract
+    // more heat to bring the room down. For HEATING / REVERSE-acting
+    // actuators (reheat-valve, burner-modulation, heating-valve), the
+    // actuator OPENS when PV < SP — add more heat. Without this, "Modulate
+    // burner to maintain HW supply at 180°F" would fire harder when HWS is
+    // already too hot, which is exactly backwards.
+    const reverseActing = (
+      rest[0].token === 'reheat-valve' ||
+      rest[0].token === 'burner-mod' ||
+      rest[0].token === 'circulator-pump'
+    );
+    const errorExpr = reverseActing ? `(${sp} - ${pv})` : `(${pv} - ${sp})`;
+    // Simple proportional: actuator clamps to [0, 1] based on error × gain.
     // 0.1 °F error → ~5% command; 5°F error → fully driven.
     return {
-      statement: `${tgt} := MAX(0.0, MIN(1.0, (${pv} - ${sp}) * 0.2));`,
+      statement: `${tgt} := MAX(0.0, MIN(1.0, ${errorExpr} * 0.2));`,
     };
   }
 
