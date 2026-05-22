@@ -1404,11 +1404,12 @@
     }
 
     // ── Zone (room) thermal dynamics ─────────────────────────────────
-    // Each zone node on the canvas runs its own envelope + load model.
-    // Multi-zone scenarios become possible: drop 3 zones, each drifts
-    // independently based on OAT, occupancy schedule, neighbors via
-    // shared walls (zone→zone wires), and (eventually in B.4) supply
-    // air from its VAV.
+    // Each zone node on the canvas runs its own envelope + load model
+    // and (B.3) receives conditioned air heat from any equipment wired
+    // into it. Coupling chain:
+    //   Zone ← Equipment ← Actuator ← Controller
+    // The actuator's role binding (e.g., reheat-valve) determines whether
+    // its command produces heating or cooling on the served zone.
     const zoneStateUpdates = new Map<string, ZoneState>();
     const oatForZones = runningSnapshot[0]
       ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60)
@@ -1423,6 +1424,77 @@
       zoneTempByNode.set(node.id, zData.zoneState?.T_zone ?? oatForZones);
     }
 
+    // Find the warmest HW supply + coldest CHW supply from any plant on
+    // canvas. Coils derate based on these — a boiler at 80°F can't
+    // deliver design heating capacity. Default 180/44 when no plant
+    // exists (treats coil as standalone for the demo).
+    let hwSupplyTemp = 180;
+    let chwSupplyTemp = 44;
+    for (const node of nodes) {
+      if (nodeKind(node) !== 'equipment') continue;
+      const eqId = (node.data as { equipmentModelId?: string }).equipmentModelId;
+      const eqModel = eqId ? findEquipmentModel(eqId) : undefined;
+      if (!eqModel) continue;
+      const lst = (node.data as { loopState?: { T_supply: number } }).loopState;
+      if (!lst) continue;
+      if (eqModel.kind === 'boiler') hwSupplyTemp = lst.T_supply;
+      if (eqModel.kind === 'chiller') chwSupplyTemp = lst.T_supply;
+    }
+    // Capacity scaling: at full HWS (180°F) heating delivers 100%;
+    // at 70°F (no plant heat above room temp) it delivers 0%.
+    const hwCapacityScale = Math.max(0, Math.min(1, (hwSupplyTemp - 70) / 110));
+    const chwCapacityScale = Math.max(0, Math.min(1, (70 - chwSupplyTemp) / 26));
+
+    // Helper: compute coil heat delivered to a zone, summed across all
+    // equipment wired to it. Returns positive BTU/hr for net heating,
+    // negative for net cooling.
+    function computeCoilHeatForZone(zoneNode: Node): { btu: number; sources: string[] } {
+      let totalBtu = 0;
+      const sources: string[] = [];
+      for (const eqEdge of edges) {
+        // equipment → zone edge (eqEdge.target = zone)
+        if (eqEdge.target !== zoneNode.id) continue;
+        const eq = nodes.find((n) => n.id === eqEdge.source);
+        if (!eq || nodeKind(eq) !== 'equipment') continue;
+
+        // Walk actuator → equipment edges. Sum heating and cooling
+        // valve commands by binding role.
+        let heatingCmd = 0;
+        let coolingCmd = 0;
+        for (const aEdge of edges) {
+          if (aEdge.target !== eq.id) continue;
+          const act = nodes.find((n) => n.id === aEdge.source);
+          if (!act || nodeKind(act) !== 'actuator') continue;
+          const actState = (act.data as { actuatorState?: { actual: number } })?.actuatorState;
+          if (!actState) continue;
+          // Find the upstream controller → actuator edge to read its role.
+          const cEdge = edges.find((e) => e.target === act.id);
+          if (!cEdge) continue;
+          const ctrlProg = programStore.byId[cEdge.source];
+          const binding = cEdge.sourceHandle
+            ? ctrlProg?.bindings?.bindings.find((b) => b.terminalId === cEdge.sourceHandle)
+            : undefined;
+          const role = binding?.role;
+          if (role === 'reheat-valve' || role === 'heating-valve-actuator') {
+            heatingCmd = Math.max(heatingCmd, actState.actual);
+          } else if (role === 'cooling-valve' || role === 'cooling-valve-actuator') {
+            coolingCmd = Math.max(coolingCmd, actState.actual);
+          }
+        }
+
+        // Convert to BTU/hr. Typical small VAV reheat coil ~12 MBH design;
+        // typical AHU/FCU cooling coil ~12 MBH per zone served.
+        const heating_btu = heatingCmd * 12000 * hwCapacityScale;
+        const cooling_btu = -coolingCmd * 12000 * chwCapacityScale;
+        totalBtu += heating_btu + cooling_btu;
+
+        const label = (eq.data as { label?: string }).label ?? eq.id;
+        if (heatingCmd > 0.02) sources.push(`${label} heating ${Math.round(heatingCmd * 100)}%`);
+        if (coolingCmd > 0.02) sources.push(`${label} cooling ${Math.round(coolingCmd * 100)}%`);
+      }
+      return { btu: totalBtu, sources };
+    }
+
     // Default partition wall: ~9' tall × 12' shared = ~108 sqft, gyp+
     // stud U-value 0.3 BTU/hr·ft²·°F. Heat flows from warmer to cooler
     // each tick — that's how a server room cooks the adjacent conf room.
@@ -1434,8 +1506,7 @@
       const zData = node.data as { zoneState?: ZoneState };
       const prev = zData.zoneState ?? initZoneState(DEFAULT_ZONE_CONFIG, oatForZones);
 
-      // Sum heat from neighboring zones via shared-wall edges.
-      // Wire direction doesn't matter — walls conduct both ways.
+      // Sum heat from neighboring zones via shared-wall edges (zone↔zone).
       let neighborHeat_btu = 0;
       const neighborTags: string[] = [];
       for (const edge of edges) {
@@ -1446,7 +1517,7 @@
         const otherTemp = zoneTempByNode.get(otherId);
         if (otherTemp === undefined) continue;
         const dT = otherTemp - prev.T_zone;
-        const q = WALL_U * WALL_AREA * dT; // positive = heat coming in
+        const q = WALL_U * WALL_AREA * dT;
         neighborHeat_btu += q;
         const otherNode = nodes.find((n) => n.id === otherId);
         if (otherNode) {
@@ -1454,19 +1525,27 @@
         }
       }
 
+      // Sum coil heat from equipment wired to this zone (B.3 main event).
+      const coil = computeCoilHeatForZone(node);
+
+      const totalSupplyHeat = neighborHeat_btu + coil.btu;
       const next = stepZone(prev, DEFAULT_ZONE_CONFIG, {
         outsideTemp: oatForZones,
         hour: simHourForZones,
         occupancy_frac: defaultOccupancySchedule(simHourForZones),
-        supplyAir_btu_per_hr: neighborHeat_btu, // walls are the only "supply" until B.4
+        supplyAir_btu_per_hr: totalSupplyHeat,
       }, dtSeconds);
       zoneStateUpdates.set(node.id, next);
+
       const occPct = Math.round(defaultOccupancySchedule(simHourForZones) * 100);
       const neighborTag = neighborTags.length > 0
-        ? ` · neighbors: ${neighborTags.join(', ')} (${neighborHeat_btu >= 0 ? '+' : ''}${neighborHeat_btu.toFixed(0)} BTU/hr)`
+        ? ` · neighbors: ${neighborTags.join(', ')} (${neighborHeat_btu >= 0 ? '+' : ''}${neighborHeat_btu.toFixed(0)})`
+        : '';
+      const coilTag = coil.sources.length > 0
+        ? ` · ${coil.sources.join(', ')} (${coil.btu >= 0 ? '+' : ''}${coil.btu.toFixed(0)} BTU/hr)`
         : '';
       physicsValueByNode.set(node.id, {
-        value: `${next.T_zone.toFixed(1)}°F · OAT ${oatForZones.toFixed(0)}°F · occ ${occPct}%${neighborTag}`,
+        value: `${next.T_zone.toFixed(1)}°F · OAT ${oatForZones.toFixed(0)}°F · occ ${occPct}%${coilTag}${neighborTag}`,
         status: 'responded',
       });
     }
