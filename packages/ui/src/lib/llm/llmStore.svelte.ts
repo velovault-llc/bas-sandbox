@@ -128,6 +128,17 @@ export function clearTurns(): void {
   llmStore.turns = [];
 }
 
+/** Append an assistant turn locally WITHOUT sending anything to the model.
+ *  Used for inline help / "you need to open a controller first" notices that
+ *  shouldn't pollute the chat history as user prompts the model dutifully
+ *  tries to answer. */
+export function appendLocalAssistantNotice(text: string): void {
+  llmStore.turns = [
+    ...llmStore.turns,
+    { id: nextTurnId++, role: 'assistant', content: text },
+  ];
+}
+
 export function cancelActive(): void {
   if (llmStore.activeRequest) {
     llmStore.activeRequest.abort();

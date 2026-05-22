@@ -18,6 +18,7 @@
     setPanelPosition,
     resetPanelPosition,
     rehydratePanelPosition,
+    appendLocalAssistantNotice,
   } from './llmStore.svelte';
   import { buildDiagnosePrompt, buildExplainPrompt } from './systemPrompt';
   import { programStore } from '../cli/programStore.svelte';
@@ -94,12 +95,15 @@
       programStore.activeFbdControllerId ??
       programStore.activeControllerId;
     if (!ctrlId) {
-      sendMessage('No program currently open. Open a controller via CLI / FBD / SpecLang first, then try again.');
+      // Local panel notice — NOT a chat message. We don't want the model
+      // to dutifully answer "no program currently open" as if it were a
+      // real user prompt.
+      appendLocalAssistantNotice('No program currently open. Open a controller via CLI / FBD / SpecLang first, then try again.');
       return;
     }
     const prog = programStore.byId[ctrlId];
     if (!prog || !prog.source) {
-      sendMessage(`Controller "${ctrlId}" has no compiled program yet. Author one in the CLI / FBD / SpecLang surface first.`);
+      appendLocalAssistantNotice(`Controller "${ctrlId}" has no compiled program yet. Author one in the CLI / FBD / SpecLang surface first.`);
       return;
     }
     // `source` always holds the ST representation regardless of the
@@ -128,7 +132,7 @@
       programStore.activeSpecLangControllerId ??
       programStore.activeFbdControllerId;
     if (!ctrlId) {
-      sendMessage('Open a controller first (click one on the canvas, or open its CLI) so I know which device to diagnose.');
+      appendLocalAssistantNotice('Open a controller first (click one on the canvas, or open its CLI) so I know which device to diagnose.');
       return;
     }
     const node = canvasSnapshot.nodes.find((n) => n.id === ctrlId);
