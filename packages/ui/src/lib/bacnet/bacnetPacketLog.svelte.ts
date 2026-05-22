@@ -188,7 +188,12 @@ export function rehydratePanelPosition(): void {
   }
 }
 
-/** Visible packets after applying layer + trunk filters. */
+/** Visible packets after applying layer + trunk filters, sorted by
+ *  simulated emission time. Within-tick packets carry sub-second
+ *  offsets (request → ACK latency), so insertion order from BuildCanvas
+ *  may NOT match wall-clock chronology. Stable sort by simSec (id
+ *  breaks ties — monotonic so it preserves insertion order for packets
+ *  emitted at the same simSec, like Who-Is + same-instant SubscribeCOV). */
 export function visiblePackets(): BacnetPacket[] {
   let arr = bacnetPacketLog.packets;
   if (bacnetPacketLog.layerFilter !== 'all') {
@@ -197,7 +202,11 @@ export function visiblePackets(): BacnetPacket[] {
   if (bacnetPacketLog.trunkFilter) {
     arr = arr.filter((p) => p.trunkId === bacnetPacketLog.trunkFilter);
   }
-  return arr;
+  // Don't mutate the source array — the panel reads packets reactively.
+  return [...arr].sort((a, b) => {
+    if (a.simSec !== b.simSec) return a.simSec - b.simSec;
+    return a.id - b.id;
+  });
 }
 
 /** Unique trunk ids currently represented in the buffer — used to

@@ -60,8 +60,14 @@
 
   function formatTime(s: number): string {
     const min = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    const sec = s % 60;
+    const intSec = Math.floor(sec);
+    // Show milliseconds when there's sub-second info — lets the user
+    // see request → ACK latency in the packet log (e.g. 00:12.066 for
+    // a ReadProperty-ACK that landed 66ms after the request).
+    const ms = Math.floor((sec - intSec) * 1000);
+    const base = `${String(min).padStart(2, '0')}:${String(intSec).padStart(2, '0')}`;
+    return ms > 0 ? `${base}.${String(ms).padStart(3, '0')}` : base;
   }
 
   function formatValue(p: BacnetPacket): string {
@@ -404,7 +410,9 @@
 
   .entry {
     display: grid;
-    grid-template-columns: 3.4rem 5.2rem 9rem 4rem 1fr;
+    /* time column widened to 5rem to accommodate MM:SS.mmm formatting
+       when sub-second packet latency is present. */
+    grid-template-columns: 5rem 5.2rem 9rem 4rem 1fr;
     gap: 0.4rem;
     padding: 0.1rem 0.25rem;
     border-radius: 3px;

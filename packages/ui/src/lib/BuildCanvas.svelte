@@ -60,6 +60,7 @@
     stepMstpToken,
     initMstpTrunkState,
     defaultDeviceInstance,
+    mstpServiceLatencySeconds,
     validateMstpTrunks,
     validateBacnetIpNetwork,
     type StEnv,
@@ -1800,6 +1801,13 @@
         const trunkLabelStr = devices.length > 0
           ? `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`
           : `trunk @ ${baud}`;
+        // Latency for paired packets on this trunk — every ACK is shifted
+        // by this much from the matching request. At 38400 that's ~66ms;
+        // at 9600 it's ~112ms; on BACnet/IP segments the bus type drives
+        // a flat ~15ms. The packet log's fractional-second formatter
+        // surfaces the gap so the user can SEE that slower baud = slower
+        // bus, the way a real sniffer would show it.
+        const trunkLatencyS = mstpServiceLatencySeconds(baud);
 
         // ── Trunk-up / membership-change discovery: when the trunk is
         // fresh (no prior state) OR the device list changed, emit the
@@ -1821,11 +1829,17 @@
             summary: `${initiator.label} (MAC ${initiator.mac}) Who-Is broadcast (discover devices on this trunk)`,
             layer: 'app',
           });
+          // I-Am responses are STAGGERED on a real bus — each device
+          // replies when it gets the token, so they cascade out over a
+          // few hundred ms rather than landing simultaneously. Index-
+          // based offset captures the staircase pattern.
+          let iAmOffsetS = trunkLatencyS;
+          const iAmStaggerS = Math.max(trunkLatencyS * 0.4, 0.02);
           for (const d of devices) {
             if (d.nodeId === initiator.nodeId) continue;
             const inst = d.deviceInstance ?? defaultDeviceInstance(d.mac);
             logBacnetPacket({
-              simSec: simSecondsElapsed,
+              simSec: simSecondsElapsed + iAmOffsetS,
               trunkId: trunkEdge.id,
               trunkLabel: trunkLabelStr,
               srcMac: d.mac,
@@ -1834,6 +1848,7 @@
               summary: `${d.label} (MAC ${d.mac}) I-Am — Device Instance ${inst}`,
               layer: 'app',
             });
+            iAmOffsetS += iAmStaggerS;
           }
           // After discovery, the supervisor subscribes to each child's
           // first AI for change-of-value notifications. One SubscribeCOV
@@ -1866,8 +1881,9 @@
               layer: 'app',
             });
             // ACK from the controller — confirms it'll start pushing.
+            // Delayed by one round-trip from the matching request.
             logBacnetPacket({
-              simSec: simSecondsElapsed,
+              simSec: simSecondsElapsed + trunkLatencyS,
               trunkId: trunkEdge.id,
               trunkLabel: trunkLabelStr,
               srcMac: d.mac,
@@ -1985,7 +2001,7 @@
               layer: 'app',
             });
             logBacnetPacket({
-              simSec: simSecondsElapsed,
+              simSec: simSecondsElapsed + trunkLatencyS,
               trunkId: trunkEdge.id,
               trunkLabel,
               srcMac: child.mac,
@@ -3960,11 +3976,12 @@
         const trunkForCtrl = (() => {
           for (const [tid, state] of mstpTrunkStates) {
             const dev = state.devices.find((d) => d.nodeId === controllerId);
-            if (dev) return { trunkId: tid, mac: dev.mac, label: dev.label, devices: state.devices };
+            if (dev) return { trunkId: tid, mac: dev.mac, label: dev.label, devices: state.devices, baud: state.baud };
           }
           return null;
         })();
         if (trunkForCtrl) {
+          const writeLatencyS = mstpServiceLatencySeconds(trunkForCtrl.baud);
           const trunkLabelStr = trunkForCtrl.devices.length > 0
             ? `${trunkForCtrl.devices[0].label} → ${trunkForCtrl.devices[trunkForCtrl.devices.length - 1].label}`
             : 'trunk';
@@ -3989,7 +4006,7 @@
             layer: 'app',
           });
           logBacnetPacket({
-            simSec: simSecondsElapsed,
+            simSec: simSecondsElapsed + writeLatencyS,
             trunkId: trunkForCtrl.trunkId,
             trunkLabel: trunkLabelStr,
             srcMac: trunkForCtrl.mac,

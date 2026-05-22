@@ -60,6 +60,31 @@ export function tokenHoldSeconds(baud: number): number {
   return 0.05 * (baseBaud / Math.max(9600, baud));
 }
 
+/** Round-trip time for a single BACnet confirmed-service exchange
+ *  (ReadProperty / WriteProperty / SubscribeCOV → ACK), in seconds.
+ *
+ *  Model:
+ *    - frame_ms = 30 bytes × 10 bits/byte × 1000 / baud  (typical service)
+ *    - request frame + response frame + ~50ms token-wait queue
+ *
+ *  Numbers at common bauds:
+ *    9600  →   ~112 ms   (slow trunks really do feel sluggish)
+ *    19200 →    ~81 ms
+ *    38400 →    ~66 ms   (the BAS default)
+ *    76800 →    ~58 ms
+ *
+ *  BACnet/IP isn't gated by token-passing — flat ~15ms RTT covers
+ *  switch latency + stack overhead for typical LAN traffic. */
+export function mstpServiceLatencySeconds(baud: number): number {
+  const frameSeconds = (30 * 10) / Math.max(9600, baud);
+  // request + response + half-token-hold queue
+  return frameSeconds * 2 + 0.05;
+}
+
+/** BACnet/IP round-trip estimate — flat because Ethernet doesn't have
+ *  the token-wait queue. */
+export const BACNET_IP_RTT_SECONDS = 0.015;
+
 /** Advance a token by `dt` sim-seconds. Handles multiple hops per tick
  *  if the elapsed time exceeds the per-device hold window — important
  *  when sim is running at 30× / 300× speed. */

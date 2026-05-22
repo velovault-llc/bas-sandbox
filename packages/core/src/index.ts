@@ -152,6 +152,8 @@ export {
   tokenHoldSeconds,
   formatMstpDevice,
   defaultDeviceInstance,
+  mstpServiceLatencySeconds,
+  BACNET_IP_RTT_SECONDS,
   validateMstpTrunks,
   MSTP_TRUNK_RECOMMENDED_MAX_DEVICES,
   MSTP_MAC_MIN,

@@ -4,6 +4,8 @@ import {
   stepMstpToken,
   tokenHoldSeconds,
   defaultDeviceInstance,
+  mstpServiceLatencySeconds,
+  BACNET_IP_RTT_SECONDS,
   type MstpDevice,
 } from '../src/bacnet/mstp.js';
 
@@ -77,5 +79,25 @@ describe('MS/TP token cycling', () => {
     // omitting deviceInstance still typechecks (optional field)
     const d2: MstpDevice = { nodeId: 'n2', mac: 6, label: 'FEC-2' };
     expect(d2.deviceInstance).toBeUndefined();
+  });
+
+  it('mstpServiceLatencySeconds: faster baud → faster RTT', () => {
+    const at9600 = mstpServiceLatencySeconds(9600);
+    const at38400 = mstpServiceLatencySeconds(38400);
+    const at76800 = mstpServiceLatencySeconds(76800);
+    expect(at9600).toBeGreaterThan(at38400);
+    expect(at38400).toBeGreaterThan(at76800);
+    // Sanity: 38400 round-trip lands in the 50-100ms range
+    expect(at38400).toBeGreaterThan(0.05);
+    expect(at38400).toBeLessThan(0.1);
+  });
+
+  it('mstpServiceLatencySeconds: token-wait floor of 50ms', () => {
+    // Even at infinitely fast baud the queue dominates → at least 50ms.
+    expect(mstpServiceLatencySeconds(1_000_000)).toBeGreaterThanOrEqual(0.05);
+  });
+
+  it('BACNET_IP_RTT_SECONDS is faster than any MS/TP baud', () => {
+    expect(BACNET_IP_RTT_SECONDS).toBeLessThan(mstpServiceLatencySeconds(76800));
   });
 });

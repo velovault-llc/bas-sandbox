@@ -14,6 +14,8 @@ export {
   tokenHoldSeconds,
   formatMstpDevice,
   defaultDeviceInstance,
+  mstpServiceLatencySeconds,
+  BACNET_IP_RTT_SECONDS,
 } from './mstp.js';
 export type { MstpDevice, MstpTrunkState } from './mstp.js';
 
