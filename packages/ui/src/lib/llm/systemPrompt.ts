@@ -92,16 +92,33 @@ export interface DiagnoseInputs {
   recentPacketLog?: string;
   envInputs?: Record<string, number | boolean>;
   envOutputs?: Record<string, number>;
+  /** Human-readable summary of what's wired to this controller — sensors,
+   *  actuators, supervisor uplink, MS/TP trunk peers. Always available
+   *  pre-sim. The model's only context when the sim hasn't been started. */
+  topologySummary?: string;
+  /** True if the sim is currently running (or has been), so env data
+   *  is meaningful. False on a fresh canvas load — the model should be
+   *  told to ask the tech to start the sim. */
+  simIsRunning?: boolean;
 }
 
 export function buildDiagnosePrompt(inp: DiagnoseInputs): string {
   const lines: string[] = [];
   lines.push(`Diagnose what's going on with controller "${inp.controllerLabel}".`);
   if (inp.vendorModelId) lines.push(`Vendor model: ${inp.vendorModelId}`);
+  if (inp.topologySummary) {
+    lines.push('');
+    lines.push('## Topology — what is wired to this controller');
+    lines.push(inp.topologySummary);
+  }
   if (inp.bindingsText) {
     lines.push('');
     lines.push('## Point bindings');
     lines.push(inp.bindingsText);
+  } else {
+    lines.push('');
+    lines.push('## Point bindings');
+    lines.push('  (none configured yet)');
   }
   if (inp.envInputs && Object.keys(inp.envInputs).length > 0) {
     lines.push('');
@@ -130,6 +147,11 @@ export function buildDiagnosePrompt(inp: DiagnoseInputs): string {
     lines.push('```');
     lines.push(inp.recentPacketLog);
     lines.push('```');
+  }
+  if (inp.simIsRunning === false) {
+    lines.push('');
+    lines.push('## Sim state');
+    lines.push('The sandbox sim is NOT currently running, so there are no live sensor readings, actuator commands, or BACnet packets to inspect. Diagnose what you can from the topology and bindings above. If a real answer needs live data, tell the tech to hit ▶ Run on the sandbox and re-click Diagnose.');
   }
   lines.push('');
   lines.push('What is the most likely cause of the current behavior, and what should the tech check first?');

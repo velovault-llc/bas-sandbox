@@ -162,6 +162,26 @@
       ? bindings.map((b) => `  ${b.terminalId} → ${b.role}`).join('\n')
       : undefined;
 
+    // Topology summary — always available, even before the sim runs.
+    // Walks the edges to enumerate what's wired to this controller and on
+    // which kind of bus. Without this, a "diagnose me" click on a fresh
+    // canvas gives the model nothing to look at.
+    const labelOf = (id: string): string =>
+      (canvasSnapshot.nodes.find((n) => n.id === id)?.data as { label?: string } | undefined)?.label ?? id;
+    const kindOf = (id: string): string =>
+      (canvasSnapshot.nodes.find((n) => n.id === id)?.data as { kind?: string } | undefined)?.kind ?? '?';
+    const wires = canvasSnapshot.edges.filter((e) => e.source === ctrlId || e.target === ctrlId);
+    const topologyLines: string[] = [];
+    for (const w of wires) {
+      const other = w.source === ctrlId ? w.target : w.source;
+      const direction = w.source === ctrlId ? 'downstream →' : '← upstream';
+      const wireKind = (w.data as { wireKind?: string } | undefined)?.wireKind ?? '?';
+      topologyLines.push(`  ${direction} ${labelOf(other)} [${kindOf(other)}] via ${wireKind}`);
+    }
+    const topologySummary = topologyLines.length > 0
+      ? topologyLines.join('\n')
+      : '  (nothing wired to this controller yet)';
+
     // Last 20 runtime log entries (most recent at the bottom — typical
     // for "what just happened" diagnosis).
     const recentRuntimeLog = runtimeLog.entries
@@ -179,15 +199,27 @@
       .map((p) => `  ${formatSec(p.simSec)} ${p.service.padEnd(28)} ${p.summary}`)
       .join('\n') || undefined;
 
+    // Sim is "running" (or has been) when there's ANY live env data for
+    // this or any other controller, OR when the runtime log has entries.
+    // Either signal indicates the user has actually pressed ▶ Run.
+    const envInputsForCtrl = controllerBridge.envInputsByCtrl.get(ctrlId);
+    const envOutputsForCtrl = controllerBridge.envOutputsByCtrl.get(ctrlId);
+    const simIsRunning =
+      (envInputsForCtrl && Object.keys(envInputsForCtrl).length > 0) ||
+      (envOutputsForCtrl && Object.keys(envOutputsForCtrl).length > 0) ||
+      runtimeLog.entries.length > 0;
+
     sendMessage(
       buildDiagnosePrompt({
         controllerLabel: label,
         vendorModelId,
         bindingsText,
-        envInputs: controllerBridge.envInputsByCtrl.get(ctrlId),
-        envOutputs: controllerBridge.envOutputsByCtrl.get(ctrlId),
+        topologySummary,
+        envInputs: envInputsForCtrl,
+        envOutputs: envOutputsForCtrl,
         recentRuntimeLog,
         recentPacketLog,
+        simIsRunning,
       }),
     );
   }
