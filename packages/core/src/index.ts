@@ -102,6 +102,19 @@ export { computeSensorReading } from './sim/sensorSim.js';
 export type { SensorReading, SimContext } from './sim/sensorSim.js';
 
 export {
+  stepLoop,
+  initLoopState,
+  HW_LOOP_DEFAULTS,
+  CHW_LOOP_DEFAULTS,
+} from './sim/hydronic.js';
+export type {
+  LoopKind,
+  LoopState,
+  LoopConfig,
+  LoopInputs,
+} from './sim/hydronic.js';
+
+export {
   TILE_CATALOG,
   tileCatalogByKind,
   findTileTemplate,

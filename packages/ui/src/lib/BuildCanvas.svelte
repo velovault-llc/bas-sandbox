@@ -45,7 +45,12 @@
     findTileTemplate,
     formatPointBreakdown,
     computeSensorReading,
+    stepLoop,
+    initLoopState,
+    HW_LOOP_DEFAULTS,
+    CHW_LOOP_DEFAULTS,
     type StEnv,
+    type LoopState,
   } from '@bas/core';
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
@@ -1199,6 +1204,88 @@
       });
     }
 
+    // ── Hydronic plant dynamics ──────────────────────────────────────
+    // For each boiler / chiller / cooling-tower equipment unit on the
+    // canvas, advance its loop state based on actuator commands flowing
+    // into it. State persists on node.data.loopState across ticks; T_OA
+    // from the weather sim drives drift-toward-ambient when idle. This
+    // is the start of plant-loop modeling — Session A.2 will couple
+    // load equipment (AHU coils, VAV reheat) to the loop's supply temp.
+    const loopStateUpdates = new Map<string, LoopState>();
+    for (const node of nodes) {
+      if (nodeKind(node) !== 'equipment') continue;
+      const eqData = node.data as { equipmentModelId?: string; loopState?: LoopState };
+      const eqId = eqData.equipmentModelId;
+      const eqModel = eqId ? findEquipmentModel(eqId) : undefined;
+      if (!eqModel) continue;
+      // Only model plant equipment for now — boilers, chillers, cooling
+      // towers. AHU/VAV/FCU/pump are downstream-side and need different
+      // coupling math (Session A.2).
+      const isHotPlant = eqModel.kind === 'boiler';
+      const isCoolPlant = eqModel.kind === 'chiller';
+      const isTower = eqModel.kind === 'cooling-tower';
+      if (!isHotPlant && !isCoolPlant && !isTower) continue;
+
+      const cfg = isHotPlant ? HW_LOOP_DEFAULTS : CHW_LOOP_DEFAULTS;
+      const prev = eqData.loopState ?? initLoopState(cfg, isHotPlant ? 70 : 70);
+
+      // Gather plant + pump commands by walking actuators wired to a
+      // controller whose role binding matches "burner / chiller / pump"
+      // env-keys. First-cut: any actuator wired (anywhere) to a
+      // controller acts as a generic command. We pick the highest
+      // actual position as the effective command. Future iterations can
+      // bind specific actuator roles ("burner-modulation",
+      // "chiller-enable") to specific equipment.
+      let plantCommand = 0;
+      let pumpCommand = 0;
+      // We can't easily walk topology to this equipment without wiring
+      // equipment→controller edges (Session A.2). For now, use the
+      // average of all actuators on the canvas as a rough proxy so the
+      // plant responds to controller activity. This is imperfect but
+      // visible — gives the user a working loop demo.
+      let actCount = 0;
+      let actSum = 0;
+      for (const otherNode of nodes) {
+        if (nodeKind(otherNode) !== 'actuator') continue;
+        const aState = (otherNode.data as { actuatorState?: { actual: number } })?.actuatorState;
+        if (!aState) continue;
+        actSum += aState.actual;
+        actCount++;
+      }
+      const avgAct = actCount > 0 ? actSum / actCount : 0;
+      // Hot plant fires harder when system actuators are commanded high
+      // (heating need). Cool plant stages harder same way (cooling need).
+      plantCommand = avgAct;
+      pumpCommand = avgAct > 0.05 ? Math.max(0.4, avgAct) : 0; // pump runs whenever there's load
+      const loadCommand = avgAct; // load proportional to actuator activity
+
+      // Weather-sim's OAT drives drift when idle.
+      const oat = runningSnapshot[0]
+        ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60)
+        : 60;
+
+      const next = stepLoop(prev, cfg, {
+        plantCommand,
+        pumpCommand,
+        loadCommand,
+        outsideTemp: oat,
+      }, dtSeconds);
+      loopStateUpdates.set(node.id, next);
+
+      // Surface the live loop state on the equipment node label.
+      const unit = '°F';
+      const supply = next.T_supply.toFixed(1);
+      const ret = next.T_return.toFixed(1);
+      const dT = (next.T_supply - next.T_return).toFixed(1);
+      const flow = next.flow_gpm.toFixed(0);
+      const label = isHotPlant
+        ? `HWS ${supply}${unit} · HWR ${ret}${unit} · ΔT ${dT}${unit} · ${flow} GPM`
+        : isCoolPlant
+          ? `CHWS ${supply}${unit} · CHWR ${ret}${unit} · ΔT ${dT}${unit} · ${flow} GPM`
+          : `CWS ${supply}${unit} · CWR ${ret}${unit} · ${flow} GPM`;
+      physicsValueByNode.set(node.id, { value: label, status: 'responded' });
+    }
+
     nodes = nodes.map((n) => {
       const data = n.data as {
         kind: Kind;
@@ -1255,6 +1342,7 @@
 
       const physVal = physicsValueByNode.get(n.id);
       const actuatorUpdate = actuatorStateUpdates.get(n.id);
+      const loopUpdate = loopStateUpdates.get(n.id);
       if (physVal) {
         return {
           ...n,
@@ -1265,6 +1353,7 @@
             ageSinceLastPollSec: ageNext,
             ...(alarmNext !== undefined ? { alarm: alarmNext } : {}),
             ...(actuatorUpdate ? { actuatorState: actuatorUpdate } : {}),
+            ...(loopUpdate ? { loopState: loopUpdate } : {}),
           },
         };
       }
