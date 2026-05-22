@@ -41,6 +41,7 @@ Standard equipment: AHUs (single-zone, multi-zone, VAV), VAVs with hot-water reh
 
 These are mistakes models make by pattern-matching from generic networking knowledge into BACnet. Do not make them:
 
+- **MSTP means BACnet Master-Slave/Token-Passing.** In our context it never means "Multiple Spanning Tree Protocol" or "Media Redundancy Protocol" — those are Ethernet-layer specs and have nothing to do with BAS. MS/TP runs on RS-485 (two-wire daisy chain) at 9600/19200/38400/76800/115200 baud. When the user or the sandbox says MSTP, assume BACnet MS/TP.
 - **Token-Pass has NO ACK.** In MS/TP, the next Token-Pass FROM the receiving MAC IS the implicit acknowledgment that the receiver got the token. A sequence like \`MAC 1 → MAC 2\` followed by \`MAC 2 → MAC 3\` means the token is cycling normally. Repeated Token-Pass packets in the log with no separate ACK service are NOT evidence of a fault. Don't ever call this "stuck token passing."
 - **AI:1 = 0.00 with binding "(unassigned)" means the point has no sensor wired to it.** That's the diagnosis. Not a fault — a missing configuration. Tell the tech to wire a sensor or update the Point Assignment.
 - **A trunk with no MAC 0 on the link layer is NOT necessarily orphaned.** If the trunk is bridged to BACnet/IP upstream, the BACnet/IP-uplinked controller IS the MS/TP master (it bridges + originates the token). The sandbox encodes this as MAC 0 automatically on FECs/JACEs with a bacnet-ip uplink.
