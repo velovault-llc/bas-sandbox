@@ -123,7 +123,11 @@
     //   - sensor / safety devices land on hardwired AI / BI terminals
     //   - expansion modules clip onto their parent controller via a vendor
     //     bus (K-bus, 750-bus, XPM backplane) — abstracted to hardwired here
-    if (involves('sensor') || involves('safety') || involves('expansion')) return 'hardwired';
+    //   - actuators receive 0-10V / 2-10V / dry-contact from AO/BO terminals
+    //   - equipment units connect mechanically to actuators (still hardwired
+    //     for our wire-kind purposes — the abstraction is "physical cable")
+    if (involves('sensor') || involves('safety') || involves('expansion') ||
+        involves('actuator') || involves('equipment')) return 'hardwired';
     // Supervisor pairs and controller↔supervisor go BACnet/IP by default
     // (modern installs are mostly IP-backbone with MS/TP only at field tier).
     if (involves('supervisor')) return 'bacnet-ip';
@@ -1934,6 +1938,54 @@
         } else {
           flashWireRefusal(
             `${nodeLabel(tgt)} has no free input terminals left. All UI/AI/BI channels are used — disconnect a sensor or add an expansion module.`,
+          );
+          return;
+        }
+      }
+    }
+
+    // Case: controller → actuator. Source is a controller AO/BO/UO; target
+    // is the actuator's net-in. Validate signal type (AO can't drive a
+    // binary contactor; BO can't drive a modulating valve) and auto-shift
+    // to a free output terminal of the right kind when needed.
+    if (srcKind === 'controller' && tgtKind === 'actuator') {
+      const actuatorModelId = (tgt.data as { actuatorModelId?: string } | undefined)?.actuatorModelId;
+      const actuatorModel = actuatorModelId ? findActuatorModel(actuatorModelId) : undefined;
+      const wantsAnalog = actuatorModel?.signal === 'analog-0-10v' ||
+                          actuatorModel?.signal === 'analog-2-10v' ||
+                          actuatorModel?.signal === 'analog-4-20ma';
+      const wantsBinary = actuatorModel?.signal === 'binary-dry' ||
+                          actuatorModel?.signal === 'three-point';
+      // Allowed terminal kinds on the controller side. UO is universal so
+      // it's always acceptable. For unknown actuator signals (generic, no
+      // model picked) we accept any output terminal.
+      const preferredOutputs: readonly ('AO' | 'BO' | 'UO')[] = wantsAnalog
+        ? ['AO', 'UO']
+        : wantsBinary
+          ? ['BO', 'UO']
+          : ['AO', 'BO', 'UO'];
+
+      const srcTermKind = termKindOf(resolvedSourceHandle);
+      const sourceIsAllowed = !!srcTermKind && (preferredOutputs as readonly string[]).includes(srcTermKind);
+      const sourceIsTaken = !!resolvedSourceHandle && edges.some(
+        (e) => e.source === src.id && e.sourceHandle === resolvedSourceHandle,
+      );
+      if (!sourceIsAllowed || sourceIsTaken || !isTerminal(resolvedSourceHandle)) {
+        const next = nextFreeTerminal(src, preferredOutputs, 'source');
+        if (next) {
+          resolvedSourceHandle = next;
+        } else if (actuatorModel) {
+          // Hard fail with a clear signal-mismatch explanation.
+          const need = wantsAnalog ? 'an AO (0-10V / 2-10V / 4-20mA) or UO' :
+                       wantsBinary ? 'a BO (dry-contact / 24VAC) or UO' :
+                       'an output (AO / BO / UO)';
+          flashWireRefusal(
+            `${nodeLabel(src)} has no free ${need} for ${actuatorModel.vendor} ${actuatorModel.model} (needs ${actuatorModel.signal}).`,
+          );
+          return;
+        } else {
+          flashWireRefusal(
+            `${nodeLabel(src)} has no free output terminals. Pick a different actuator or add an expansion module.`,
           );
           return;
         }
