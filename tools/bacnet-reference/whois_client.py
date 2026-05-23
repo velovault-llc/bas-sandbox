@@ -66,6 +66,18 @@ async def main() -> None:
     # trick + assume /24 (which covers ~all home/office BAS deployments).
     import os
     parser = SimpleArgumentParser(prog="whois_client")
+    # `--target <ip>` sends a DIRECTED Who-Is to that address instead
+    # of broadcasting. Useful when local broadcast doesn't loop back
+    # (Windows + same-machine client/server). Example:
+    #     python whois_client.py --target 192.168.1.150
+    parser.add_argument(
+        "--target",
+        type=str,
+        default=None,
+        help="IP to send Who-Is directly to (skips broadcast). Use when local "
+        "broadcast doesn't loop back — typical on Windows with client + server "
+        "on the same machine.",
+    )
     args = parser.parse_args()
     if getattr(args, "instance", None) is None:
         args.instance = 9999
@@ -80,10 +92,17 @@ async def main() -> None:
 
     app = Application.from_args(args)
 
-    print("Sending Who-Is global broadcast...")
     # who_is(low_limit, high_limit, address) — None,None = unbounded
-    # (i.e., every device on the network responds).
-    i_ams = await app.who_is(None, None)
+    # (every device responds). When `address` is None bacpypes3
+    # broadcasts; when a string IP is given it sends a directed unicast.
+    if args.target:
+        from bacpypes3.pdu import Address
+        target = Address(f"{args.target}:47808")
+        print(f"Sending DIRECTED Who-Is to {target}...")
+        i_ams = await app.who_is(None, None, target)
+    else:
+        print("Sending Who-Is global broadcast...")
+        i_ams = await app.who_is(None, None)
 
     if not i_ams:
         print("No replies. Things to check:")
@@ -91,6 +110,12 @@ async def main() -> None:
         print("  - Is Windows Firewall blocking UDP 47808?")
         print("    (admin: netsh advfirewall firewall add rule"
               ' name="BACnet 47808" dir=in protocol=UDP localport=47808 action=allow)')
+        if not args.target:
+            print()
+            print("If client + server are on the SAME Windows machine, local")
+            print("broadcast often doesn't loop back. Try a directed query:")
+            local_ip = detect_local_ipv4()
+            print(f"    python whois_client.py --target {local_ip}")
         return
 
     print(f"\nGot {len(i_ams)} I-Am repl{'y' if len(i_ams) == 1 else 'ies'}:\n")
