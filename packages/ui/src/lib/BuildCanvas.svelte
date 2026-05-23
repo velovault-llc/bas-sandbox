@@ -1184,9 +1184,42 @@
     return `${(0.2 + Math.random() * 1.8).toFixed(2)} in WC`;
   }
 
-  function controllerReading(): string {
+  function controllerReading(controllerId?: string): string {
     const damper = Math.floor(Math.random() * 100);
-    return `Out ${damper}%`;
+    const label = controllerId ? controllerOutputLabel(controllerId) : 'Out';
+    return `${label} ${damper}%`;
+  }
+
+  /** Pick a human label for a controller's actuator-command output
+   *  based on what's actually wired downstream. "Damper" / "Valve" /
+   *  "VFD" / etc. instead of generic "Out" when we can figure it out.
+   *  Falls back to "Out" when there's no wired actuator yet. */
+  function controllerOutputLabel(controllerId: string): string {
+    for (const e of edges) {
+      if (e.source !== controllerId) continue;
+      const tgt = nodes.find((n) => n.id === e.target);
+      if (!tgt || nodeKind(tgt) !== 'actuator') continue;
+      const actId = (tgt.data as { actuatorModelId?: string } | undefined)?.actuatorModelId;
+      const model = actId ? findActuatorModel(actId) : null;
+      const kind = model?.kind;
+      switch (kind) {
+        case 'damper-modulating':
+        case 'damper-binary':
+          return 'Damper';
+        case 'valve-modulating':
+        case 'valve-floating':
+        case 'valve-binary':
+          return 'Valve';
+        case 'vfd':
+          return 'VFD';
+        case 'contactor':
+        case 'pump-relay':
+          return 'Cmd';
+        default:
+          return 'Actuator';
+      }
+    }
+    return 'Out';
   }
 
   function sensorValue(label: string): string {
@@ -1282,6 +1315,39 @@
     for (const target of runningSnapshot) {
       const sys = systems.get(target.controllerId);
       if (!sys) continue;
+      // Power-off gate: a controller that's been ⏻ Powered Off should
+      // stop ALL execution — PI loop, ST program, actuator commands.
+      // Treat it like offline (frozen output, last good reading) so
+      // the user sees "Out" stop changing, then jump back when power
+      // restores. Sim time still ticks globally; this controller just
+      // doesn't participate.
+      const powerCtrlNode = nodes.find((n) => n.id === target.controllerId);
+      const ctrlPoweredOff = (powerCtrlNode?.data as { poweredOff?: boolean } | undefined)?.poweredOff === true;
+      if (ctrlPoweredOff) {
+        // Synthesize a "no-op" sample so the trace flatlines but the
+        // chart keeps a data point per tick. Actuator + setpoint hold.
+        const sample = {
+          t: sys.simSeconds,
+          T_sensed: sys.sensor.lastReading,
+          T_zone: sys.T_zone,
+          setpoint: (sys as unknown as { setpoint: number }).setpoint ?? 72,
+          actuator: 0, // power-off pulls outputs to 0 by default
+          error: 0,
+          integral: 0,
+          mode: 'cool' as const,
+        };
+        const series = samples.get(target.controllerId) ?? [];
+        series.push(sample as unknown as Sample);
+        if (series.length > sys.config.historyLength) series.shift();
+        samples.set(target.controllerId, series);
+        // Surface on the node card as a frozen "0%" output. Down-
+        // stream sensor reads will use the same lastReading. The node
+        // card's runtime display falls through to the fallback render
+        // block, which detects data.poweredOff and shows "⏻ POWER OFF"
+        // explicitly rather than the random idle reading.
+        sampleByCtrl.set(target.controllerId, sample as unknown as Sample);
+        continue;
+      }
       sys.offline = offline.has(target.controllerId) || offline.has(target.sensorId);
       sys.couplingNeighborTemp = siblingNeighborByTarget.get(target.controllerId) ?? null;
       const sample = sys.step();
@@ -1473,6 +1539,21 @@
     for (const target of runningSnapshot) {
       const sample = sampleByCtrl.get(target.controllerId);
       if (!sample) continue;
+      // Powered-off check: the main sim loop above sets `actuator: 0`
+      // when a controller is poweredOff so the trace flatlines. Here
+      // we also surface that state explicitly on the node card so the
+      // user sees a distinct "⏻ POWER OFF" label rather than a frozen
+      // "Damper 0%" that looks the same as a satisfied control loop.
+      const ctrlNodeForView = nodes.find((n) => n.id === target.controllerId);
+      const ctrlPoweredOffView =
+        (ctrlNodeForView?.data as { poweredOff?: boolean } | undefined)?.poweredOff === true;
+      if (ctrlPoweredOffView) {
+        physicsValueByNode.set(target.controllerId, {
+          value: `⏻ POWER OFF · ${controllerOutputLabel(target.controllerId)} 0%`,
+          status: 'responded',
+        });
+        continue;
+      }
       // Label the controller output with the active program source so the
       // user can tell at a glance whether they're watching the default PI
       // loop or the program they just downloaded. "(PI)" used to be
@@ -1485,7 +1566,7 @@
         else if (userProgramAtCtrl.source) progSource = 'ST';
       }
       physicsValueByNode.set(target.controllerId, {
-        value: `Out ${Math.round(sample.actuator * 100)}% (${progSource})`,
+        value: `${controllerOutputLabel(target.controllerId)} ${Math.round(sample.actuator * 100)}% (${progSource})`,
         status: 'polling',
       });
       // Sensor node displays what the SENSOR reports — not the true zone.
@@ -2020,7 +2101,8 @@
         // when the master happens to sort first.
         let nextChildMac = 1;
         const devices: MstpDevice[] = trunkNodes.map((n) => {
-          const forcedMac = (n.data as { forcedMac?: number } | undefined)?.forcedMac;
+          const nd = n.data as { forcedMac?: number; deviceInstance?: number } | undefined;
+          const forcedMac = nd?.forcedMac;
           let mac: number;
           if (typeof forcedMac === 'number') {
             mac = forcedMac;
@@ -2030,14 +2112,18 @@
             mac = nextChildMac;
             nextChildMac += 1;
           }
+          // Honor explicit device-instance override if the user set
+          // one via the inspector; otherwise the default 1000 + mac
+          // scheme (deterministic across renders).
+          const instanceOverride = nd?.deviceInstance;
           return {
             nodeId: n.id,
             mac,
             label: nodeLabel(n) || n.id,
-            // Network-wide BACnet Device Instance — distinct from MAC,
-            // which is link-layer only. Default scheme (1000 + mac) is
-            // arbitrary but deterministic across renders.
-            deviceInstance: defaultDeviceInstance(mac),
+            deviceInstance:
+              typeof instanceOverride === 'number' && Number.isFinite(instanceOverride)
+                ? instanceOverride
+                : defaultDeviceInstance(mac),
           };
         });
         // Re-sort by MAC so the token ring matches the convention.
@@ -2809,13 +2895,32 @@
       }
       let value: string;
       let status: 'idle' | 'polling' | 'responded' | 'tripped' = 'responded';
+      // Powered-off devices always render a distinct OFF state
+      // regardless of kind, so the user never sees a "running" output
+      // on a device they just cut power to.
+      if ((data as { poweredOff?: boolean }).poweredOff) {
+        return {
+          ...n,
+          data: {
+            ...data,
+            runtime: { value: '⏻ POWER OFF', status: 'idle' as const },
+            staleSec: staleNext,
+            ageSinceLastPollSec: ageNext,
+            ...(actuatorUpdate ? { actuatorState: actuatorUpdate } : {}),
+            ...(loopUpdate ? { loopState: loopUpdate } : {}),
+            ...(zoneUpdate ? { zoneState: zoneUpdate } : {}),
+            holdsToken,
+            tokenMac,
+          },
+        };
+      }
       switch (data.kind) {
         case 'supervisor':
           value = `uptime t=${tick}s`;
           status = 'idle';
           break;
         case 'controller':
-          value = controllerReading();
+          value = controllerReading(n.id);
           status = 'polling';
           break;
         case 'sensor':
@@ -4325,6 +4430,63 @@
     );
   }
 
+  /** Set the MS/TP MAC address (forcedMac) for a controller. Empty
+   *  string clears the override, returning the controller to
+   *  auto-assignment. Out-of-range values are ignored. */
+  function setControllerMac(controllerId: string, raw: string): void {
+    if (raw === '') {
+      nodes = nodes.map((n) => {
+        if (n.id !== controllerId) return n;
+        const { forcedMac: _f, ...rest } = n.data as Record<string, unknown>;
+        void _f;
+        return { ...n, data: rest };
+      });
+      return;
+    }
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 127) return;
+    nodes = nodes.map((n) =>
+      n.id === controllerId
+        ? { ...n, data: { ...(n.data as Record<string, unknown>), forcedMac: parsed } }
+        : n,
+    );
+  }
+
+  /** Set the BACnet Device Instance override for a controller. Empty
+   *  string clears the override and falls back to the default
+   *  (1000 + mac) scheme. Out-of-range values are ignored. */
+  function setControllerDeviceInstance(controllerId: string, raw: string): void {
+    if (raw === '') {
+      nodes = nodes.map((n) => {
+        if (n.id !== controllerId) return n;
+        const { deviceInstance: _di, ...rest } = n.data as Record<string, unknown>;
+        void _di;
+        return { ...n, data: rest };
+      });
+      return;
+    }
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 4194302) return;
+    nodes = nodes.map((n) =>
+      n.id === controllerId
+        ? { ...n, data: { ...(n.data as Record<string, unknown>), deviceInstance: parsed } }
+        : n,
+    );
+  }
+
+  /** Look up the live MAC address a controller currently holds on its
+   *  trunk. Returns null if the controller isn't on an MS/TP trunk yet
+   *  (or the sim has never ticked). Read from mstpTrunkStates which
+   *  BuildCanvas already maintains per-tick. */
+  function mstpDeviceLookup(nodeId: string): number | null {
+    for (const trunk of mstpTrunkStates.values()) {
+      for (const d of trunk.devices) {
+        if (d.nodeId === nodeId) return d.mac;
+      }
+    }
+    return null;
+  }
+
   /** Engage / release manual override on the actuator. Engaging captures the
    *  current PI output as the starting override value so the actuator doesn't
    *  jump on engage. Releasing clears the override and PI takes back over. */
@@ -5825,7 +5987,13 @@
 
         {#if selectedController}
           {@const ctrlData = selectedController.data as
-            | { highAlarm?: number; lowAlarm?: number; manualOverride?: number }
+            | {
+                highAlarm?: number;
+                lowAlarm?: number;
+                manualOverride?: number;
+                forcedMac?: number;
+                deviceInstance?: number;
+              }
             | undefined}
           {@const overrideOn = typeof ctrlData?.manualOverride === 'number'}
           {@const isWiredTarget = wiredTargets.some(
@@ -5934,6 +6102,38 @@
                   </span>
                 {/if}
               </div>
+              {#if ctrlData}
+                {@const liveMac = mstpDeviceLookup(selectedController.id)}
+                <label
+                  class="ctrl-field"
+                  title="MS/TP MAC address (0-127). Leave blank to auto-assign — the supervisor gets MAC 0, others get the next free MAC on the trunk. Set explicitly to mimic a dip-switch on a real FEC, or to bake in a deliberate duplicate-MAC fault."
+                >
+                  <span>MAC</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="127"
+                    placeholder={liveMac !== null ? `auto: ${liveMac}` : 'auto'}
+                    value={ctrlData.forcedMac ?? ''}
+                    oninput={(e) => setControllerMac(selectedController.id, (e.currentTarget as HTMLInputElement).value)}
+                  />
+                </label>
+                <label
+                  class="ctrl-field"
+                  title="BACnet Device Instance — site-wide unique ID (0-4194302). The supervisor uses this to address the controller across the network. Defaults to 1000 + MAC if you leave it blank."
+                >
+                  <span>Inst</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="4194302"
+                    placeholder={liveMac !== null ? `auto: ${1000 + liveMac}` : 'auto'}
+                    value={ctrlData.deviceInstance ?? ''}
+                    oninput={(e) => setControllerDeviceInstance(selectedController.id, (e.currentTarget as HTMLInputElement).value)}
+                  />
+                </label>
+                <span class="ctrl-divider"></span>
+              {/if}
               <label class="ctrl-field">
                 <span>High</span>
                 <input

@@ -76,6 +76,13 @@
      *  offline-detection (since "deliberately off" is not the same as
      *  "comm-lost"). Drives the powered-off visual state below. */
     poweredOff?: boolean;
+    /** Controller-only: explicit MS/TP MAC override (0-127). When
+     *  unset, BuildCanvas auto-assigns per-trunk. Setting this is
+     *  how a tech mirrors a real device's dip-switch setting. */
+    forcedMac?: number;
+    /** Controller-only: explicit BACnet Device Instance override
+     *  (0-4194302). When unset, defaults to 1000 + mac. */
+    deviceInstance?: number;
     /** Virtual-controller-only: node id of the host supervisor this
      *  soft controller runs INSIDE. When unset, the virtual controller
      *  has no host and the validator flags it. When the host is
