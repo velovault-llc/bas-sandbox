@@ -769,4 +769,243 @@ export const DEMOS: readonly Demo[] = [
       focused: 'ahu',
     }),
   },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Richer virtual-controller topologies — see "all eggs in one basket"
+  // at scale, watch what happens when the basket is replicated across
+  // subnets or vendors. These are the "real-building" demos.
+  // ═══════════════════════════════════════════════════════════════════
+
+  {
+    id: 'midrise-12-vav',
+    name: 'Mid-rise office: 1 JACE, 12 virtual VAVs',
+    blurb:
+      "Three-story building. A single Tridium JACE hosts 12 virtual VAVs grouped visually by floor (4 per floor). Same 'all eggs in one basket' lesson as the simpler soft-controller demo, but at the scale a real mid-rise gets to before the owner discovers it.",
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'jace',
+          kind: 'supervisor',
+          label: 'JACE-MAIN',
+          x: 580,
+          y: 60,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'Tridium · Niagara · hosts 12 soft VAVs',
+          },
+        },
+        // ── Floor 3 (top) ──────────────────────────────────────
+        ...['vvav-301', 'vvav-302', 'vvav-303', 'vvav-304'].map((id, i) => ({
+          id,
+          kind: 'virtual-controller' as const,
+          label: id.replace('vvav-', 'vVAV-'),
+          x: 80 + i * 200,
+          y: 220,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN', subtitle: 'Floor 3' },
+        })),
+        // ── Floor 2 (middle) ───────────────────────────────────
+        ...['vvav-201', 'vvav-202', 'vvav-203', 'vvav-204'].map((id, i) => ({
+          id,
+          kind: 'virtual-controller' as const,
+          label: id.replace('vvav-', 'vVAV-'),
+          x: 80 + i * 200,
+          y: 400,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN', subtitle: 'Floor 2' },
+        })),
+        // ── Floor 1 (ground) ───────────────────────────────────
+        ...['vvav-101', 'vvav-102', 'vvav-103', 'vvav-104'].map((id, i) => ({
+          id,
+          kind: 'virtual-controller' as const,
+          label: id.replace('vvav-', 'vVAV-'),
+          x: 80 + i * 200,
+          y: 580,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN', subtitle: 'Floor 1' },
+        })),
+      ],
+      edges: [],
+    }),
+  },
+
+  {
+    id: 'campus-bbmd-bridge',
+    name: 'Campus: 2 BBMDs bridge 2 JACEs (10 vVAVs total)',
+    blurb:
+      "Two-subnet campus. Operations VLAN (10.0.1.0/24) hosts JACE-OPS + 5 virtual VAVs; Tenant VLAN (10.0.2.0/24) hosts JACE-TENANT + 5 virtual VAVs. Each JACE runs BBMD service with the OTHER JACE in its BDT — cross-subnet Who-Is broadcasts get forwarded. The conformance panel + broadcast trace show the forwarded packets.",
+    scenario: buildScenario({
+      nodes: [
+        // ── Subnet zone backgrounds ────────────────────────────
+        {
+          id: 'zone-ops',
+          kind: 'subnet-zone',
+          label: 'Operations VLAN',
+          x: 40,
+          y: 40,
+          width: 560,
+          height: 540,
+          data: { cidr: '10.0.1.0/24', color: '#06b6d4' },
+        },
+        {
+          id: 'zone-tenant',
+          kind: 'subnet-zone',
+          label: 'Tenant VLAN',
+          x: 640,
+          y: 40,
+          width: 560,
+          height: 540,
+          data: { cidr: '10.0.2.0/24', color: '#a855f7' },
+        },
+        // ── Operations JACE + fleet ───────────────────────────
+        {
+          id: 'jace-ops',
+          kind: 'supervisor',
+          label: 'JACE-OPS',
+          x: 240,
+          y: 100,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'BBMD · BDT → 10.0.2.10',
+            isBBMD: true,
+            bdtPeers: ['10.0.2.10'],
+          },
+        },
+        ...['vvav-o1', 'vvav-o2', 'vvav-o3', 'vvav-o4', 'vvav-o5'].map((id, i) => ({
+          id,
+          kind: 'virtual-controller' as const,
+          label: id.replace('vvav-o', 'vVAV-OPS-'),
+          x: 80 + i * 100,
+          y: 280 + (i % 2) * 140,
+          data: { hostId: 'jace-ops', hostLabel: 'JACE-OPS' },
+        })),
+        // ── Tenant JACE + fleet ───────────────────────────────
+        {
+          id: 'jace-tenant',
+          kind: 'supervisor',
+          label: 'JACE-TENANT',
+          x: 840,
+          y: 100,
+          data: {
+            ipAddress: '10.0.2.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.2.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'BBMD · BDT → 10.0.1.10',
+            isBBMD: true,
+            bdtPeers: ['10.0.1.10'],
+          },
+        },
+        ...['vvav-t1', 'vvav-t2', 'vvav-t3', 'vvav-t4', 'vvav-t5'].map((id, i) => ({
+          id,
+          kind: 'virtual-controller' as const,
+          label: id.replace('vvav-t', 'vVAV-TEN-'),
+          x: 680 + i * 100,
+          y: 280 + (i % 2) * 140,
+          data: { hostId: 'jace-tenant', hostLabel: 'JACE-TENANT' },
+        })),
+      ],
+      edges: [
+        // The two JACEs are wired BACnet/IP to each other — the BBMD
+        // service rides this physical link.
+        { source: 'jace-ops', target: 'jace-tenant', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
+
+  {
+    id: 'mixed-vendor-hosts',
+    name: 'Mixed vendor: Tridium + JCI side-by-side',
+    blurb:
+      "Tridium JACE and JCI NAE on the same subnet, each hosting their own fleet of soft controllers. Teaches the multi-vendor coexistence pattern most retrofit jobs end up with — the supervisors run different programming languages internally (Niagara wiresheet vs JCI CCT block-graph) but speak BACnet/IP to each other.",
+    scenario: buildScenario({
+      nodes: [
+        // ── Tridium side (left) ────────────────────────────────
+        {
+          id: 'jace',
+          kind: 'supervisor',
+          label: 'JACE-MAIN',
+          x: 220,
+          y: 80,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'Tridium · Niagara wiresheet',
+          },
+        },
+        {
+          id: 'jace-vahu',
+          kind: 'virtual-controller',
+          label: 'vAHU-N1',
+          x: 80,
+          y: 280,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN', subtitle: 'AHU program' },
+        },
+        {
+          id: 'jace-vvav1',
+          kind: 'virtual-controller',
+          label: 'vVAV-N1',
+          x: 220,
+          y: 280,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+        {
+          id: 'jace-vvav2',
+          kind: 'virtual-controller',
+          label: 'vVAV-N2',
+          x: 360,
+          y: 280,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+        // ── JCI side (right) ───────────────────────────────────
+        {
+          id: 'nae',
+          kind: 'supervisor',
+          label: 'SNE-MAIN',
+          x: 780,
+          y: 80,
+          data: {
+            ipAddress: '10.0.1.20',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'jci-sne10500',
+            subtitle: 'JCI Metasys · CCT block-graph',
+          },
+        },
+        {
+          id: 'nae-vboiler',
+          kind: 'virtual-controller',
+          label: 'vBOILER',
+          x: 640,
+          y: 280,
+          data: { hostId: 'nae', hostLabel: 'SNE-MAIN', subtitle: 'Hot-water plant' },
+        },
+        {
+          id: 'nae-vvav1',
+          kind: 'virtual-controller',
+          label: 'vVAV-J1',
+          x: 780,
+          y: 280,
+          data: { hostId: 'nae', hostLabel: 'SNE-MAIN' },
+        },
+        {
+          id: 'nae-vvav2',
+          kind: 'virtual-controller',
+          label: 'vVAV-J2',
+          x: 920,
+          y: 280,
+          data: { hostId: 'nae', hostLabel: 'SNE-MAIN' },
+        },
+      ],
+      edges: [
+        // The two supervisors talk BACnet/IP across the same subnet.
+        { source: 'jace', target: 'nae', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
 ];
