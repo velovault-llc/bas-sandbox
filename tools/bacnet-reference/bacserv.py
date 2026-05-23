@@ -13,7 +13,7 @@
 #     python bacserv.py
 #
 # Verify from another shell:
-#     python -m bacpypes3.apps.discover whois
+#     python whois_client.py
 #
 # Wireshark filter while this runs:    bvlc
 #
@@ -71,7 +71,7 @@ async def main() -> None:
 
     print(f"BACnet reference device on UDP 47808")
     print(f"Discover from another shell:")
-    print(f"    python -m bacpypes3.apps.discover whois")
+    print(f"    python whois_client.py")
     print(f"Ctrl+C to quit.")
 
     # Run forever — sleep on a never-resolving future. Ctrl+C interrupts.

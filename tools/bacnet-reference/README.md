@@ -26,10 +26,12 @@ python bacserv.py
 Then in another shell:
 
 ```bash
-python -m bacpypes3.apps.discover whois
+python whois_client.py
 ```
 
 You should see your device's I-Am reply with the four required fields (Device Instance, Max APDU, Segmentation, Vendor ID).
+
+> **bacpypes3 doesn't install command-line tools.** The original `bacpypes` exposed `apps.whois` as a runnable module (`python -m bacpypes.apps.whois`); `bacpypes3` keeps those in a `samples/` directory that pip doesn't ship. We include `whois_client.py` in this folder as a small drop-in client.
 
 > **Heads up on Python 3.12+:** the *original* `bacpypes` package depends on `asyncore` which was removed in Python 3.12. If you tried `pip install bacpypes` and got `ModuleNotFoundError: No module named 'asyncore'`, that's why. Use `bacpypes3` (the asyncio rewrite). Uninstall the old one first: `pip uninstall -y bacpypes`.
 
