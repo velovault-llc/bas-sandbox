@@ -180,6 +180,11 @@ export {
   formatCidr,
   checkBacnetConformance,
   summarizeConformance,
+  BACNET_OBJECT_CATALOG,
+  findObjectDef,
+  requiredProperties,
+  jciExtensions,
+  commonProperties,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
@@ -202,6 +207,9 @@ export type {
   ConformanceFinding,
   ConformanceFindingId,
   ConformanceSummary,
+  BacnetObjectDef,
+  BacnetPropertyDef,
+  BacnetObjectTypeCode,
 } from './bacnet/index.js';
 
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';

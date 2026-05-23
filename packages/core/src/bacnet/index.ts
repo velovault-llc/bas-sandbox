@@ -60,3 +60,16 @@ export type {
   ConformanceFindingId,
   ConformanceSummary,
 } from './conformance.js';
+
+export {
+  BACNET_OBJECT_CATALOG,
+  findObjectDef,
+  requiredProperties,
+  jciExtensions,
+  commonProperties,
+} from './objectCatalog.js';
+export type {
+  BacnetObjectDef,
+  BacnetPropertyDef,
+  BacnetObjectTypeCode,
+} from './objectCatalog.js';
