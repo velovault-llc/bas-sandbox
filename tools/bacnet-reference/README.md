@@ -15,6 +15,26 @@ It's the **ground truth** the sandbox can be diffed against. If our sim's packet
 
 ## Quick start
 
+**On Windows or any machine with Python 3.10+**, the easiest path is `bacpypes3` (no Docker, no compile):
+
+```bash
+pip install bacpypes3
+cd tools/bacnet-reference
+python bacserv.py
+```
+
+Then in another shell:
+
+```bash
+python -m bacpypes3.apps.discover whois
+```
+
+You should see your device's I-Am reply with the four required fields (Device Instance, Max APDU, Segmentation, Vendor ID).
+
+> **Heads up on Python 3.12+:** the *original* `bacpypes` package depends on `asyncore` which was removed in Python 3.12. If you tried `pip install bacpypes` and got `ModuleNotFoundError: No module named 'asyncore'`, that's why. Use `bacpypes3` (the asyncio rewrite). Uninstall the old one first: `pip uninstall -y bacpypes`.
+
+## Docker path (for users without Python)
+
 ```bash
 cd tools/bacnet-reference
 

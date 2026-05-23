@@ -1,44 +1,58 @@
 # Reference BACnet device for the sandbox.
 #
-# Runs a real BACnet/IP device on UDP 47808 using bacpypes — the
-# Python BACnet implementation. Used as ground-truth to validate the
-# sandbox's packet emission against actual on-the-wire BACnet bytes.
+# Runs a real BACnet/IP device on UDP 47808 using bacpypes3 — the
+# asyncio-based rewrite of bacpypes. The original bacpypes uses
+# Python's asyncore module, which was REMOVED in Python 3.12+; if
+# you're on a modern Python you need bacpypes3.
 #
-# Install once:    pip install bacpypes
-# Run:             python bacserv.py
-# Verify:          python -m bacpypes.apps.whois  (in another shell)
+# Install once:
+#     pip uninstall -y bacpypes
+#     pip install bacpypes3
 #
-# Wireshark filter while this runs:   bvlc
-# That isolates BACnet traffic on whatever adapter you're capturing.
+# Run:
+#     python bacserv.py
+#
+# Verify from another shell:
+#     python -m bacpypes3.apps.discover whois
+#
+# Wireshark filter while this runs:    bvlc
 #
 # Object set is deliberately tiny — a temp AV and an occupancy BV.
 # Enough for Who-Is / I-Am / ReadProperty / SubscribeCOV to exercise
 # every spec rule the sandbox's conformance panel checks.
 
-from bacpypes.app import BIPSimpleApplication
-from bacpypes.core import run
-from bacpypes.local.device import LocalDeviceObject
-from bacpypes.object import AnalogValueObject, BinaryValueObject
+import asyncio
+import sys
 
-
-def main() -> None:
-    device = LocalDeviceObject(
-        objectName="bas-sandbox-ref",
-        objectIdentifier=1234,
-        # Reasonable defaults — matches what a small JACE / NCE
-        # advertises. These are the fields the sandbox's conformance
-        # panel cites as required per ASHRAE 135 §16.10.2.
-        maxApduLengthAccepted=1024,
-        segmentationSupported="segmentedBoth",
-        vendorIdentifier=15,  # 15 = Cimetrics (an arbitrary real vendor)
+try:
+    from bacpypes3.app import Application
+    from bacpypes3.argparse import SimpleArgumentParser
+    from bacpypes3.local.analog import AnalogValueObject
+    from bacpypes3.local.binary import BinaryValueObject
+except ImportError as e:
+    print("ERROR: bacpypes3 not installed.", file=sys.stderr)
+    print("Install with:    pip install bacpypes3", file=sys.stderr)
+    print(
+        "If you have the old bacpypes (not bacpypes3), uninstall it first:",
+        file=sys.stderr,
     )
-    # 0.0.0.0 binds all interfaces. If you have multiple NICs and want
-    # to pin to one, replace with the IP of the desired adapter.
-    app = BIPSimpleApplication(device, "0.0.0.0")
+    print("    pip uninstall -y bacpypes", file=sys.stderr)
+    print(f"(original error: {e})", file=sys.stderr)
+    sys.exit(1)
 
-    # Test objects so ReadProperty / COV exchanges have something to
-    # chew on. Property values are static (no simulation); the goal
-    # is wire-format validation, not realistic behavior.
+
+async def main() -> None:
+    # SimpleArgumentParser handles --address, --instance, --name, etc.
+    # Defaults: instance 1234, name "Excelsior", listens on all interfaces.
+    parser = SimpleArgumentParser(
+        prog="bacserv",
+        description="Reference BACnet device for bas-sandbox conformance work.",
+    )
+    args = parser.parse_args()
+
+    app = Application.from_args(args)
+
+    # Test objects — give ReadProperty + COV something to chew on.
     zn_t = AnalogValueObject(
         objectIdentifier=("analogValue", 1),
         objectName="ZN-T",
@@ -55,12 +69,20 @@ def main() -> None:
     app.add_object(zn_t)
     app.add_object(occ)
 
-    print("BACnet reference device 'bas-sandbox-ref' (instance 1234)")
-    print("Listening on UDP 47808 — all interfaces.")
-    print("Discover from another shell:   python -m bacpypes.apps.whois")
-    print("Stop with Ctrl+C.")
-    run()
+    print(f"BACnet reference device on UDP 47808")
+    print(f"Discover from another shell:")
+    print(f"    python -m bacpypes3.apps.discover whois")
+    print(f"Ctrl+C to quit.")
+
+    # Run forever — sleep on a never-resolving future. Ctrl+C interrupts.
+    try:
+        await asyncio.Future()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nShutting down.")
