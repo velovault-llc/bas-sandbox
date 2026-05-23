@@ -17,11 +17,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
+    "exp": "tsx tools/experiments/run-experiments.ts",
     "deploy": "pnpm --filter @bas/ui build && netlify deploy --prod --filter @bas/ui --site=602708bc-b819-4afd-9cad-f275d19f9106 --dir=packages/ui/dist"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
     "prettier-plugin-svelte": "^3.3.2",
+    "tsx": "^4.22.3",
     "typescript": "^5.7.2"
   },
   "engines": {

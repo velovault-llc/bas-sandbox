@@ -230,6 +230,27 @@ export {
   findEntry as findLibraryEntry,
   findByCitation as findLibraryByCitation,
 } from './references/library.js';
+
+export {
+  EXPERIMENT_CATALOG,
+  findExperiment,
+  experimentsByTag,
+  runExperiment,
+  runCatalog,
+  formatCatalogMarkdown,
+} from './experiments/index.js';
+export type {
+  ExperimentSpec,
+  ExperimentResult,
+  ExperimentInputs,
+  ExperimentScope,
+  ExpectedFinding,
+  CatalogRunResult,
+  AnyKnownFindingId,
+  BacnetConformanceInputs,
+  Ipv4Inputs,
+  MstpInputs,
+} from './experiments/index.js';
 export type {
   LibraryEntry,
   LibrarySource,
