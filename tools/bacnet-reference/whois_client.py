@@ -31,14 +31,23 @@ except ImportError as e:
 
 
 async def main() -> None:
-    # Use a different device instance than bacserv.py so we don't
-    # collide on the network. 9999 is a throwaway client identity.
+    # CRITICAL on Windows: bacserv.py already owns UDP 47808 on this
+    # machine. Two processes can't bind the same UDP port. So we tell
+    # bacpypes3 to bind to 47809 instead — the WHO-IS BROADCAST still
+    # goes to UDP/47808 (the spec port), and the server replies to
+    # our source port (47809). On Linux SO_REUSEPORT lets both share
+    # 47808, but Windows doesn't honor that for UDP. Override with
+    # the BACPYPES_DEVICE_ADDRESS env var if you need something else.
+    import os
     parser = SimpleArgumentParser(prog="whois_client")
     args = parser.parse_args()
-    # SimpleArgumentParser uses a default instance; override only if
-    # not supplied via the env / args.
     if getattr(args, "instance", None) is None:
         args.instance = 9999
+    # Force the client onto an alternate local port unless the user
+    # explicitly passed --address. SimpleArgumentParser stores the
+    # supplied address on args.address; default is None → we set it.
+    if getattr(args, "address", None) is None:
+        args.address = os.environ.get("BACPYPES_DEVICE_ADDRESS", "0.0.0.0:47809")
 
     app = Application.from_args(args)
 
