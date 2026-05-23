@@ -222,6 +222,20 @@ export type {
   ScenarioDifficulty,
 } from './scenarios/index.js';
 
+export {
+  LIBRARY,
+  LIBRARY_CATEGORIES,
+  CATEGORY_LABEL,
+  searchLibrary,
+  findEntry as findLibraryEntry,
+  findByCitation as findLibraryByCitation,
+} from './references/library.js';
+export type {
+  LibraryEntry,
+  LibrarySource,
+  LibraryCategory,
+} from './references/library.js';
+
 export { BLOCK_LIBRARY, compileFbd } from './fbd/index.js';
 export type {
   BlockTypeDef,

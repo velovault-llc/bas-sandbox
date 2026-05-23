@@ -16,6 +16,7 @@
     type ConformanceFinding,
   } from '@bas/core';
   import { bacnetPacketLog } from './bacnetPacketLog.svelte';
+  import { navigateToLibrary } from '../library/libraryNavStore.svelte';
 
   let panelOpen = $state(false);
   let panelEl: HTMLElement | null = $state(null);
@@ -178,7 +179,12 @@
             </div>
             <p class="desc">{f.description}</p>
             {#if f.citation}
-              <p class="cite">📘 {f.citation}</p>
+              <button
+                type="button"
+                class="cite-btn"
+                onclick={() => navigateToLibrary(f.citation ?? '')}
+                title="Open this citation in the Library tab"
+              >📘 {f.citation}</button>
             {/if}
           </div>
         {/each}
@@ -357,11 +363,24 @@
     line-height: 1.4;
     color: color-mix(in srgb, CanvasText 75%, transparent);
   }
-  .cite {
+  .cite-btn {
+    align-self: flex-start;
     margin: 0;
+    padding: 0.1rem 0.35rem;
+    background: color-mix(in srgb, #06b6d4 10%, transparent);
+    border: 1px solid color-mix(in srgb, #06b6d4 35%, transparent);
+    border-radius: 3px;
+    font: inherit;
     font-size: 0.68rem;
-    color: color-mix(in srgb, CanvasText 55%, transparent);
-    font-family:
-      ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  }
+  .cite-btn:hover {
+    border-color: color-mix(in srgb, #06b6d4 70%, transparent);
+    background: color-mix(in srgb, #06b6d4 20%, transparent);
+    color: CanvasText;
   }
 </style>

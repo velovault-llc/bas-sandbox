@@ -21,6 +21,8 @@
   import NetworkPalette from './lib/network/NetworkPalette.svelte';
   import ModelPickerModal from './lib/equipment/ModelPickerModal.svelte';
   import ScenariosTab from './lib/scenarios/ScenariosTab.svelte';
+  import LibraryPanel from './lib/library/LibraryPanel.svelte';
+  import { libraryNavStore } from './lib/library/libraryNavStore.svelte';
   import ScenarioPanel from './lib/scenarios/ScenarioPanel.svelte';
   import RuntimeLogPanel from './lib/runtime/RuntimeLogPanel.svelte';
   import { importStore } from './lib/canvasStore.svelte';
@@ -57,6 +59,16 @@
     }
   });
 
+  // When the conformance panel (or any other surface) requests
+  // "show me this in the Library", flip the tab and let the panel's
+  // own effect seed its search input from libraryNavStore.query.
+  $effect(() => {
+    if (libraryNavStore.pulse > 0) {
+      leftDrawerTab = 'library';
+      leftDrawerOpen = true;
+    }
+  });
+
   const plugins = [dbexportPlugin, brickTtlPlugin];
 
   type Mode = 'view' | 'build' | 'about';
@@ -67,7 +79,7 @@
     else if (window.location.hash === '#about') window.history.replaceState(null, '', window.location.pathname);
   });
 
-  type LeftDrawerTab = 'weather' | 'devices' | 'network' | 'scenarios' | 'settings';
+  type LeftDrawerTab = 'weather' | 'devices' | 'network' | 'scenarios' | 'library' | 'settings';
   let leftDrawerOpen = $state(true);
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
@@ -487,6 +499,16 @@
           <button
             type="button"
             class="rail-tab"
+            class:active={leftDrawerOpen && leftDrawerTab === 'library'}
+            onclick={() => pickLeftDrawerTab('library')}
+            title="Reference library — ASHRAE 135, bacpypes3, vendor docs, in-tree files"
+          >
+            <span class="rail-icon">📖</span>
+            <span class="rail-label">Library</span>
+          </button>
+          <button
+            type="button"
+            class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'settings'}
             onclick={() => pickLeftDrawerTab('settings')}
             title="Settings"
@@ -514,6 +536,8 @@
             <NetworkPalette />
           {:else if leftDrawerTab === 'scenarios'}
             <ScenariosTab />
+          {:else if leftDrawerTab === 'library'}
+            <LibraryPanel />
           {:else if leftDrawerTab === 'settings'}
             <div class="settings-placeholder">
               <h3>Settings</h3>
