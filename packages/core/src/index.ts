@@ -135,6 +135,20 @@ export {
 export type { ZoneConfig, ZoneState, ZoneInputs } from './sim/zone.js';
 
 export {
+  stepVAhu,
+  initVAhuState,
+  DEFAULT_VAHU_CONFIG,
+  synthesizeVAhuObjects,
+  vAhuCovDeltas,
+} from './vahu/index.js';
+export type {
+  VAhuMode,
+  VAhuConfig,
+  VAhuInputs,
+  VAhuState,
+} from './vahu/index.js';
+
+export {
   TILE_CATALOG,
   tileCatalogByKind,
   findTileTemplate,

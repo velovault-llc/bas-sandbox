@@ -291,6 +291,36 @@ export const LIBRARY: readonly LibraryEntry[] = [
   },
 
   // ═══════════════════════════════════════════════════════════════════
+  // Sequences of operation (the "what should this controller DO")
+  // ═══════════════════════════════════════════════════════════════════
+  {
+    id: 'ashrae-g36',
+    title: 'ASHRAE Guideline 36 — High-Performance Sequences of Operation',
+    category: 'standard',
+    summary:
+      "The standard reference for how a competent BAS programmer writes AHU, VAV, and chilled/hot water plant sequences. §5.18 covers single-zone VAV AHU — the sequence our vAHU implements.",
+    relevance:
+      "When the sandbox runs a vAHU, this is the spec it follows. Mode logic, economizer enable, SAT-SP reset, valve PI control — all anchored here. Free for ASHRAE members; otherwise paywall, but the published preview covers most of the structure.",
+    tags: ['ashrae', 'g36', 'sequence', 'ahu', 'vav', 'g36-section-5-18'],
+    sources: [
+      {
+        label: 'ASHRAE G36-2021 product page',
+        url: 'https://www.ashrae.org/technical-resources/ashrae-standards-and-guidelines',
+        note: 'Guideline 36-2021 is the current version.',
+      },
+      {
+        label: 'Sandbox vAHU implementation',
+        path: 'packages/core/src/vahu/step.ts',
+      },
+      {
+        label: 'Sandbox vAHU BACnet object surface',
+        path: 'packages/core/src/vahu/bacnet.ts',
+      },
+    ],
+    citations: ['ASHRAE G36 §5.18.1', 'ASHRAE G36 §5.18.2', 'ASHRAE G36 §5.18.3', 'ASHRAE G36 §5.18.4', 'ASHRAE G36 §5.18.6'],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
   // Training / conformance
   // ═══════════════════════════════════════════════════════════════════
   {
