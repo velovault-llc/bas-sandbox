@@ -30,24 +30,53 @@ except ImportError as e:
     sys.exit(1)
 
 
+def detect_local_ipv4() -> str:
+    """Find the IP address of the active outbound interface.
+
+    The trick is to open a UDP socket "connected" to a public address.
+    UDP `connect` doesn't actually send packets — it just makes the
+    OS pick a source IP for the route. We grab that and close the
+    socket. Works on Windows / Linux / macOS without any deps.
+
+    Falls back to 127.0.0.1 if nothing's routable (e.g., offline laptop).
+    """
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # 8.8.8.8 = Google DNS. Could be anything public; never contacted.
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
 async def main() -> None:
     # CRITICAL on Windows: bacserv.py already owns UDP 47808 on this
-    # machine. Two processes can't bind the same UDP port. So we tell
-    # bacpypes3 to bind to 47809 instead — the WHO-IS BROADCAST still
-    # goes to UDP/47808 (the spec port), and the server replies to
-    # our source port (47809). On Linux SO_REUSEPORT lets both share
-    # 47808, but Windows doesn't honor that for UDP. Override with
-    # the BACPYPES_DEVICE_ADDRESS env var if you need something else.
+    # machine. Two processes can't bind the same UDP port. So we
+    # bind the client to 47809 instead — the WHO-IS BROADCAST still
+    # targets UDP/47808 (the spec port), and the server replies to
+    # our source port (47809). Override with BACPYPES_DEVICE_ADDRESS
+    # env var if you need something else.
+    #
+    # We also need a SPECIFIC interface IP (not 0.0.0.0) so bacpypes3
+    # knows what subnet to broadcast on — without that it raises
+    # `RuntimeError: no broadcast`. Auto-detect via outbound socket
+    # trick + assume /24 (which covers ~all home/office BAS deployments).
     import os
     parser = SimpleArgumentParser(prog="whois_client")
     args = parser.parse_args()
     if getattr(args, "instance", None) is None:
         args.instance = 9999
-    # Force the client onto an alternate local port unless the user
-    # explicitly passed --address. SimpleArgumentParser stores the
-    # supplied address on args.address; default is None → we set it.
     if getattr(args, "address", None) is None:
-        args.address = os.environ.get("BACPYPES_DEVICE_ADDRESS", "0.0.0.0:47809")
+        env_addr = os.environ.get("BACPYPES_DEVICE_ADDRESS")
+        if env_addr:
+            args.address = env_addr
+        else:
+            local_ip = detect_local_ipv4()
+            args.address = f"{local_ip}/24:47809"
+            print(f"Using local address: {args.address}")
 
     app = Application.from_args(args)
 
