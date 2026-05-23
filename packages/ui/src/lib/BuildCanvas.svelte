@@ -129,6 +129,21 @@
   const BROADCAST_TRACE_PERIOD = 30;
   let lastBroadcastTraceSec = -BROADCAST_TRACE_PERIOD;
 
+  // BACnet confirmed-service invoke IDs (ASHRAE 135 §20.1.2.4) — 8-bit
+  // unsigned counter that pairs each Confirmed-REQ with its ACK. The
+  // requester (supervisor MAC 0 in our model) increments per request;
+  // the responder echoes the same ID in the Complex-ACK. Without this
+  // ID, multiple in-flight ReadPropertys can't be matched to their
+  // responses — which is why real bus traces always show it. Real
+  // captures confirmed: bacpypes3 emits invokeID=0 for the first
+  // ReadProperty, increments by 1 per subsequent confirmed service.
+  let nextInvokeId = 0;
+  function bumpInvokeId(): number {
+    const v = nextInvokeId;
+    nextInvokeId = (nextInvokeId + 1) & 0xff; // wrap at 256 per spec
+    return v;
+  }
+
   /** Count the 1-bits in a 32-bit unsigned integer. Used to convert a
    *  dotted-quad mask to a CIDR prefix length for trace labels. */
   function bitCount(n: number): number {
@@ -2371,7 +2386,6 @@
             });
             const targetObj = childObjects.find((o) => o.type === 'analog-input') ?? childObjects[0];
             const objectId = targetObj?.id ?? 'AI:1';
-            const objectName = targetObj?.name ?? '(unassigned)';
             const value = targetObj
               ? (typeof targetObj.presentValue === 'boolean'
                   ? (targetObj.presentValue ? 1 : 0)
@@ -2380,6 +2394,13 @@
             const trunkLabel = trunkLabelStr;
             // Always emit the request — supervisor doesn't know the
             // child is gone until the timeout expires.
+            // ReadProperty IS a confirmed service per ASHRAE 135 §15.5
+            // so it carries an invoke ID. We also surface the BACnet
+            // property identifier ("present-value (85)") since that's
+            // what every wire trace shows. Right now the sandbox only
+            // ever reads presentValue; if we extend to status-flags
+            // / units / etc. this needs a per-property mapping.
+            const invokeId = bumpInvokeId();
             logBacnetPacket({
               simSec: simSecondsElapsed,
               trunkId: trunkEdge.id,
@@ -2388,7 +2409,7 @@
               dstMac: child.mac,
               service: 'ReadProperty',
               objectId,
-              summary: `MAC 0 → ${child.label}: ReadProperty ${objectId} (${objectName})`,
+              summary: `MAC 0 → ${child.label}: ReadProperty ${objectId} present-value (85) · invokeId ${invokeId} · NPDU Expecting-Reply`,
               layer: 'app',
             });
             const failKey = `${trunkEdge.id}|${child.nodeId}`;
@@ -2413,7 +2434,7 @@
                 dstMac: child.mac,
                 service: 'Timeout',
                 objectId,
-                summary: `MAC 0 ✗ ${child.label}: no response (attempt ${attempt}/${COMM_LOST_RETRY_THRESHOLD})`,
+                summary: `MAC 0 ✗ ${child.label}: no response to invokeId ${invokeId} (attempt ${attempt}/${COMM_LOST_RETRY_THRESHOLD})`,
                 layer: 'app',
               });
               if (attempt >= COMM_LOST_RETRY_THRESHOLD && !fail.reportedLost) {
@@ -2443,7 +2464,11 @@
                 service: 'ReadProperty-ACK',
                 objectId,
                 value,
-                summary: `${child.label} → MAC 0: ${objectId} = ${typeof value === 'number' ? value.toFixed(2) : String(value)}`,
+                // Echo the request's invoke ID (that's how the supervisor
+                // pairs ACK to request). APDU type = Complex-ACK (3).
+                // Value carried inside opening/closing context-tag 3
+                // per ASHRAE 135 §15.5.1.
+                summary: `${child.label} → MAC 0: ReadProperty-ACK ${objectId} present-value = ${typeof value === 'number' ? value.toFixed(2) : String(value)} · invokeId ${invokeId}`,
                 layer: 'app',
               });
               const fail = failingChildren.get(failKey);
@@ -3063,6 +3088,10 @@
     // Reset broadcast trace clock so a fresh run fires the first trace
     // immediately rather than waiting for BROADCAST_TRACE_PERIOD.
     lastBroadcastTraceSec = -BROADCAST_TRACE_PERIOD;
+    // Reset BACnet invoke-ID counter so each run starts from 0 — makes
+    // the packet log deterministic and matches what a freshly-booted
+    // supervisor would emit on the wire.
+    nextInvokeId = 0;
     const startSeconds = simStartHour * 3600;
     const systems = new Map<string, SingleZoneSystem>();
     const samples = new Map<string, Sample[]>();
@@ -5022,6 +5051,7 @@
             key === 'mode'
               ? (value === 'heat' ? 2 : 1)
               : (typeof value === 'number' ? value : 0);
+          const wpInvokeId = bumpInvokeId();
           logBacnetPacket({
             simSec: simSecondsElapsed,
             trunkId: trunkForCtrl.trunkId,
@@ -5031,7 +5061,7 @@
             service: 'WriteProperty',
             objectId,
             value: writeVal,
-            summary: `MAC 0 → ${trunkForCtrl.label}: WriteProperty ${objectId} = ${typeof writeVal === 'number' ? writeVal.toFixed(2) : writeVal} (CLI set ${key})`,
+            summary: `MAC 0 → ${trunkForCtrl.label}: WriteProperty ${objectId} present-value (85) = ${typeof writeVal === 'number' ? writeVal.toFixed(2) : writeVal} (CLI set ${key}) · invokeId ${wpInvokeId} · NPDU Expecting-Reply`,
             layer: 'app',
           });
           logBacnetPacket({
@@ -5043,7 +5073,7 @@
             service: 'WriteProperty-ACK',
             objectId,
             value: writeVal,
-            summary: `${trunkForCtrl.label} → MAC 0: WriteProperty-ACK ${objectId} OK`,
+            summary: `${trunkForCtrl.label} → MAC 0: WriteProperty-ACK ${objectId} OK · invokeId ${wpInvokeId}`,
             layer: 'app',
           });
         }

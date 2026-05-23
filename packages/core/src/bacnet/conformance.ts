@@ -49,6 +49,7 @@ export type ConformanceFindingId =
   | 'bacnet.iam-missing-fields'
   | 'bacnet.iam-without-whois'
   | 'bacnet.readproperty-no-ack'
+  | 'bacnet.missing-invoke-id'
   | 'bacnet.cov-missing-statusflags'
   | 'bacnet.token-timing-slow'
   | 'bacnet.duplicate-instance'
@@ -75,6 +76,7 @@ export function checkBacnetConformance(packets: readonly ConformancePacket[]): C
   out.push(...checkIAmFields(packets));
   out.push(...checkIAmTriggered(packets));
   out.push(...checkReadPropertyAcked(packets));
+  out.push(...checkConfirmedHaveInvokeId(packets));
   out.push(...checkCovStatusFlags(packets));
   out.push(...checkUniqueDeviceInstances(packets));
   out.push(...checkUnknownServices(packets));
@@ -217,6 +219,43 @@ function checkIAmTriggered(packets: readonly ConformancePacket[]): ConformanceFi
         "is re-announcing itself after a comm restore, which is allowed but worth flagging.",
       citation: 'ASHRAE 135 §16.10.2',
       sampleSimSecs: orphaned.slice(0, 3),
+    },
+  ];
+}
+
+// ── Rule: ReadProperty invoke-ID pairing ────────────────────────────
+//
+// Per ASHRAE 135 §20.1.2.4, every confirmed-service request carries
+// an 8-bit invoke ID that the responder MUST echo in the
+// Complex-ACK. Without it, a supervisor with multiple outstanding
+// requests can't pair ACKs to their originating request. Real wire
+// traces always include invokeId; the sandbox now does too.
+
+function checkConfirmedHaveInvokeId(packets: readonly ConformancePacket[]): ConformanceFinding[] {
+  const confirmed = packets.filter(
+    (p) =>
+      p.service === 'ReadProperty' ||
+      p.service === 'WriteProperty' ||
+      p.service === 'ReadProperty-ACK' ||
+      p.service === 'WriteProperty-ACK',
+  );
+  if (confirmed.length === 0) return [];
+  const missing: number[] = [];
+  for (const p of confirmed) {
+    if (!/invokeId \d+/.test(p.summary ?? '')) missing.push(p.simSec);
+  }
+  if (missing.length === 0) return [];
+  return [
+    {
+      id: 'bacnet.missing-invoke-id',
+      severity: 'warning',
+      title: `Confirmed-service packets missing invokeId (${missing.length} of ${confirmed.length})`,
+      description:
+        'ReadProperty / WriteProperty and their ACKs must carry an 8-bit invoke ID per §20.1.2.4 ' +
+        'so the supervisor can pair multiple in-flight requests to their replies. Without it, ' +
+        'overlapping requests on a busy bus would be unmatchable.',
+      citation: 'ASHRAE 135 §20.1.2.4 (invoke-ID field)',
+      sampleSimSecs: missing.slice(0, 3),
     },
   ];
 }
