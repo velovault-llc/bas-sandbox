@@ -68,6 +68,21 @@ export {
   jciExtensions,
   commonProperties,
 } from './objectCatalog.js';
+
+export {
+  emitWhoIs,
+  emitIAm,
+  emitReadProperty,
+  emitReadPropertyAck,
+  emitSubscribeCov,
+  emitSubscribeCovAck,
+  emitCovNotification,
+  emitTokenPass,
+  emitPollForMaster,
+  emitTimeout,
+  toConformancePacket,
+} from './emit.js';
+export type { BuiltPacket, Transport, Segmentation } from './emit.js';
 export type {
   BacnetObjectDef,
   BacnetPropertyDef,

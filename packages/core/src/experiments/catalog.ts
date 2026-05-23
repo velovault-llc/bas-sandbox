@@ -11,30 +11,61 @@
 
 import type { ExperimentSpec } from './types.js';
 import type { ConformancePacket } from '../bacnet/conformance.js';
+import {
+  emitWhoIs,
+  emitIAm,
+  emitReadProperty,
+  emitReadPropertyAck,
+  toConformancePacket,
+} from '../bacnet/emit.js';
 
 // ── Helpers for building synthetic packet traces ────────────────────
+//
+// These adapt the pure emit builders into the ConformancePacket shape
+// the experiment harness uses. Experiments now exercise the SAME
+// wire-format builders the UI ships with — when emit.ts changes, the
+// catalog scenarios automatically reflect that change.
 
-function whoIs(simSec: number, summary = 'Who-Is broadcast'): ConformancePacket {
-  return { simSec, service: 'Who-Is', summary };
+function whoIs(simSec: number): ConformancePacket {
+  return toConformancePacket(
+    emitWhoIs({ simSec, srcLabel: 'SUP', transport: 'broadcast-ip' }),
+  );
 }
 
 function iAm(simSec: number, instance: number, opts: {
   maxApdu?: number;
-  segmentation?: string;
+  segmentation?: 'segmented-both' | 'segmented-transmit' | 'segmented-receive' | 'no-segmentation';
   vendorId?: number;
   srcMac?: number;
   dstMac?: number;
+  /** When true, deliberately emit a malformed I-Am that omits the
+   *  required ASHRAE §16.10.2 fields. Used by the iam-missing-fields
+   *  experiment. */
+  malformed?: boolean;
 } = {}): ConformancePacket {
-  const maxApdu = opts.maxApdu ?? 1024;
-  const seg = opts.segmentation ?? 'segmented-both';
-  const vid = opts.vendorId ?? 260;
-  return {
-    simSec,
-    service: 'I-Am',
-    srcMac: opts.srcMac,
-    dstMac: opts.dstMac,
-    summary: `I-Am device,${instance} · maxAPDU ${maxApdu} · segmentation ${seg} · vendorId ${vid} · BVLC fn 0x0a Original-Unicast-NPDU`,
-  };
+  if (opts.malformed) {
+    // Bypass emit's contract on purpose — we WANT a malformed packet
+    // to confirm the conformance checker catches it.
+    return {
+      simSec,
+      service: 'I-Am',
+      summary: `I-Am device,${instance}`,
+      srcMac: opts.srcMac,
+      dstMac: opts.dstMac,
+    };
+  }
+  return toConformancePacket(
+    emitIAm({
+      simSec,
+      srcLabel: 'DEV',
+      srcMac: opts.srcMac,
+      dstMac: opts.dstMac,
+      deviceInstance: instance,
+      maxApdu: opts.maxApdu,
+      segmentation: opts.segmentation,
+      vendorId: opts.vendorId ?? 260,
+    }),
+  );
 }
 
 function readProp(simSec: number, instance: number, prop: string, opts: {
@@ -42,23 +73,29 @@ function readProp(simSec: number, instance: number, prop: string, opts: {
   withInvokeId?: number;
 } = {}): ConformancePacket[] {
   const inv = opts.withInvokeId ?? 1;
-  const req: ConformancePacket = {
-    simSec,
-    service: 'ReadProperty',
-    summary: `device,${instance} ${prop} (85) · invokeId ${inv} · NPDU Expecting-Reply`,
-    objectId: `device,${instance}`,
-  };
+  const req = toConformancePacket(
+    emitReadProperty({
+      simSec,
+      srcLabel: 'SUP',
+      dstLabel: `device,${instance}`,
+      objectId: `device,${instance}`,
+      propertyName: prop,
+      propertyId: 85,
+      invokeId: inv,
+    }),
+  );
   if (opts.acked === false) return [req];
-  const ack: ConformancePacket = {
-    simSec: simSec + 0.05,
-    // NOTE: must be "ReadProperty-ACK" (capital ACK) to match the
-    // conformance checker's service filter — verified against
-    // conformance.ts checkReadPropertyAcked + checkConfirmedHaveInvokeId.
-    service: 'ReadProperty-ACK',
-    summary: `device,${instance} ${prop}=70.5 · invokeId ${inv}`,
-    objectId: `device,${instance}`,
-    value: 70.5,
-  };
+  const ack = toConformancePacket(
+    emitReadPropertyAck({
+      simSec: simSec + 0.05,
+      srcLabel: `device,${instance}`,
+      dstLabel: 'SUP',
+      objectId: `device,${instance}`,
+      propertyName: prop,
+      invokeId: inv,
+      value: 70.5,
+    }),
+  );
   return [req, ack];
 }
 
@@ -96,8 +133,9 @@ export const EXPERIMENT_CATALOG: readonly ExperimentSpec[] = [
       inputs: {
         packets: [
           whoIs(0),
-          // I-Am summary deliberately missing maxAPDU + segmentation + vendorId.
-          { simSec: 0.1, service: 'I-Am', summary: 'I-Am device,1234' },
+          // Deliberately malformed I-Am — missing maxAPDU,
+          // segmentation, vendorId.
+          iAm(0.1, 1234, { malformed: true }),
         ],
       },
     },

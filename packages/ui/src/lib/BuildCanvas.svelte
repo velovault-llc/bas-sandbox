@@ -69,6 +69,9 @@
     parseIpv4 as parseIpv4FromUiCanvas,
     formatIpv4 as formatIpv4FromUiCanvas,
     parseCidr as parseCidrFromUiCanvas,
+    emitIAm,
+    emitWhoIs,
+    emitTokenPass,
     type StEnv,
     type MstpFinding,
     type BacnetIpDevice,
@@ -2235,23 +2238,23 @@
             // bacpypes3's I-Am output (segmented-both). Was camelCase
             // here previously which is a sandbox-internal stylistic
             // choice — switched to match the spec.
-            const segmentation = 'segmented-both';
-            logBacnetPacket({
+            // Single source of truth for I-Am wire format lives in
+            // @bas/core/bacnet/emit (verified against bacpypes3 in
+            // tools/bacnet-reference/bbmd-lab/BBMD_LAB.md). Calling
+            // the pure builder here means the UI, the experiment
+            // catalog, and the future BACnet bridge all share one
+            // string format — no drift.
+            const iAmPacket = emitIAm({
               simSec: simSecondsElapsed + iAmOffsetS,
               trunkId: trunkEdge.id,
-              trunkLabel: trunkLabelStr,
               srcMac: d.mac,
+              srcLabel: d.label,
               dstMac: initiator.mac,
-              service: 'I-Am',
-              // Format matches the bacpypes3 / Wireshark wire decode:
-              //   - "device,N" packs object-type (device=8) + instance
-              //     per BACnetObjectIdentifier encoding (§20.2.14)
-              //   - "BVLC fn 0x0a Original-Unicast-NPDU" surfaces the
-              //     transport-layer function so techs can recognize
-              //     unicast vs broadcast vs forwarded (BBMD) in the log
-              summary: `${d.label} (MAC ${d.mac}) I-Am device,${inst} · maxAPDU ${maxApdu} · segmentation ${segmentation} · vendorId ${vendorId} · BVLC fn 0x0a Original-Unicast-NPDU`,
-              layer: 'app',
+              deviceInstance: inst,
+              maxApdu,
+              vendorId,
             });
+            logBacnetPacket({ ...iAmPacket, trunkLabel: trunkLabelStr });
             iAmOffsetS += iAmStaggerS;
           }
           // After discovery, the supervisor subscribes to each child's

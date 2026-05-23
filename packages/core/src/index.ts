@@ -185,6 +185,17 @@ export {
   requiredProperties,
   jciExtensions,
   commonProperties,
+  emitWhoIs,
+  emitIAm,
+  emitReadProperty,
+  emitReadPropertyAck,
+  emitSubscribeCov,
+  emitSubscribeCovAck,
+  emitCovNotification,
+  emitTokenPass,
+  emitPollForMaster,
+  emitTimeout,
+  toConformancePacket,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
