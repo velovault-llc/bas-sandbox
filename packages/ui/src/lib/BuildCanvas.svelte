@@ -2186,7 +2186,10 @@
             // Broadcast — no specific dst.
             dstMac: undefined,
             service: 'Who-Is',
-            summary: `${initiator.label} (MAC ${initiator.mac}) Who-Is broadcast (discover devices on this trunk)`,
+            // BVLC function 0x0b = Original-Broadcast-NPDU. Real BACnet
+            // wire trace shows this byte distinguishing local-broadcast
+            // (0x0b) from unicast (0x0a) from BBMD-forwarded (0x04).
+            summary: `${initiator.label} (MAC ${initiator.mac}) Who-Is broadcast (discover devices on this trunk) · BVLC fn 0x0b Original-Broadcast-NPDU`,
             layer: 'app',
           });
           // I-Am responses are STAGGERED on a real bus — each device
@@ -2225,7 +2228,13 @@
               srcMac: d.mac,
               dstMac: initiator.mac,
               service: 'I-Am',
-              summary: `${d.label} (MAC ${d.mac}) I-Am — Device Instance ${inst} · maxAPDU ${maxApdu} · segmentation ${segmentation} · vendorId ${vendorId}`,
+              // Format matches the bacpypes3 / Wireshark wire decode:
+              //   - "device,N" packs object-type (device=8) + instance
+              //     per BACnetObjectIdentifier encoding (§20.2.14)
+              //   - "BVLC fn 0x0a Original-Unicast-NPDU" surfaces the
+              //     transport-layer function so techs can recognize
+              //     unicast vs broadcast vs forwarded (BBMD) in the log
+              summary: `${d.label} (MAC ${d.mac}) I-Am device,${inst} · maxAPDU ${maxApdu} · segmentation ${segmentation} · vendorId ${vendorId} · BVLC fn 0x0a Original-Unicast-NPDU`,
               layer: 'app',
             });
             iAmOffsetS += iAmStaggerS;
@@ -2773,6 +2782,10 @@
             const peerLabel = `${formatIpv4FromUiCanvas(otherNet)}/${p.maskBits}`;
             const bridge = subnetsAreBridged(p.net, otherNet);
             if (bridge) {
+              // Cross-subnet bridged path = BVLC function 0x04
+              // (Forwarded-NPDU) — that's the BACnet annex-J way a
+              // BBMD relays a broadcast onto its peer's subnet. Real
+              // wire trace shows 0x04 on the receiving side.
               logBacnetPacket({
                 simSec: simSecondsElapsed,
                 trunkId,
@@ -2780,7 +2793,7 @@
                 srcMac: 0,
                 dstMac: undefined,
                 service: 'Who-Is',
-                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → reaches ${peerLabel} via ${bridge.via.join(' → ')}`,
+                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → reaches ${peerLabel} via ${bridge.via.join(' → ')} · BVLC fn 0x04 Forwarded-NPDU`,
                 layer: 'app',
               });
             } else {
@@ -2791,12 +2804,14 @@
                 srcMac: 0,
                 dstMac: undefined,
                 service: 'Who-Is',
-                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → DROPPED at ${peerLabel} boundary (no BBMD bridge)`,
+                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → DROPPED at ${peerLabel} boundary (no BBMD bridge) · no BVLC fn 0x04 forwarder available`,
                 layer: 'app',
               });
             }
           }
-          // One "local broadcast" line so the user sees the source side too.
+          // One "local broadcast" line so the user sees the source side
+          // too. BVLC fn 0x0b = Original-Broadcast-NPDU — what an
+          // unbridged broadcast looks like on its own subnet.
           logBacnetPacket({
             simSec: simSecondsElapsed,
             trunkId,
@@ -2804,7 +2819,7 @@
             srcMac: 0,
             dstMac: undefined,
             service: 'Who-Is',
-            summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → local on ${formatIpv4FromUiCanvas(p.net)}/${p.maskBits}`,
+            summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → local on ${formatIpv4FromUiCanvas(p.net)}/${p.maskBits} · BVLC fn 0x0b Original-Broadcast-NPDU`,
             layer: 'app',
           });
         }
