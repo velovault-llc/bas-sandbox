@@ -114,9 +114,17 @@
   }
 
   function srcDst(p: BacnetPacket): string {
-    const src = String(p.srcMac).padStart(3, ' ');
-    const dst = p.dstMac !== undefined ? String(p.dstMac).padStart(3, ' ') : '  *';
-    return `${src} → ${dst}`;
+    // Prefer human labels when present (IP-pair traffic). Fall back to
+    // MAC display for MS/TP frames. The fixed-width MAC column gets
+    // padded; label columns expand to fit so JACE-MAIN and VAV-101
+    // don't get truncated to "MAC".
+    const srcStr =
+      p.srcLabel ??
+      (p.srcMac !== undefined ? `MAC ${String(p.srcMac).padStart(3, ' ')}` : '   ?');
+    const dstStr =
+      p.dstLabel ??
+      (p.dstMac !== undefined ? `MAC ${String(p.dstMac).padStart(3, ' ')}` : '  *');
+    return `${srcStr} → ${dstStr}`;
   }
 
   // Drag-to-reposition — anchored bottom-LEFT instead of bottom-right so

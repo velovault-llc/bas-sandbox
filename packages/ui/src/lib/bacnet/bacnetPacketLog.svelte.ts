@@ -62,7 +62,17 @@ export interface BacnetPacket {
   /** Destination MAC. Token-Pass + ReadProperty/WriteProperty have a
    *  specific destination; Who-Is is broadcast (undefined). */
   readonly dstMac?: number;
+  /** Human-readable source label. Preferred over `MAC N` in the
+   *  packet panel when present — needed for IP-pair traffic where
+   *  there's no MS/TP MAC. */
+  readonly srcLabel?: string;
+  /** Human-readable destination label. */
+  readonly dstLabel?: string;
   readonly service: BacnetService | string;
+  /** ASHRAE 135 §12/§21 property identifier (numeric). */
+  readonly propertyId?: number;
+  /** Kebab-case property name. */
+  readonly propertyName?: string;
   /** Object reference for application-layer packets, e.g. "AI:3". */
   readonly objectId?: string;
   /** ReadProperty / WriteProperty value, when applicable. */

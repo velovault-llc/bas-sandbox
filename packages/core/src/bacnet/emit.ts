@@ -65,8 +65,23 @@ export interface BuiltPacket {
   readonly summary: string;
   readonly srcMac?: number;
   readonly dstMac?: number;
+  /** Human-readable source label ("JACE-MAIN", "VAV-101"). Falls back
+   *  to MAC-based display when absent. Always populated by the emit
+   *  module so the packet panel can render proper names even when
+   *  srcMac is undefined (BACnet/IP traffic). */
+  readonly srcLabel?: string;
+  /** Human-readable destination label. Undefined for broadcasts. */
+  readonly dstLabel?: string;
   readonly trunkId?: string;
   readonly objectId?: string;
+  /** Optional friendlier object name to surface in the panel, e.g.
+   *  "ZN-101 zone temp" instead of "analog-input,1". */
+  readonly objectLabel?: string;
+  /** ASHRAE 135 §12/§21 property identifier (numeric), when this
+   *  packet targets a specific property. 85 = present-value. */
+  readonly propertyId?: number;
+  /** Kebab-case property name matching the wire decode. */
+  readonly propertyName?: string;
   readonly value?: number | boolean;
   /** 'app' = application layer (ReadProperty etc.). 'link' = MS/TP
    *  link-layer (Token-Pass etc.). */
@@ -134,6 +149,7 @@ export function emitWhoIs(opts: {
     service: 'Who-Is',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     trunkId: opts.trunkId,
     layer: 'app',
   };
@@ -171,6 +187,7 @@ export function emitIAm(opts: {
     service: 'I-Am',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
     trunkId: opts.trunkId,
     layer: 'app',
@@ -202,9 +219,13 @@ export function emitReadProperty(opts: {
     service: 'ReadProperty',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
+    dstLabel: opts.dstLabel,
     trunkId: opts.trunkId,
     objectId: opts.objectId,
+    propertyId: opts.propertyId,
+    propertyName: opts.propertyName,
     layer: 'app',
   };
 }
@@ -232,9 +253,12 @@ export function emitReadPropertyAck(opts: {
     service: 'ReadProperty-ACK',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
+    dstLabel: opts.dstLabel,
     trunkId: opts.trunkId,
     objectId: opts.objectId,
+    propertyName: opts.propertyName,
     value: opts.value,
     layer: 'app',
   };
@@ -262,7 +286,9 @@ export function emitSubscribeCov(opts: {
     service: 'SubscribeCOV',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
+    dstLabel: opts.dstLabel,
     trunkId: opts.trunkId,
     objectId: opts.objectId,
     layer: 'app',
@@ -287,7 +313,9 @@ export function emitSubscribeCovAck(opts: {
     service: 'SubscribeCOV-ACK',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
+    dstLabel: opts.dstLabel,
     trunkId: opts.trunkId,
     objectId: opts.objectId,
     layer: 'app',
@@ -318,9 +346,13 @@ export function emitCovNotification(opts: {
     service: 'ConfirmedCOVNotification',
     summary,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
+    dstLabel: opts.dstLabel,
     trunkId: opts.trunkId,
     objectId: opts.objectId,
+    propertyName: 'present-value',
+    propertyId: 85,
     value: opts.value,
     layer: 'app',
   };
@@ -340,7 +372,9 @@ export function emitTokenPass(opts: {
     service: 'Token-Pass',
     summary: `${opts.srcLabel} (MAC ${opts.srcMac}) → ${opts.dstLabel} (MAC ${opts.dstMac})`,
     srcMac: opts.srcMac,
+    srcLabel: opts.srcLabel,
     dstMac: opts.dstMac,
+    dstLabel: opts.dstLabel,
     trunkId: opts.trunkId,
     layer: 'link',
   };
