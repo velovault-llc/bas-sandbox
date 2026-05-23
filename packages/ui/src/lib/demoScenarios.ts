@@ -777,6 +777,142 @@ export const DEMOS: readonly Demo[] = [
   // ═══════════════════════════════════════════════════════════════════
 
   {
+    id: 'cov-firehose',
+    name: 'BACnet/IP traffic showcase (COV firehose)',
+    blurb:
+      "Watch-the-bus demo. One JACE polling four IP-attached VAVs, each with a zone sensor configured to drift, overshoot, or just settle in from a far-off start temp. Every deadband crossing fires a ConfirmedCOVNotification. Packet log (bottom-right) is the star of the show — open it, hit Run, watch the SubscribeCOV / ReadProperty / ConfirmedCOVNotification stream.",
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'jace',
+          kind: 'supervisor',
+          label: 'JACE-MAIN',
+          x: 460,
+          y: 40,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'Polls all 4 VAVs over BACnet/IP',
+          },
+        },
+        // VAV-1 — cold start, heating ramps up (steady COV stream as
+        // zone climbs through deadband).
+        {
+          id: 'vav1',
+          kind: 'controller',
+          label: 'VAV-101',
+          x: 100,
+          y: 240,
+          data: { ipAddress: '10.0.1.21', subnetMask: '255.255.255.0' },
+        },
+        {
+          id: 's1',
+          kind: 'sensor',
+          label: 'ZN-101',
+          x: 100,
+          y: 400,
+          data: { signal: 'rtd-pt1000' },
+        },
+        // VAV-2 — hot start, cooling ramps down.
+        {
+          id: 'vav2',
+          kind: 'controller',
+          label: 'VAV-102',
+          x: 340,
+          y: 240,
+          data: { ipAddress: '10.0.1.22', subnetMask: '255.255.255.0' },
+        },
+        {
+          id: 's2',
+          kind: 'sensor',
+          label: 'ZN-102',
+          x: 340,
+          y: 400,
+          data: { signal: 'rtd-pt1000' },
+        },
+        // VAV-3 — sensor DRIFT fault: walks ~1°F per 10 sim-min so it
+        // crosses the 0.5°F deadband every ~5 sim-min reliably even
+        // after the loop settles.
+        {
+          id: 'vav3',
+          kind: 'controller',
+          label: 'VAV-103',
+          x: 580,
+          y: 240,
+          data: { ipAddress: '10.0.1.23', subnetMask: '255.255.255.0' },
+        },
+        {
+          id: 's3',
+          kind: 'sensor',
+          label: 'ZN-103',
+          x: 580,
+          y: 400,
+          data: { signal: 'thermistor-10k-t2', fault: 'drift' },
+        },
+        // VAV-4 — large coupling factor: overshoots setpoint, oscillates.
+        {
+          id: 'vav4',
+          kind: 'controller',
+          label: 'VAV-104',
+          x: 820,
+          y: 240,
+          data: { ipAddress: '10.0.1.24', subnetMask: '255.255.255.0' },
+        },
+        {
+          id: 's4',
+          kind: 'sensor',
+          label: 'ZN-104',
+          x: 820,
+          y: 400,
+          data: { signal: 'rtd-pt1000' },
+        },
+      ],
+      edges: [
+        // Four BACnet/IP edges fan out from the JACE. Each one now
+        // triggers SubscribeCOV + periodic ReadProperty via the new
+        // IP-pair traffic generator in BuildCanvas.
+        { source: 'jace', target: 'vav1', wireKind: 'bacnet-ip' },
+        { source: 'jace', target: 'vav2', wireKind: 'bacnet-ip' },
+        { source: 'jace', target: 'vav3', wireKind: 'bacnet-ip' },
+        { source: 'jace', target: 'vav4', wireKind: 'bacnet-ip' },
+        { source: 'vav1', target: 's1', wireKind: 'hardwired' },
+        { source: 'vav2', target: 's2', wireKind: 'hardwired' },
+        { source: 'vav3', target: 's3', wireKind: 'hardwired' },
+        { source: 'vav4', target: 's4', wireKind: 'hardwired' },
+      ],
+      wires: [
+        {
+          controllerId: 'vav1',
+          sensorId: 's1',
+          // Cold start — heating loop drives zone up through deadband.
+          config: { initialZone: 62, setpoint: 72, mode: 'heat', outdoorAir: 30 },
+        },
+        {
+          controllerId: 'vav2',
+          sensorId: 's2',
+          // Hot start — cooling loop drives zone down through deadband.
+          config: { initialZone: 85, setpoint: 72, mode: 'cool', outdoorAir: 90 },
+        },
+        {
+          controllerId: 'vav3',
+          sensorId: 's3',
+          // Sensor has fault: 'drift' baked in; loop chases a phantom.
+          config: { initialZone: 72, setpoint: 72 },
+        },
+        {
+          controllerId: 'vav4',
+          sensorId: 's4',
+          // High coupling = overshoot = oscillation = ping-pong COVs.
+          config: { initialZone: 68, setpoint: 72, couplingFactor: 0.8 },
+        },
+      ],
+      focused: 'jace',
+    }),
+  },
+
+  {
     id: 'midrise-12-vav',
     name: 'Mid-rise office: 1 JACE, 12 virtual VAVs',
     blurb:

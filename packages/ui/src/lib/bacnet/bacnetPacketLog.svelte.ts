@@ -47,16 +47,22 @@ export interface BacnetPacket {
   readonly id: number;
   /** Sim seconds when this packet was emitted. */
   readonly simSec: number;
-  /** Trunk identifier (the representative edge id). Lets the panel filter
-   *  by trunk when the canvas has multiple MS/TP segments. */
-  readonly trunkId: string;
+  /** Trunk identifier (the representative edge id), or a sentinel like
+   *  "ip-edge:<edgeId>" / "ip-host:<supId>" for BACnet/IP pair traffic.
+   *  Optional because BACnet/IP broadcasts (Who-Is at the subnet level)
+   *  don't belong to a single trunk. Lets the panel filter by trunk
+   *  when the canvas has multiple MS/TP segments. */
+  readonly trunkId?: string;
   /** Friendly trunk label (e.g. "FEC trunk · 38400") for display. */
   readonly trunkLabel?: string;
-  readonly srcMac: number;
+  /** Source MAC. Required for MS/TP frames; undefined for BACnet/IP
+   *  pair traffic where the wire identifier is the IP address (carried
+   *  in the summary instead). */
+  readonly srcMac?: number;
   /** Destination MAC. Token-Pass + ReadProperty/WriteProperty have a
    *  specific destination; Who-Is is broadcast (undefined). */
   readonly dstMac?: number;
-  readonly service: BacnetService;
+  readonly service: BacnetService | string;
   /** Object reference for application-layer packets, e.g. "AI:3". */
   readonly objectId?: string;
   /** ReadProperty / WriteProperty value, when applicable. */
@@ -221,6 +227,7 @@ export function visiblePackets(): BacnetPacket[] {
 export function trunkIdsInBuffer(): { id: string; label: string }[] {
   const seen = new Map<string, string>();
   for (const p of bacnetPacketLog.packets) {
+    if (!p.trunkId) continue; // Skip packets with no trunk context (IP broadcasts).
     if (!seen.has(p.trunkId)) seen.set(p.trunkId, p.trunkLabel ?? p.trunkId);
   }
   return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));

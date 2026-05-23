@@ -70,8 +70,12 @@
     formatIpv4 as formatIpv4FromUiCanvas,
     parseCidr as parseCidrFromUiCanvas,
     emitIAm,
-    emitWhoIs,
-    emitTokenPass,
+    emitSubscribeCov,
+    emitSubscribeCovAck,
+    emitReadProperty,
+    emitReadPropertyAck,
+    emitCovNotification,
+    BACNET_IP_RTT_SECONDS,
     type StEnv,
     type MstpFinding,
     type BacnetIpDevice,
@@ -1036,6 +1040,15 @@
   // it will hit next (round-robin). Keyed by trunk edge id; this is a
   // *display* concern, not part of the MstpTrunkState in core.
   let bacnetPollSchedule = new Map<string, { nextSimSec: number; nextChildIdx: number }>();
+  // BACnet/IP pair poll schedule — keyed by "supId|childId". IP edges
+  // and host-internal virtual-controller pairs both flow through this.
+  // Each pair gets its own clock so a supervisor with many children
+  // sees its pollback evenly across the cadence window rather than
+  // burst-polling all of them at the same simSec boundary.
+  let ipPollSchedule = new Map<string, { nextSimSec: number }>();
+  /** Pairs we've already announced (Who-Is + I-Am + SubscribeCOV) so
+   *  re-render doesn't spam the bus with re-discoveries every tick. */
+  let announcedIpPairs = new Set<string>();
   // Per-trunk poll cadence (sim-seconds). Real supervisors use a SLOW
   // poll as a heartbeat/redundancy on top of COV subscriptions — if a
   // value drifts without firing a CoV (e.g. the deadband never gets
@@ -2510,6 +2523,158 @@
       // BuildCanvas. Cheap — both maps share the same MstpTrunkState objs.
       publishTrunkStates(nextStates);
 
+      // ── BACnet/IP + host-internal pair traffic ──────────────────────
+      // Until this block existed, COV + ReadProperty traffic only fired
+      // on MS/TP trunks — meaning every IP-only demo (campus, mixed-
+      // vendor, midrise with hosted vVAVs) sat silent on the wire log.
+      // Now we sweep every supervisor's IP-edge controllers AND its
+      // hosted virtual controllers, doing the same Subscribe-Once /
+      // Poll-Periodically dance the MS/TP path does. Output packets
+      // carry BVLC fn 0x0a Original-Unicast-NPDU so a sniffer sees
+      // proper IP framing.
+      type IpChild = {
+        readonly nodeId: string;
+        readonly label: string;
+        /** Sentinel "trunk" id so the COV-emit pass can group + the
+         *  packet log can filter. ip-edge:<edgeId> for wired pairs,
+         *  ip-host:<supId> for hosted virtual controllers. */
+        readonly trunkId: string;
+        readonly trunkLabel: string;
+      };
+      for (const sup of nodes) {
+        const supKind = (sup.data as { kind?: string } | undefined)?.kind;
+        if (supKind !== 'supervisor') continue;
+        if (offline.has(sup.id)) continue;
+        const supLabel = (sup.data as { label?: string } | undefined)?.label ?? sup.id;
+
+        const ipChildren: IpChild[] = [];
+        // 1. Explicit BACnet/IP edges to a controller.
+        for (const e of edges) {
+          const touches = e.source === sup.id || e.target === sup.id;
+          if (!touches) continue;
+          const wireKind = (e.data as { wireKind?: string } | undefined)?.wireKind;
+          if (wireKind !== 'bacnet-ip') continue;
+          const otherId = e.source === sup.id ? e.target : e.source;
+          const other = nodes.find((n) => n.id === otherId);
+          if (!other) continue;
+          const otherKind = (other.data as { kind?: string } | undefined)?.kind;
+          // Only chase controller children. Supervisor↔supervisor IP
+          // links exist (inter-engine inter-AS read/write) but the sandbox
+          // doesn't model the upper supervisor as a "child" today.
+          if (otherKind !== 'controller') continue;
+          if (offline.has(other.id)) continue;
+          ipChildren.push({
+            nodeId: other.id,
+            label: (other.data as { label?: string } | undefined)?.label ?? other.id,
+            trunkId: `ip-edge:${e.id}`,
+            trunkLabel: `BACnet/IP · ${supLabel} ↔ ${(other.data as { label?: string } | undefined)?.label ?? 'child'}`,
+          });
+        }
+        // 2. Hosted virtual controllers (data.hostId points to this sup).
+        for (const n of nodes) {
+          const d = n.data as { kind?: string; hostId?: string; label?: string } | undefined;
+          if (d?.kind !== 'virtual-controller') continue;
+          if (d.hostId !== sup.id) continue;
+          if (offline.has(n.id)) continue;
+          ipChildren.push({
+            nodeId: n.id,
+            label: d.label ?? n.id,
+            trunkId: `ip-host:${sup.id}`,
+            trunkLabel: `${supLabel} · host-internal`,
+          });
+        }
+        if (ipChildren.length === 0) continue;
+
+        for (const child of ipChildren) {
+          const pairKey = `${sup.id}|${child.nodeId}`;
+          // Resolve the child's first AI object so we have something
+          // real to subscribe to + poll.
+          const childNode = nodes.find((n) => n.id === child.nodeId);
+          if (!childNode) continue;
+          const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+          const childProg = programStore.byId[child.nodeId];
+          const childObjects = synthesizeBacnetObjects({
+            vendorModelId,
+            bindings: childProg?.bindings,
+            envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
+            envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
+          });
+          const aiObj = childObjects.find((o) => o.type === 'analog-input');
+          if (!aiObj) continue;
+
+          // ── One-time pair announcement: SubscribeCOV + ACK ──────
+          if (!announcedIpPairs.has(pairKey)) {
+            announcedIpPairs.add(pairKey);
+            const subReq = emitSubscribeCov({
+              simSec: simSecondsElapsed,
+              trunkId: child.trunkId,
+              srcLabel: supLabel,
+              dstLabel: child.label,
+              objectId: aiObj.id,
+              deadband: COV_DEADBAND_DEFAULT,
+              deadbandUnits: '°F',
+            });
+            logBacnetPacket({ ...subReq, trunkLabel: child.trunkLabel });
+            const subAck = emitSubscribeCovAck({
+              simSec: simSecondsElapsed + BACNET_IP_RTT_SECONDS,
+              trunkId: child.trunkId,
+              srcLabel: child.label,
+              dstLabel: supLabel,
+              objectId: aiObj.id,
+            });
+            logBacnetPacket({ ...subAck, trunkLabel: child.trunkLabel });
+            covSubscriptions.set(`${child.trunkId}|${child.nodeId}|${aiObj.id}`, {
+              trunkId: child.trunkId,
+              trunkLabel: child.trunkLabel,
+              childNodeId: child.nodeId,
+              childLabel: child.label,
+              // IP doesn't use MS/TP MACs. Use 0 for the supervisor /
+              // 1 for the child as a display sentinel; the conformance
+              // checker doesn't rely on MAC for COV packets.
+              childMac: 1,
+              objectId: aiObj.id,
+              deadband: COV_DEADBAND_DEFAULT,
+              lastReportedValue: aiObj.presentValue,
+            });
+          }
+
+          // ── Periodic ReadProperty poll ──────────────────────────
+          const sched = ipPollSchedule.get(pairKey) ?? {
+            nextSimSec: simSecondsElapsed + APP_LAYER_POLL_CADENCE_S,
+          };
+          if (simSecondsElapsed >= sched.nextSimSec) {
+            const invokeId = bumpInvokeId();
+            const req = emitReadProperty({
+              simSec: simSecondsElapsed,
+              trunkId: child.trunkId,
+              srcLabel: supLabel,
+              dstLabel: child.label,
+              objectId: aiObj.id,
+              propertyName: 'present-value',
+              propertyId: 85,
+              invokeId,
+            });
+            logBacnetPacket({ ...req, trunkLabel: child.trunkLabel });
+            const value = typeof aiObj.presentValue === 'boolean'
+              ? (aiObj.presentValue ? 1 : 0)
+              : aiObj.presentValue;
+            const ack = emitReadPropertyAck({
+              simSec: simSecondsElapsed + BACNET_IP_RTT_SECONDS,
+              trunkId: child.trunkId,
+              srcLabel: child.label,
+              dstLabel: supLabel,
+              objectId: aiObj.id,
+              propertyName: 'present-value',
+              invokeId,
+              value,
+            });
+            logBacnetPacket({ ...ack, trunkLabel: child.trunkLabel });
+            sched.nextSimSec = simSecondsElapsed + APP_LAYER_POLL_CADENCE_S;
+          }
+          ipPollSchedule.set(pairKey, sched);
+        }
+      }
+
       // ── COV change-detection pass ────────────────────────────────────
       // Walk every active subscription, resolve its current value via the
       // controller's synthesized objects, and emit a notification when the
@@ -2574,18 +2739,43 @@
         const subFault = (subSrcNode?.data as { fault?: string } | undefined)?.fault;
         const inAlarm = subFault === 'open' || subFault === 'short' || subFault === 'rail';
         const inFault = subFault !== undefined && subFault !== 'normal';
-        const statusFlags = `(${inAlarm},${inFault},false,false)`;
-        logBacnetPacket({
+        // statusFlags in T/F notation matches the bacpypes3 / Wireshark
+        // wire decode (positional booleans for in-alarm, fault,
+        // overridden, out-of-service). Single-letter T/F keeps the
+        // packet log readable at width.
+        const statusFlags =
+          `${inAlarm ? 'T' : 'F'},` +
+          `${inFault ? 'T' : 'F'},F,F`;
+        // IP pairs use trunkId "ip-edge:..." or "ip-host:..." — the
+        // supervisor label is built from the trunkLabel which already
+        // names both endpoints. For MS/TP, fall back to "MAC 0" so the
+        // existing logs read the same.
+        const isIpPair =
+          sub.trunkId.startsWith('ip-edge:') || sub.trunkId.startsWith('ip-host:');
+        const supervisorLabel = isIpPair
+          ? sub.trunkLabel.split(' ↔ ')[0]?.replace(/^BACnet\/IP · /, '') ?? 'supervisor'
+          : 'MAC 0';
+        const delta =
+          typeof last === 'number' && typeof cur === 'number'
+            ? ` (Δ ${cur - last >= 0 ? '+' : ''}${(cur - last).toFixed(2)})`
+            : '';
+        const built = emitCovNotification({
           simSec: simSecondsElapsed,
           trunkId: sub.trunkId,
-          trunkLabel: sub.trunkLabel,
-          srcMac: sub.childMac,
-          dstMac: 0,
-          service: 'ConfirmedCOVNotification',
+          srcMac: isIpPair ? undefined : sub.childMac,
+          srcLabel: sub.childLabel,
+          dstMac: isIpPair ? undefined : 0,
+          dstLabel: supervisorLabel,
           objectId: sub.objectId,
           value: typeof cur === 'boolean' ? (cur ? 1 : 0) : cur,
-          summary: `${sub.childLabel} → MAC 0: COV ${sub.objectId} = ${typeof cur === 'number' ? cur.toFixed(2) : String(cur)}${typeof last === 'number' && typeof cur === 'number' ? ` (Δ ${(cur - last >= 0 ? '+' : '')}${(cur - last).toFixed(2)})` : ''} · statusFlags ${statusFlags}`,
-          layer: 'app',
+          statusFlags,
+        });
+        // Append the sandbox-specific Δ — tech-facing readability add-on
+        // on top of the spec-faithful summary the emit module built.
+        logBacnetPacket({
+          ...built,
+          summary: built.summary + delta,
+          trunkLabel: sub.trunkLabel,
         });
         sub.lastReportedValue = cur;
         covEmitsThisTick += 1;
