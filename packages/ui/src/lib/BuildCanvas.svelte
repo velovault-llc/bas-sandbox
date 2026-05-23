@@ -2211,7 +2211,13 @@
               ?.vendorModelId;
             const vendorId = vendorIdFor(vendorModelId);
             const maxApdu = 1024;
-            const segmentation = 'segmentedBoth';
+            // ASHRAE 135 segmentation-supported enum uses kebab-case on
+            // the wire: "segmented-both", "segmented-transmit",
+            // "segmented-receive", "no-segmentation". Verified against
+            // bacpypes3's I-Am output (segmented-both). Was camelCase
+            // here previously which is a sandbox-internal stylistic
+            // choice — switched to match the spec.
+            const segmentation = 'segmented-both';
             logBacnetPacket({
               simSec: simSecondsElapsed + iAmOffsetS,
               trunkId: trunkEdge.id,

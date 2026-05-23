@@ -43,12 +43,19 @@ except ImportError as e:
 
 async def main() -> None:
     # SimpleArgumentParser handles --address, --instance, --name, etc.
-    # Defaults: instance 1234, name "Excelsior", listens on all interfaces.
+    # but its DEFAULTS are not what the docstring at the top of this
+    # file claimed — bacpypes3 picks instance 999 / vendor 999 / name
+    # "Excelsior" when nothing is supplied. Force the values we want
+    # by writing them onto args BEFORE Application.from_args reads them.
     parser = SimpleArgumentParser(
         prog="bacserv",
         description="Reference BACnet device for bas-sandbox conformance work.",
     )
     args = parser.parse_args()
+    if getattr(args, "instance", None) in (None, 999):
+        args.instance = 1234
+    if getattr(args, "name", None) in (None, "Excelsior"):
+        args.name = "bas-sandbox-ref"
 
     app = Application.from_args(args)
 
