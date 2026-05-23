@@ -37,7 +37,28 @@ export interface Sample {
  *  - `stuck`: sensor frozen at last good value (firmware lockup or comm fail)
  *  - `drift`: slow bias creep — ~1°F per 10 simulated minutes
  */
-export type SensorFault = 'normal' | 'open' | 'short' | 'stuck' | 'drift';
+/** Sensor fault mode. Each maps to a different physical failure pattern
+ *  a field tech would see in the wild:
+ *   - normal: true zone temp
+ *   - open: wire break — RTD/thermistor reads full-scale high (~250°F)
+ *   - short: wire short — full-scale low (~-40°F)
+ *   - stuck: sensor frozen at last good value (firmware lockup, comm fail)
+ *   - drift: slow bias creep — ~1°F per 10 simulated minutes
+ *   - calibration: persistent offset bias (+5°F, e.g. installed in direct sun)
+ *   - noise: high-frequency jitter around the true value (loose wiring, EMI)
+ *   - intermittent: drops out every few seconds (loose terminal screw)
+ *   - rail: pegged at one end of the scale (saturated, ADC stuck)
+ */
+export type SensorFault =
+  | 'normal'
+  | 'open'
+  | 'short'
+  | 'stuck'
+  | 'drift'
+  | 'calibration'
+  | 'noise'
+  | 'intermittent'
+  | 'rail';
 
 export interface SensorState {
   fault: SensorFault;
@@ -47,6 +68,17 @@ export interface SensorState {
   driftBias: number;
   /** Last reading the controller actually saw — drives ghost-on-canvas display. */
   lastReading: number;
+  /** Persistent offset for `calibration` (°F). Defaults to +5. */
+  calibrationOffset?: number;
+  /** RMS amplitude of `noise` (°F). Defaults to 1.5. */
+  noiseAmplitude?: number;
+  /** Drop-out probability per tick under `intermittent` (0..1). Defaults to 0.15. */
+  dropoutRate?: number;
+  /** Rail end for `rail` fault — true zone is replaced by either 'high'
+   *  (250°F) or 'low' (-40°F). Defaults to 'high'. */
+  railEnd?: 'high' | 'low';
+  /** Internal counter for intermittent drop-out hold state. */
+  _intermittentHoldUntil?: number;
 }
 
 export interface SingleZoneConfig {
@@ -191,6 +223,32 @@ export class SingleZoneSystem {
         return this.sensor.stuckValue;
       case 'drift':
         return this.T_zone + this.sensor.driftBias;
+      case 'calibration':
+        return this.T_zone + (this.sensor.calibrationOffset ?? 5);
+      case 'noise': {
+        // Gaussian-ish noise via central-limit summing of two uniforms.
+        const amp = this.sensor.noiseAmplitude ?? 1.5;
+        const u = (Math.random() + Math.random() - 1) * amp;
+        return this.T_zone + u;
+      }
+      case 'intermittent': {
+        // Drop-out: roughly `dropoutRate` of ticks the sensor pegs at
+        // either rail or freezes — emulating a loose terminal screw
+        // bouncing the contact. Holds the dropped state for a few
+        // ticks at a time so the trace shows visible discontinuities.
+        const rate = this.sensor.dropoutRate ?? 0.15;
+        if (this.simSeconds < (this.sensor._intermittentHoldUntil ?? 0)) {
+          return this.sensor.lastReading; // still in a drop-out
+        }
+        if (Math.random() < rate) {
+          // Enter a 3-8 sim-second drop-out at a random rail.
+          this.sensor._intermittentHoldUntil = this.simSeconds + 3 + Math.random() * 5;
+          return Math.random() < 0.5 ? 250 : -40;
+        }
+        return this.T_zone;
+      }
+      case 'rail':
+        return (this.sensor.railEnd ?? 'high') === 'low' ? -40 : 250;
       case 'normal':
       default:
         return this.T_zone;

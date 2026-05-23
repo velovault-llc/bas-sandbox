@@ -15,7 +15,7 @@
    *  otherwise paint an unreadable column of dots. */
   const TERMINAL_HANDLE_CAP = 24;
 
-  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router' | 'bbmd';
+  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router' | 'bbmd' | 'virtual-controller';
 
   type BasNodeData = {
     label: string;
@@ -38,7 +38,7 @@
     subtitle?: string;
     meta?: Record<string, string | undefined>;
     /** Sensor-only: current fault mode. Drives node tinting + a small badge. */
-    fault?: 'normal' | 'open' | 'short' | 'stuck' | 'drift';
+    fault?: 'normal' | 'open' | 'short' | 'stuck' | 'drift' | 'calibration' | 'noise' | 'intermittent' | 'rail';
     /** Sensor-only: signal type. Drives subtitle + future poll-cadence sim. */
     signal?: SensorSignal;
     /** Sensor-only: seconds since the supervisor last heard a fresh reading.
@@ -76,6 +76,15 @@
      *  offline-detection (since "deliberately off" is not the same as
      *  "comm-lost"). Drives the powered-off visual state below. */
     poweredOff?: boolean;
+    /** Virtual-controller-only: node id of the host supervisor this
+     *  soft controller runs INSIDE. When unset, the virtual controller
+     *  has no host and the validator flags it. When the host is
+     *  powered off / unreachable, the virtual child goes with it. */
+    hostId?: string;
+    /** Optional friendly hostname-on-host label cached for the badge
+     *  (lookup happens in BuildCanvas, but we render the cached value
+     *  so a stale host that's been deleted still reads sensibly). */
+    hostLabel?: string;
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -85,6 +94,10 @@
     short: { glyph: '⊗', text: 'SHORT' },
     stuck: { glyph: '⏸', text: 'STUCK' },
     drift: { glyph: '~', text: 'DRIFT' },
+    calibration: { glyph: '↗', text: 'CAL-OFFSET' },
+    noise: { glyph: '≋', text: 'NOISE' },
+    intermittent: { glyph: '⚡', text: 'INTERMIT' },
+    rail: { glyph: '▔', text: 'RAILED' },
   };
 
   // @xyflow/svelte's NodeProps is parameterized by Node; we keep typing loose
@@ -126,6 +139,7 @@
   const getRenamingId = getContext<() => string | null>('basRenamingNodeId');
   const commitRename = getContext<(id: string, newLabel: string) => void>('basCommitRename');
   const cancelRename = getContext<() => void>('basCancelRename');
+  const togglePower = getContext<(id: string) => void>('basTogglePower');
   const isEditing = $derived(getRenamingId ? getRenamingId() === id : false);
 
   let editValue = $state('');
@@ -162,6 +176,7 @@
     expansion: '⊞',
     router: '◆',
     bbmd: '◫',
+    'virtual-controller': '◌',
   };
 
   const KIND_LABEL: Record<BasNodeKind, string> = {
@@ -172,6 +187,7 @@
     expansion: 'Expansion',
     router: 'IP Router',
     bbmd: 'BBMD',
+    'virtual-controller': 'Virtual Ctrl',
   };
 
   /** Subtitle for a sensor — prefers any import-supplied subtitle (mac / instance
@@ -204,6 +220,24 @@
        traffic via the top edge; sensors/safeties receive their hardwired
        cable from a controller's left/right terminal. -->
   <Handle type="target" position={Position.Top} id="net-in" />
+
+  <!-- Inline power button. Visible at all times so a user can power-cycle
+       any node from the canvas without opening the inspector panel.
+       stopPropagation so toggling power doesn't also toggle selection
+       on the node beneath. -->
+  <button
+    type="button"
+    class="node-power-btn"
+    class:on={!data.poweredOff}
+    class:off={!!data.poweredOff}
+    title={data.poweredOff
+      ? 'Powered OFF — click to power this device on.'
+      : 'Powered ON — click to cut power (simulates an unpowered device).'}
+    onclick={(e) => { e.stopPropagation(); togglePower?.(id); }}
+    onmousedown={(e) => e.stopPropagation()}
+  >
+    {data.poweredOff ? '⏼' : '⏻'}
+  </button>
 
   {#if terminals}
     {#each terminals.inputs as t, i (t.id)}
@@ -312,6 +346,17 @@
     <div class="power-off-badge" title="Device is powered off. Excluded from network validation + broadcast traces.">
       ⏻ POWERED OFF
     </div>
+  {/if}
+  {#if data.kind === 'virtual-controller'}
+    {#if data.hostId}
+      <div class="host-badge" title="This soft controller runs INSIDE the supervisor named {data.hostLabel ?? data.hostId}. If that host goes down, this virtual controller goes with it.">
+        ⌂ on {data.hostLabel ?? data.hostId}
+      </div>
+    {:else}
+      <div class="host-badge no-host" title="Virtual controller with no host assigned. Pick a supervisor in the inspector — without one, the controller has nowhere to actually run.">
+        ⚠ no host
+      </div>
+    {/if}
   {/if}
   {#if data.childCount !== undefined && data.childCount > 0}
     <div class="children-toggle" title={data.collapsed ? 'Click to expand' : 'Click to collapse'}>
@@ -540,6 +585,34 @@
   .kind-bbmd {
     --accent: #06b6d4;
   }
+  /* Virtual controller — soft purple to read as "lives inside a host"
+     rather than a physical device. Dashed border drives that home. */
+  .kind-virtual-controller {
+    --accent: #a78bfa;
+  }
+  .kind-virtual-controller.bas-node {
+    border-style: dashed;
+  }
+  .host-badge {
+    margin-top: 0.25rem;
+    padding: 0.08rem 0.45rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-align: center;
+    background: color-mix(in srgb, #a78bfa 18%, transparent);
+    color: #a78bfa;
+    border: 1px solid color-mix(in srgb, #a78bfa 45%, transparent);
+  }
+  .host-badge.no-host {
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
+    color: #f59e0b;
+    border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+  }
 
   /* Powered-off — drop saturation + opacity so the device reads as
      deliberately-not-running rather than just unwired. Distinct from
@@ -578,6 +651,43 @@
     background: color-mix(in srgb, #f59e0b 18%, transparent);
     color: #f59e0b;
     border: 1px solid color-mix(in srgb, #f59e0b 50%, transparent);
+  }
+
+  /* Inline power button on the node card. Sits top-right of the card.
+     Faint until the node is hovered/selected so it doesn't fight the
+     content; bumps to full opacity on hover. */
+  .node-power-btn {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.25rem;
+    z-index: 2;
+    width: 1.4rem;
+    height: 1.4rem;
+    padding: 0;
+    font-size: 0.8rem;
+    line-height: 1;
+    border-radius: 50%;
+    background: color-mix(in srgb, Canvas 88%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity 120ms ease, color 120ms ease, background 120ms ease,
+      border-color 120ms ease;
+  }
+  .node-power-btn.on {
+    color: #2ecc71;
+  }
+  .node-power-btn.off {
+    color: #f59e0b;
+    border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+    background: color-mix(in srgb, #f59e0b 18%, Canvas);
+    opacity: 1;
+  }
+  .bas-node:hover .node-power-btn {
+    opacity: 1;
+  }
+  .node-power-btn:hover {
+    background: color-mix(in srgb, CanvasText 12%, Canvas);
   }
 
   .router-ifaces {

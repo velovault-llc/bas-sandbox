@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG, type SingleZoneConfig } from './sim/thermal';
 import type { BasScenarioV1, WiredTargetSpec } from './scenario';
 
 type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
-type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router';
+type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller';
 
 type SpecNode = {
   id: string;
@@ -532,6 +532,72 @@ export const DEMOS: readonly Demo[] = [
       edges: [
         { source: 'nae-a', target: 'nae-b', wireKind: 'bacnet-ip' },
       ],
+    }),
+  },
+
+  {
+    id: 'soft-controllers',
+    name: 'JACE hosts 5 virtual VAVs',
+    blurb:
+      'One Tridium JACE hosts five soft VAV controllers — no dedicated hardware. Power-off the JACE and watch ALL FIVE go offline together: the "all eggs in one basket" lesson of soft controllers.',
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'jace',
+          kind: 'supervisor',
+          label: 'JACE-MAIN',
+          x: 400,
+          y: 80,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'Tridium · Niagara · BACnet/IP + Niagara Fox',
+          },
+        },
+        {
+          id: 'vvav1',
+          kind: 'virtual-controller',
+          label: 'vVAV-101',
+          x: 120,
+          y: 260,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+        {
+          id: 'vvav2',
+          kind: 'virtual-controller',
+          label: 'vVAV-102',
+          x: 260,
+          y: 260,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+        {
+          id: 'vvav3',
+          kind: 'virtual-controller',
+          label: 'vVAV-103',
+          x: 400,
+          y: 260,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+        {
+          id: 'vvav4',
+          kind: 'virtual-controller',
+          label: 'vVAV-104',
+          x: 540,
+          y: 260,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+        {
+          id: 'vvav5',
+          kind: 'virtual-controller',
+          label: 'vVAV-105',
+          x: 680,
+          y: 260,
+          data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
+        },
+      ],
+      edges: [],
     }),
   },
 

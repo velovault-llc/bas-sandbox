@@ -24,7 +24,21 @@
   const items = $derived.by((): ListItem[] => {
     const kind = modelPickerStore.pending?.kind;
     if (!kind) return [];
-    if (kind === 'controller') return VENDOR_CATALOG.map((m) => ({ type: 'controller' as const, m }));
+    // Engine / Supervisor picker — same catalog as controllers but
+    // filtered to role === 'supervisor' so techs see JACE / NCE / SNE /
+    // AS-P / WEBs / etc., not field controllers.
+    if (kind === 'supervisor') {
+      return VENDOR_CATALOG
+        .filter((m) => m.role === 'supervisor')
+        .map((m) => ({ type: 'controller' as const, m }));
+    }
+    // The field-controller picker excludes supervisors so you don't
+    // accidentally drop a JACE under the Controller tile.
+    if (kind === 'controller') {
+      return VENDOR_CATALOG
+        .filter((m) => m.role !== 'supervisor')
+        .map((m) => ({ type: 'controller' as const, m }));
+    }
     if (kind === 'sensor') return SENSOR_CATALOG.map((m) => ({ type: 'sensor' as const, m }));
     return SAFETY_CATALOG.map((m) => ({ type: 'safety' as const, m }));
   });
@@ -63,7 +77,12 @@
   }
 
   function kindHeader(k: PendingKind): string {
-    return { controller: 'Pick a controller model', sensor: 'Pick a sensor model', safety: 'Pick a safety device' }[k];
+    return {
+      controller: 'Pick a controller model',
+      sensor: 'Pick a sensor model',
+      safety: 'Pick a safety device',
+      supervisor: 'Pick a supervisor / engine',
+    }[k];
   }
 </script>
 

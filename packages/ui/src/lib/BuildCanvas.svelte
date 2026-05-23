@@ -224,7 +224,7 @@
     nodes = nodes.filter((n) => n.id !== zoneId);
   }
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd' | 'virtual-controller';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -239,6 +239,14 @@
     stuck:
       'Sensor frozen at its last good value. Controller thinks zone is steady; reality drifts.',
     drift: 'Slow bias creep (~1°F per 10 sim-minutes). Controller chases a phantom reading.',
+    calibration:
+      'Persistent +5°F bias — e.g. sensor installed in direct sun, or never re-calibrated after a swap. Controller satisfies the wrong target.',
+    noise:
+      'High-frequency jitter (~1.5°F RMS) around the true value. Loose wiring, EMI, or shared raceway with a VFD. Output thrashes.',
+    intermittent:
+      'Loose terminal screw — sensor drops to a rail every few seconds and holds briefly. Comm-lost-like behavior without an actual comm fault.',
+    rail:
+      'Sensor pegged at one rail. ADC stuck, fully-saturated input, or shorted-to-supply. Indistinguishable from open/short until you look at the wire.',
   };
 
   const WIRE_KINDS: ReadonlyArray<{
@@ -508,6 +516,13 @@
       icon: '◫',
       description: 'BACnet Broadcast Management Device — dedicated bridge for BACnet broadcasts (Who-Is / I-Am) across IP subnets. Drop one per subnet; populate the BDT with peer BBMD IPs. Models a Contemporary Controls BAS Router, a JACE BBMD service, or a Cimetrics Eapi.',
     },
+    {
+      kind: 'virtual-controller',
+      label: 'Virtual Controller',
+      defaultName: 'vVAV-1',
+      icon: '◌',
+      description: 'Soft controller — exists entirely in software, hosted inside a supervisor (JACE / AS-P / NCE). Has its own BACnet Device Instance but no physical box. Common in modern installs for lighting, energy aggregation, roll-up alarms. If the host goes down, every virtual controller hosted on it goes with it.',
+    },
   ];
 
   let nodes = $state.raw<Node[]>(_initialState.nodes);
@@ -650,14 +665,15 @@
     // Generic-palette drop with no model attached → force a model pick
     // before finalizing the node. The user can still escape to a "generic
     // placeholder" but the explicit choice matters: it tells them this is
-    // not a real-world configuration.
+    // not a real-world configuration. Supervisor is included now so
+    // dropping a generic Engine prompts for JACE/NCE/SNE/AS-P/etc.
     const needsPick =
       !vendorModel && !sensorModel && !safetyModel && !actuatorModel && !equipmentModel &&
-      (kind === 'controller' || kind === 'sensor' || kind === 'safety');
+      (kind === 'controller' || kind === 'sensor' || kind === 'safety' || kind === 'supervisor');
 
     if (needsPick) {
       openModelPicker(
-        kind as 'controller' | 'sensor' | 'safety',
+        kind as 'controller' | 'sensor' | 'safety' | 'supervisor',
         (pickedId) => {
           finalizeDrop(item.kind, kind, position, pickedId, undefined);
         },
@@ -695,7 +711,10 @@
     let actuatorModel = preResolved?.actuatorModel;
     let equipmentModel = preResolved?.equipmentModel;
     if (pickedId && !vendorModel && !sensorModel && !safetyModel && !actuatorModel && !equipmentModel) {
-      if (dropKind === 'controller') vendorModel = findControllerModel(pickedId);
+      // Supervisor + Controller both pull from VENDOR_CATALOG — the
+      // dropKind drives the palette filter, but the resolution is the
+      // same lookup.
+      if (dropKind === 'controller' || dropKind === 'supervisor') vendorModel = findControllerModel(pickedId);
       else if (dropKind === 'sensor') sensorModel = findSensorModel(pickedId);
       else if (dropKind === 'safety') safetyModel = findSafetyDevice(pickedId);
       else if (dropKind === 'actuator') actuatorModel = findActuatorModel(pickedId);
@@ -904,6 +923,10 @@
   setContext('basCancelRename', () => {
     renamingNodeId = null;
   });
+
+  // Expose the power-toggle so the node card itself can flip its own
+  // power state without round-tripping through the inspector panel.
+  setContext('basTogglePower', (id: string) => togglePower(id));
 
   /** Inline rename used by inspector panels — direct write-through. */
   function renameNode(id: string, newLabel: string): void {
@@ -3840,6 +3863,39 @@
     }
 
     const offline = new Set<string>();
+    // First pass: virtual controllers inherit their host's reachability
+    // + power state. If the host is unreachable or powered off (or
+    // missing), the child goes with it — that's the "all eggs in one
+    // basket" failure mode of soft controllers.
+    for (const n of nodes) {
+      if (nodeKind(n) !== 'virtual-controller') continue;
+      const d = n.data as { hostId?: string; poweredOff?: boolean };
+      if (d.poweredOff) continue; // tracked separately
+      if (!d.hostId) {
+        // No host — virtual controller has nowhere to live. Treat as offline.
+        offline.add(n.id);
+        continue;
+      }
+      const host = nodes.find((h) => h.id === d.hostId);
+      if (!host) {
+        // Host was deleted — orphaned virtual child.
+        offline.add(n.id);
+        continue;
+      }
+      const hostData = host.data as { poweredOff?: boolean };
+      if (hostData.poweredOff) {
+        offline.add(n.id);
+        continue;
+      }
+      if (!reached.has(host.id)) {
+        // Host is unreachable from any supervisor (which would only
+        // happen if the host itself is unwired or partitioned). Mirror.
+        // Note: hosts are themselves supervisors, so they auto-pass the
+        // BFS root check above. This branch is defensive.
+        offline.add(n.id);
+      }
+    }
+
     for (const n of nodes) {
       // Powered-off devices are deliberately off — that's distinct from
       // "comm-lost", so the stale/offline badges shouldn't fire.
@@ -3848,6 +3904,10 @@
       if (nodeKind(n) === 'supervisor') continue;
       // Subnet zones are visual containers, not devices — never offline.
       if (isSubnetZone(n)) continue;
+      // Virtual controllers: handled in the first pass above (host-
+      // driven). Skip the wire-based reachability check; they live
+      // inside their host, not on a wire.
+      if (nodeKind(n) === 'virtual-controller') continue;
       // Routers + BBMD appliances are independent network gear. A
       // freshly-dropped router/BBMD that hasn't been wired yet
       // shouldn't be flagged as "stale comm" — it's just not deployed
@@ -3914,6 +3974,42 @@
     if (nodeKind(selectedNode) !== 'router') return null;
     return selectedNode;
   });
+
+  /** Single-selection virtual controller — drives the host picker. */
+  const selectedVirtualController = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'virtual-controller') return null;
+    return selectedNode;
+  });
+
+  /** Set the host supervisor for a virtual controller. */
+  function setVirtualHost(virtualId: string, hostId: string | null): void {
+    nodes = nodes.map((n) => {
+      if (n.id !== virtualId) return n;
+      const d = n.data as Record<string, unknown>;
+      if (!hostId) {
+        const { hostId: _h, hostLabel: _l, ...rest } = d;
+        void _h;
+        void _l;
+        return { ...n, data: rest };
+      }
+      const hostNode = nodes.find((nn) => nn.id === hostId);
+      const hostLabel = hostNode ? (hostNode.data as { label?: string }).label : hostId;
+      return { ...n, data: { ...d, hostId, hostLabel } };
+    });
+  }
+
+  /** Every supervisor on the canvas — used as host candidates for
+   *  virtual controllers. Excludes the virtual controller itself in
+   *  case the user accidentally tries to self-host. */
+  function hostCandidates(_excludeId: string): Array<{ id: string; label: string }> {
+    const out: Array<{ id: string; label: string }> = [];
+    for (const n of nodes) {
+      if (nodeKind(n) !== 'supervisor') continue;
+      out.push({ id: n.id, label: (n.data as { label?: string }).label ?? n.id });
+    }
+    return out;
+  }
 
   /** Update one interface on a router. */
   function updateRouterInterface(
@@ -4296,8 +4392,13 @@
           short: 'Sensor shorted leads detected — reading pinned at -40°F (full-scale low). Check wiring.',
           stuck: 'Sensor frozen at last good value — possible firmware lockup or comm fault upstream.',
           drift: 'Sensor reading drifting ~1°F per 10 sim-min. Field calibration recommended.',
+          calibration: 'Sensor reads with a persistent +5°F bias — needs field calibration or relocation out of direct sun.',
+          noise: 'Sensor reading shows high-frequency jitter (~1.5°F RMS). Check shielding / EMI / VFD cable separation.',
+          intermittent: 'Sensor drops to a rail intermittently — likely a loose terminal screw or marginal connector.',
+          rail: 'Sensor pegged at one rail of the scale. ADC saturated, fully-failed signal, or shorted-to-supply.',
         };
-        const level: 'warn' | 'error' = fault === 'open' || fault === 'short' ? 'error' : 'warn';
+        const severe = new Set<SensorFault>(['open', 'short', 'rail']);
+        const level: 'warn' | 'error' = severe.has(fault) ? 'error' : 'warn';
         logEvent(simSecondsElapsed, level, label, msg[fault]);
       }
     }
@@ -5135,6 +5236,64 @@
           </Panel>
         {/if}
 
+        {#if selectedVirtualController}
+          {@const vcData = selectedVirtualController.data as { hostId?: string; poweredOff?: boolean }}
+          {@const vcHosts = hostCandidates(selectedVirtualController.id)}
+          {@const vcOff = !!vcData.poweredOff}
+          <Panel position="top-center">
+            <div class="vctrl-panel">
+              <span class="vctrl-title">Virtual ctrl —</span>
+              <input
+                class="ip-rename"
+                type="text"
+                value={nodeLabel(selectedVirtualController)}
+                onblur={(e) => renameNode(selectedVirtualController.id, (e.currentTarget as HTMLInputElement).value)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                  if (e.key === 'Escape') {
+                    (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedVirtualController);
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+                title="Rename this virtual controller."
+                aria-label="Virtual controller name"
+              />
+              <label class="vctrl-host-field" title="Pick the supervisor (JACE / NCE / AS-P / etc.) this virtual controller runs INSIDE. When the host goes down, every virtual controller on it goes with it.">
+                <span>Host</span>
+                <select
+                  class="vctrl-host-select"
+                  onchange={(e) => {
+                    const v = (e.currentTarget as HTMLSelectElement).value;
+                    setVirtualHost(selectedVirtualController.id, v === '' ? null : v);
+                  }}
+                >
+                  <option value="" selected={!vcData.hostId}>— no host —</option>
+                  {#each vcHosts as h (h.id)}
+                    <option value={h.id} selected={vcData.hostId === h.id}>{h.label}</option>
+                  {/each}
+                </select>
+              </label>
+              {#if vcHosts.length === 0}
+                <span class="vctrl-hint">Drop a Supervisor first — virtual controllers need a host.</span>
+              {/if}
+              <span class="ip-divider"></span>
+              <button
+                type="button"
+                class="power-toggle"
+                class:powered-off={vcOff}
+                onclick={() => togglePower(selectedVirtualController.id)}
+                title={vcOff ? 'Virtual controller is powered off.' : 'Power off this virtual controller.'}
+              >{vcOff ? '⏼ Power on' : '⏻ Power off'}</button>
+              <button
+                type="button"
+                class="ip-delete"
+                title="Delete this virtual controller."
+                onclick={() => deleteNodeById(selectedVirtualController.id)}
+              >✕ Delete</button>
+            </div>
+          </Panel>
+        {/if}
+
         {#if selectedRouter}
           {@const rData = selectedRouter.data as {
             routerInterfaces?: Array<{ ip?: string; cidr: string }>;
@@ -5547,7 +5706,7 @@
               <div class="sensor-row">
                 <span class="sensor-sub">Fault</span>
                 <div class="fault-chips">
-                  {#each ['normal', 'open', 'short', 'stuck', 'drift'] as f (f)}
+                  {#each ['normal', 'open', 'short', 'stuck', 'drift', 'calibration', 'noise', 'intermittent', 'rail'] as f (f)}
                     <button
                       type="button"
                       class="fault-chip"
@@ -7667,13 +7826,16 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem 0.5rem;
     padding: 0.35rem 0.6rem;
     background: color-mix(in srgb, Canvas 92%, transparent);
     backdrop-filter: blur(4px);
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
-    max-width: 56rem;
+    /* Constrain width so this never elbows into the top-right sim
+       controls. Wider screens still get a comfortable row; narrower
+       screens wrap cleanly onto multiple rows. */
+    max-width: min(46rem, calc(100vw - 28rem));
   }
   .ip-config-title {
     font-size: 0.7rem;
@@ -7758,7 +7920,7 @@
     font: inherit;
     font-size: 0.75rem;
     padding: 0.15rem 0.4rem;
-    width: 7.5rem;
+    width: 6.5rem;
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
@@ -8002,6 +8164,49 @@
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
     max-width: 50rem;
+  }
+
+  /* Virtual controller inspector — purple accent matches the node card. */
+  .vctrl-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.5rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    max-width: min(40rem, calc(100vw - 28rem));
+  }
+  .vctrl-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: #a78bfa;
+  }
+  .vctrl-host-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+  }
+  .vctrl-host-select {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.35rem;
+    max-width: 10rem;
+  }
+  .vctrl-hint {
+    font-size: 0.7rem;
+    color: #f59e0b;
+    font-style: italic;
   }
   .router-title {
     font-size: 0.7rem;
