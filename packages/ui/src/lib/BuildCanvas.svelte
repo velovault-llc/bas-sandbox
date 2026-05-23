@@ -141,6 +141,26 @@
     return c;
   }
 
+  /** Look up the registered BACnet vendor ID for a controller model.
+   *  ASHRAE maintains the official list at bacnet.org — these are the
+   *  ones our catalog touches. Anything not in this map falls back to
+   *  the Reliable Controls vendor ID (260) which we use as a generic
+   *  placeholder — the conformance checker doesn't care about the
+   *  specific value, only that the field is present per §16.10.2. */
+  function vendorIdFor(vendorModelId: string | undefined): number {
+    if (!vendorModelId) return 260;
+    if (vendorModelId.startsWith('jci-')) return 5; // Johnson Controls
+    if (vendorModelId.startsWith('tridium-')) return 37; // Tridium
+    if (vendorModelId.startsWith('beckhoff-')) return 86; // Beckhoff
+    if (vendorModelId.startsWith('wago-')) return 110; // Wago
+    if (vendorModelId.startsWith('siemens-')) return 7; // Siemens
+    if (vendorModelId.startsWith('distech-')) return 36; // Distech
+    if (vendorModelId.startsWith('reliable-')) return 260; // Reliable Controls
+    if (vendorModelId.startsWith('schneider-')) return 10; // Schneider Electric
+    if (vendorModelId.startsWith('honeywell-')) return 17; // Honeywell
+    return 260;
+  }
+
   /** Center (in flow coords) of a node. xyflow stores top-left as
    *  `position` and rendered size on `measured.width/height`; before the
    *  first measure pass we fall back to a reasonable default so the
@@ -2178,6 +2198,20 @@
           for (const d of devices) {
             if (d.nodeId === initiator.nodeId) continue;
             const inst = d.deviceInstance ?? defaultDeviceInstance(d.mac);
+            // Carry the four fields ASHRAE 135 §16.10.2 requires:
+            // Device Instance, Max APDU Length Accepted, Segmentation
+            // Supported, Vendor ID. The sandbox synthesizes plausible
+            // defaults: 1024 max APDU (matches a small JCI / Tridium
+            // FEC), segmentedBoth (most modern devices), and a vendor
+            // id pulled from the device's known vendor model when
+            // available, else a generic 260 (Reliable Controls — used
+            // here as the "unspecified" sentinel).
+            const node = nodes.find((n) => n.id === d.nodeId);
+            const vendorModelId = (node?.data as { vendorModelId?: string } | undefined)
+              ?.vendorModelId;
+            const vendorId = vendorIdFor(vendorModelId);
+            const maxApdu = 1024;
+            const segmentation = 'segmentedBoth';
             logBacnetPacket({
               simSec: simSecondsElapsed + iAmOffsetS,
               trunkId: trunkEdge.id,
@@ -2185,7 +2219,7 @@
               srcMac: d.mac,
               dstMac: initiator.mac,
               service: 'I-Am',
-              summary: `${d.label} (MAC ${d.mac}) I-Am — Device Instance ${inst}`,
+              summary: `${d.label} (MAC ${d.mac}) I-Am — Device Instance ${inst} · maxAPDU ${maxApdu} · segmentation ${segmentation} · vendorId ${vendorId}`,
               layer: 'app',
             });
             iAmOffsetS += iAmStaggerS;
@@ -2487,6 +2521,17 @@
           crossedDeadband = Math.abs(cur - last) >= sub.deadband;
         }
         if (!crossedDeadband) continue;
+        // ASHRAE 135 §13.10 requires statusFlags in the listOfValues
+        // of a COV notification. The four flags are: in-alarm, fault,
+        // overridden, out-of-service — each a boolean. For an
+        // unfaulted, in-range value we emit "(false,false,false,false)".
+        // When the source device is in a known fault state we surface
+        // it; otherwise default to clean.
+        const subSrcNode = nodes.find((n) => n.id === sub.childNodeId);
+        const subFault = (subSrcNode?.data as { fault?: string } | undefined)?.fault;
+        const inAlarm = subFault === 'open' || subFault === 'short' || subFault === 'rail';
+        const inFault = subFault !== undefined && subFault !== 'normal';
+        const statusFlags = `(${inAlarm},${inFault},false,false)`;
         logBacnetPacket({
           simSec: simSecondsElapsed,
           trunkId: sub.trunkId,
@@ -2496,7 +2541,7 @@
           service: 'ConfirmedCOVNotification',
           objectId: sub.objectId,
           value: typeof cur === 'boolean' ? (cur ? 1 : 0) : cur,
-          summary: `${sub.childLabel} → MAC 0: COV ${sub.objectId} = ${typeof cur === 'number' ? cur.toFixed(2) : String(cur)}${typeof last === 'number' && typeof cur === 'number' ? ` (Δ ${(cur - last >= 0 ? '+' : '')}${(cur - last).toFixed(2)})` : ''}`,
+          summary: `${sub.childLabel} → MAC 0: COV ${sub.objectId} = ${typeof cur === 'number' ? cur.toFixed(2) : String(cur)}${typeof last === 'number' && typeof cur === 'number' ? ` (Δ ${(cur - last >= 0 ? '+' : '')}${(cur - last).toFixed(2)})` : ''} · statusFlags ${statusFlags}`,
           layer: 'app',
         });
         sub.lastReportedValue = cur;
