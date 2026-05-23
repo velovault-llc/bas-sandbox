@@ -178,6 +178,8 @@ export {
   parseCidr,
   ipInCidr,
   formatCidr,
+  checkBacnetConformance,
+  summarizeConformance,
 } from './bacnet/index.js';
 export type {
   BacnetObject,
@@ -196,6 +198,10 @@ export type {
   ParsedCidr,
   PlacedBacnetIpDevice,
   SubnetZone,
+  ConformancePacket,
+  ConformanceFinding,
+  ConformanceFindingId,
+  ConformanceSummary,
 } from './bacnet/index.js';
 
 export { SCENARIO_LIBRARY, findScenario } from './scenarios/index.js';

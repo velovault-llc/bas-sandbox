@@ -11,6 +11,7 @@
   import SpecLangCanvas from './lib/speclang/SpecLangCanvas.svelte';
   import BacnetInspector from './lib/bacnet/BacnetInspector.svelte';
   import BacnetPacketLogPanel from './lib/bacnet/BacnetPacketLogPanel.svelte';
+  import BacnetConformancePanel from './lib/bacnet/BacnetConformancePanel.svelte';
   import TrunkInspector from './lib/bacnet/TrunkInspector.svelte';
   import NetworkHealthPill from './lib/bacnet/NetworkHealthPill.svelte';
   import LlmAssistantPanel from './lib/llm/LlmAssistantPanel.svelte';
@@ -550,6 +551,7 @@
           <RuntimeLogPanel />
           <BacnetPacketLogPanel />
           <NetworkHealthPill />
+          <BacnetConformancePanel />
           <LlmAssistantPanel />
           {#if bottomDockOpen}
             <div

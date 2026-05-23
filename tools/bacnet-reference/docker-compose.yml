@@ -1,0 +1,32 @@
+# Reference BACnet device + (optional) packet capture sidecar.
+# Brings up a real bacnet-stack device on UDP 47808 plus a tcpdump
+# container that records the wire traffic into a pcap file. Pair
+# with the sandbox's exported packet log to diff.
+#
+# Usage:
+#   cd tools/bacnet-reference
+#   docker compose up           # starts both
+#   # ...interact via YABE or sandbox...
+#   docker compose down         # stops everything
+#   # pcap is at ./capture.pcap — open in Wireshark
+
+services:
+  bacnet-ref:
+    build: .
+    container_name: bas-bacnet-ref
+    network_mode: host  # bind 47808/udp directly on host
+    restart: unless-stopped
+    environment:
+      - BACNET_DEVICE_ID=1234
+
+  pcap:
+    image: nicolaka/netshoot
+    container_name: bas-bacnet-pcap
+    network_mode: host
+    depends_on:
+      - bacnet-ref
+    # 47808 is the default BACnet/IP port. -U flushes per-packet so
+    # the file isn't buffered if the user wants to peek mid-run.
+    command: tcpdump -U -i any -w /capture/capture.pcap "udp port 47808"
+    volumes:
+      - ./:/capture

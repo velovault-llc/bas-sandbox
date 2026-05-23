@@ -49,3 +49,14 @@ export type {
   PlacedBacnetIpDevice,
   SubnetZone,
 } from './ipv4.js';
+
+export {
+  checkBacnetConformance,
+  summarizeConformance,
+} from './conformance.js';
+export type {
+  ConformancePacket,
+  ConformanceFinding,
+  ConformanceFindingId,
+  ConformanceSummary,
+} from './conformance.js';
