@@ -418,7 +418,12 @@ docker exec ollama ollama pull {llmStore.model}</pre>
     background: color-mix(in srgb, Canvas 96%, CanvasText 3%);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
     overflow: hidden;
-    z-index: 41;
+    /* Sits ABOVE the SpecLang / FBD / BACnet inspector overlays
+       (z-index 200) so the Assistant stays accessible when the user
+       has opened a program editor for a controller. Without this the
+       assistant disappears behind SpecLang and there's no way to read
+       its "explain program" output while the editor is open. */
+    z-index: 220;
     font-size: 0.82rem;
     font-family: system-ui, sans-serif;
   }

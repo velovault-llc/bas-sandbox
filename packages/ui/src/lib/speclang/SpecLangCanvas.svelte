@@ -538,12 +538,19 @@
   .speclang-backdrop {
     position: fixed;
     inset: 0;
+    /* The LLM Assistant panel uses z-index 220 so it floats above this
+       editor — that way a tech can read the Assistant's "explain
+       program" output while editing without closing SpecLang. */
     z-index: 200;
     background: rgba(0, 0, 0, 0.35);
     display: flex;
     align-items: stretch;
     justify-content: stretch;
-    padding: 1rem;
+    /* Reserve right-side margin equal to the Assistant panel's width
+       (~22rem) + its gutter so the SpecLang surface doesn't slide
+       UNDER the panel when it's open. Falls back to a smaller margin
+       on narrow viewports. */
+    padding: 1rem min(24rem, 35vw) 1rem 1rem;
   }
   .speclang-overlay {
     position: relative;

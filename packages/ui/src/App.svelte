@@ -71,6 +71,63 @@
   let leftDrawerTab = $state<LeftDrawerTab>('weather');
   let bottomDockOpen = $state(true);
 
+  /** User-adjustable bottom-dock height in pixels. Default = 17rem
+   *  (272px). Persisted to localStorage so the user's preference
+   *  carries across reloads. Clamped to a sane min/max range. */
+  const DOCK_HEIGHT_KEY = 'bas-sandbox:dock-height-px';
+  const DOCK_HEIGHT_MIN = 120; // collapse threshold (don't go below useful)
+  const DOCK_HEIGHT_DEFAULT = 272; // 17rem at 16px base
+  function loadDockHeight(): number {
+    if (typeof localStorage === 'undefined') return DOCK_HEIGHT_DEFAULT;
+    try {
+      const raw = localStorage.getItem(DOCK_HEIGHT_KEY);
+      if (!raw) return DOCK_HEIGHT_DEFAULT;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return DOCK_HEIGHT_DEFAULT;
+      return clampDockHeight(n);
+    } catch {
+      return DOCK_HEIGHT_DEFAULT;
+    }
+  }
+  function clampDockHeight(px: number): number {
+    if (typeof window === 'undefined') return Math.max(DOCK_HEIGHT_MIN, px);
+    // Cap at 70% of the viewport so the canvas always has room.
+    const maxPx = Math.max(DOCK_HEIGHT_MIN + 80, window.innerHeight * 0.7);
+    return Math.min(maxPx, Math.max(DOCK_HEIGHT_MIN, px));
+  }
+  let dockHeightPx = $state(loadDockHeight());
+
+  // Drag-to-resize the dock. The handle sits on the dock's TOP edge;
+  // dragging up grows the dock (more rows for DEMOS / catalog), down
+  // shrinks it.
+  let dockResizing = $state(false);
+  let dockDragStart = { my: 0, oh: 0 };
+  function startDockResize(e: MouseEvent): void {
+    dockResizing = true;
+    dockDragStart = { my: e.clientY, oh: dockHeightPx };
+    window.addEventListener('mousemove', onDockResize);
+    window.addEventListener('mouseup', endDockResize);
+    e.preventDefault();
+  }
+  function onDockResize(e: MouseEvent): void {
+    if (!dockResizing) return;
+    // mouse moves UP (clientY decreases) → dock grows.
+    const dy = dockDragStart.my - e.clientY;
+    dockHeightPx = clampDockHeight(dockDragStart.oh + dy);
+  }
+  function endDockResize(): void {
+    dockResizing = false;
+    window.removeEventListener('mousemove', onDockResize);
+    window.removeEventListener('mouseup', endDockResize);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(DOCK_HEIGHT_KEY, String(dockHeightPx));
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   function toggleLeftDrawer(): void {
     leftDrawerOpen = !leftDrawerOpen;
   }
@@ -421,10 +478,10 @@
             class="rail-tab"
             class:active={leftDrawerOpen && leftDrawerTab === 'scenarios'}
             onclick={() => pickLeftDrawerTab('scenarios')}
-            title="Guided BAS-tech training scenarios"
+            title="Guided BAS-tech lessons — step-by-step walkthroughs. (One-click pre-built canvases live in the DEMOS list at the bottom-right.)"
           >
             <span class="rail-icon">▤</span>
-            <span class="rail-label">Scenarios</span>
+            <span class="rail-label">Lessons</span>
           </button>
           <button
             type="button"
@@ -467,7 +524,13 @@
           {/if}
         </aside>
 
-        <div class="canvas-area" class:drawer-open={leftDrawerOpen} class:dock-open={bottomDockOpen}>
+        <div
+          class="canvas-area"
+          class:drawer-open={leftDrawerOpen}
+          class:dock-open={bottomDockOpen}
+          class:dock-resizing={dockResizing}
+          style:--dock-h="{dockHeightPx}px"
+        >
           <BuildCanvas />
           {#if programStore.activeControllerId}
             <CLIPanel />
@@ -488,6 +551,16 @@
           <BacnetPacketLogPanel />
           <NetworkHealthPill />
           <LlmAssistantPanel />
+          {#if bottomDockOpen}
+            <div
+              class="dock-resize-handle"
+              role="separator"
+              aria-label="Resize bottom dock (drag up to enlarge, down to shrink)"
+              aria-orientation="horizontal"
+              onmousedown={startDockResize}
+              title="Drag to resize the bottom dock. Drag up to enlarge the DEMOS / device area."
+            ></div>
+          {/if}
           <button
             type="button"
             class="dock-toggle"
@@ -777,7 +850,9 @@
      horizontal ribbon. */
   .canvas-area.dock-open :global(.build) {
     grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr 17rem !important;
+    /* Dock height comes from the --dock-h CSS variable set inline on
+       .canvas-area so the user can drag-resize it at runtime. */
+    grid-template-rows: 1fr var(--dock-h, 17rem) !important;
   }
 
   .canvas-area.dock-open :global(.palette) {
@@ -895,9 +970,50 @@
     background: color-mix(in srgb, CanvasText 12%, Canvas);
   }
 
-  /* When dock is open, lift the toggle above the dock so it stays visible */
+  /* When dock is open, lift the toggle above the dock so it stays
+     visible. Anchored to the same --dock-h variable that drives the
+     dock height so it tracks when the user drag-resizes. */
   .canvas-area.dock-open .dock-toggle {
-    bottom: 17.5rem;
+    bottom: calc(var(--dock-h, 17rem) + 0.5rem);
+  }
+
+  /* Drag-handle along the dock's TOP edge — drag up to grow the
+     DEMOS / device area, down to shrink. 6px tall click target with
+     a centered visual grip cue. */
+  .dock-resize-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 8px;
+    bottom: var(--dock-h, 17rem);
+    /* Bias up by 4px so the cursor target straddles the dock's edge
+       rather than sitting inside the dock content. */
+    margin-bottom: -4px;
+    z-index: 6;
+    cursor: ns-resize;
+    background: transparent;
+    transition: background 120ms ease;
+  }
+  .dock-resize-handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px;
+    height: 3px;
+    border-radius: 2px;
+    background: color-mix(in srgb, CanvasText 18%, transparent);
+    transition: background 120ms ease, width 120ms ease;
+  }
+  .dock-resize-handle:hover::after,
+  .canvas-area.dock-resizing .dock-resize-handle::after {
+    background: #4a9eff;
+    width: 72px;
+  }
+  .canvas-area.dock-resizing {
+    user-select: none;
+    cursor: ns-resize;
   }
 
   @media (max-width: 720px) {

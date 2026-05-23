@@ -25,6 +25,65 @@
   const shell = makeShellState();
   let resizeObserver: ResizeObserver | null = null;
 
+  // Drag-to-reposition. Same pattern as the runtime / packet log panels:
+  // bind:this on the panel, header drag handle, parent-clamp on each
+  // move so the header never escapes the canvas-area. Position is
+  // tracked in CSS px (offsetRight / offsetTop deltas from the default
+  // top-right corner).
+  let panelEl: HTMLDivElement | null = $state(null);
+  let offsetX = $state(0); // px subtracted from `right: 1rem`
+  let offsetY = $state(0); // px added to `top: 1rem`
+  let dragging = $state(false);
+  let didActuallyDrag = false;
+  let dragStart = { mx: 0, my: 0, ox: 0, oy: 0 };
+  const DRAG_THRESHOLD = 4;
+
+  function clampPos(x: number, y: number): { x: number; y: number } {
+    if (typeof window === 'undefined') return { x: Math.max(0, x), y: Math.max(0, y) };
+    const parent = panelEl?.offsetParent as HTMLElement | null;
+    const parentW = parent?.clientWidth ?? window.innerWidth;
+    const parentH = parent?.clientHeight ?? window.innerHeight;
+    const panelW = panelEl?.offsetWidth ?? 640;
+    const panelH = panelEl?.offsetHeight ?? 420;
+    const margin = 12;
+    // offsetX is subtracted from right edge → max is parentW - panelW - margin
+    const maxX = Math.max(0, parentW - panelW - margin);
+    // offsetY is added to top → max is parentH - panelH - margin
+    const maxY = Math.max(0, parentH - panelH - margin);
+    return {
+      x: Math.min(maxX, Math.max(0, x)),
+      y: Math.min(maxY, Math.max(0, y)),
+    };
+  }
+
+  function startDrag(e: MouseEvent): void {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragging = true;
+    didActuallyDrag = false;
+    dragStart = { mx: e.clientX, my: e.clientY, ox: offsetX, oy: offsetY };
+    window.addEventListener('mousemove', onDragMove);
+    window.addEventListener('mouseup', endDrag);
+    e.preventDefault();
+  }
+  function onDragMove(e: MouseEvent): void {
+    if (!dragging) return;
+    // Panel is anchored top-right. Dragging LEFT should grow offsetX
+    // (panel moves further from the right edge). Dragging DOWN should
+    // grow offsetY.
+    const dx = dragStart.mx - e.clientX;
+    const dy = e.clientY - dragStart.my;
+    if (!didActuallyDrag && Math.hypot(dx, dy) >= DRAG_THRESHOLD) didActuallyDrag = true;
+    if (!didActuallyDrag) return;
+    const { x, y } = clampPos(dragStart.ox + dx, dragStart.oy + dy);
+    offsetX = x;
+    offsetY = y;
+  }
+  function endDrag(): void {
+    dragging = false;
+    window.removeEventListener('mousemove', onDragMove);
+    window.removeEventListener('mouseup', endDrag);
+  }
+
   // Build the controller-context whenever the active id or bridge changes.
   const ctx = $derived.by((): ControllerContext | null => {
     const id = programStore.activeControllerId;
@@ -151,8 +210,21 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="cli-panel" role="dialog" aria-label="Controller terminal">
-  <header class="cli-head">
+<div
+  bind:this={panelEl}
+  class="cli-panel"
+  class:dragging
+  role="dialog"
+  aria-label="Controller terminal"
+  style:right="calc(1rem + {offsetX}px)"
+  style:top="calc(1rem + {offsetY}px)"
+>
+  <header
+    class="cli-head"
+    onmousedown={startDrag}
+    title="Drag the header to reposition this terminal."
+  >
+    <span class="grip">⠿</span>
     <div class="cli-title">
       <span class="dot"></span>
       <strong>{ctx?.controllerLabel ?? 'CTRL'}</strong>
@@ -185,12 +257,25 @@
   .cli-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.5rem;
     padding: 0.4rem 0.75rem;
     background: #14181f;
     border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
     color: #e0e0e0;
     font-size: 0.82rem;
+    cursor: grab;
+    user-select: none;
+  }
+  .cli-panel.dragging .cli-head {
+    cursor: grabbing;
+  }
+  .grip {
+    color: #5a6473;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .cli-title {
+    flex: 1;
   }
 
   .cli-title {

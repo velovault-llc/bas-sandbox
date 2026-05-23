@@ -5,11 +5,16 @@
 
 <section class="scenarios-tab">
   <header class="head">
-    <h3>Scenarios</h3>
+    <h3>Guided lessons</h3>
     <p class="hint">
       Step-by-step walkthroughs of real-world BAS commissioning jobs. Pick one and the
       right-side panel guides you through equipment selection, wiring, and programming
       with real-time validation.
+    </p>
+    <p class="hint">
+      Looking for one-click pre-built canvases (Quick start, sensor fault demos, JACE
+      hosts 5 virtual VAVs, etc.)? Those live in the <strong>DEMOS</strong> list in the
+      bottom-right of the canvas.
     </p>
   </header>
 
