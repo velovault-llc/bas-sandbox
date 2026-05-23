@@ -126,10 +126,25 @@ export const DEMOS: readonly Demo[] = [
   {
     id: 'quickstart',
     name: 'Quick start: 1 VAV',
-    blurb: 'Single VAV + zone temp sensor on BACnet/IP. Hit Run to watch a PI cool from 76→72°F.',
+    blurb:
+      'Single VAV + zone temp sensor on a BACnet MS/TP trunk under an NAE-1 supervisor. Hit Run to watch a PI cool from 76→72°F. Also fires Who-Is / I-Am broadcasts so the BACnet packet log + conformance panel populate.',
     scenario: buildScenario({
       nodes: [
-        { id: 'sup', kind: 'supervisor', label: 'NAE-1', x: 240, y: 60 },
+        {
+          id: 'sup',
+          kind: 'supervisor',
+          label: 'NAE-1',
+          x: 240,
+          y: 60,
+          data: {
+            // Static IP so the Net.5 broadcast-routing trace fires
+            // Who-Is broadcasts every 30s, populating the packet log
+            // and the conformance panel.
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+          },
+        },
         { id: 'vav', kind: 'controller', label: 'VAV-1', x: 240, y: 230 },
         {
           id: 'snr',
@@ -141,7 +156,9 @@ export const DEMOS: readonly Demo[] = [
         },
       ],
       edges: [
-        { source: 'sup', target: 'vav', wireKind: 'bacnet-ip' },
+        // MS/TP trunk (was bacnet-ip) so token-pass packets fire and
+        // the supervisor polls the VAV via ReadProperty + COV.
+        { source: 'sup', target: 'vav', wireKind: 'mstp', baud: 38400 },
         { source: 'vav', target: 'snr', wireKind: 'hardwired' },
       ],
       wires: [{ controllerId: 'vav', sensorId: 'snr' }],

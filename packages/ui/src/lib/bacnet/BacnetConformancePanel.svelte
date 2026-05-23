@@ -140,11 +140,33 @@
   {#if panelOpen}
     <div class="body">
       {#if findings.length === 0}
-        <p class="empty">
-          {bacnetPacketLog.packets.length === 0
-            ? 'No packets yet — start the sim and wire some BACnet/IP or MS/TP trunks to see conformance findings stream here.'
-            : '✓ No findings. The packet log passes every rule this checker knows about (ASHRAE 135 §16.10, §13.10, §15.5, §12.11).'}
-        </p>
+        {#if bacnetPacketLog.packets.length === 0}
+          <p class="empty">
+            No packets yet. The conformance checker reads from the BACnet packet log; it
+            needs the sandbox to actually emit BACnet traffic. To produce some:
+          </p>
+          <ul class="empty-hints">
+            <li>
+              <strong>MS/TP trunk</strong> — wire a supervisor to one or more controllers
+              with the MS/TP wire kind. Token-pass + ReadProperty/COV packets fire while
+              the sim runs.
+            </li>
+            <li>
+              <strong>Supervisor with an IP</strong> — set IP + Mask on a supervisor's
+              Network panel. Net.5 broadcast trace synthesizes a Who-Is from each
+              IP-enabled supervisor every 30 sim-seconds.
+            </li>
+            <li>
+              Or load the <strong>Quick start: 1 VAV</strong> demo from the DEMOS list
+              (bottom-right) — it has both already set up.
+            </li>
+          </ul>
+        {:else}
+          <p class="empty">
+            ✓ No findings. The packet log passes every rule this checker knows about
+            (ASHRAE 135 §16.10, §13.10, §15.5, §12.11).
+          </p>
+        {/if}
       {:else}
         {#each findings as f, i (i)}
           <div class="finding lvl-{f.severity}">
@@ -274,6 +296,19 @@
     color: color-mix(in srgb, CanvasText 60%, transparent);
     font-style: italic;
     line-height: 1.4;
+  }
+  .empty-hints {
+    margin: 0.3rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.72rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .empty-hints li {
+    margin: 0;
   }
   .finding {
     display: flex;
