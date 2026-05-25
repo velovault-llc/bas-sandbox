@@ -39,7 +39,14 @@ from typing import Optional
 from bacpypes3.ipv4.bvll import LPDU, OriginalUnicastNPDU
 from bacpypes3.pdu import PDU
 from bacpypes3.npdu import NPDU
-from bacpypes3.apdu import APDU, APCISequence, ComplexAckPDU, AtomicReadFileACK
+from bacpypes3.apdu import (
+    APDU,
+    APCISequence,
+    ComplexAckPDU,
+    ErrorPDU,
+    SimpleAckPDU,
+    AtomicReadFileACK,
+)
 from bacpypes3.basetypes import (
     AtomicReadFileACKAccessMethodChoice,
     AtomicReadFileACKAccessMethodStreamAccess,
@@ -114,27 +121,51 @@ class CodecRoundtripAdapter(SimulatorAdapter):
             lpdu = LPDU.decode(PDU(data))
             npdu = NPDU.decode(PDU(lpdu.pduData))
             apdu = APDU.decode(PDU(npdu.pduData))
-            svc_obj = APCISequence.decode(apdu)
         except Exception:
             return ""
 
-        # Re-encode the service object back through the chain. Set the same
-        # invoke ID + service choice that came off the wire — copying them
-        # from `apdu` rather than the request, since orphan responses would
-        # otherwise lose their IDs.
         invoke_id = apdu.apduInvokeID
         svc = apdu.apduService
 
-        shell = ComplexAckPDU(service_choice=svc, invoke_id=invoke_id)
-        shell.apduSeg = apdu.apduSeg
-        shell.apduMor = apdu.apduMor
-        shell.apduSA = 0  # SA is request-only; ack has no SA
-        shell.put_data(Sequence.encode(svc_obj).encode().pduData)
-        apdu_wire = shell.encode()
+        # SimpleAcks have no service body — just a header. Skip the
+        # APCISequence.decode (which only handles types with a body) and
+        # build the shell directly.
+        if apdu.apduType == 2:
+            shell = SimpleAckPDU(service_choice=svc, invoke_id=invoke_id)
+            apdu_wire = shell.encode()
+        elif apdu.apduType in (3, 5):
+            try:
+                svc_obj = APCISequence.decode(apdu)
+            except Exception:
+                return ""
+            if apdu.apduType == 3:
+                shell = ComplexAckPDU(service_choice=svc, invoke_id=invoke_id)
+                shell.apduSeg = getattr(apdu, "apduSeg", 0)
+                shell.apduMor = getattr(apdu, "apduMor", 0)
+                shell.apduSA = 0  # SA is request-only; ack has no SA
+            else:
+                shell = ErrorPDU(service_choice=svc, invoke_id=invoke_id)
+            shell.put_data(Sequence.encode(svc_obj).encode().pduData)
+            apdu_wire = shell.encode()
+        else:
+            return ""
 
+        # Preserve all NPDU routing fields (DNET/DADR/HopCount/SADR/etc.) —
+        # captures from routed networks carry them in the response and the
+        # diff fails byte-exact if we drop them.
         npdu_out = NPDU()
         npdu_out.npduVersion = npdu.npduVersion
         npdu_out.npduControl = npdu.npduControl
+        for fld in (
+            "npduDADR",
+            "npduSADR",
+            "npduHopCount",
+            "npduNetMessage",
+            "npduVendorID",
+        ):
+            v = getattr(npdu, fld, None)
+            if v is not None:
+                setattr(npdu_out, fld, v)
         npdu_out.put_data(apdu_wire.pduData)
         npdu_wire = npdu_out.encode()
 

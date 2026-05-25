@@ -1,0 +1,61 @@
+{
+  "capture": "BACnetARRAY-elements.cap",
+  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "byte_exact": false,
+  "passed": 4,
+  "total": 4,
+  "results": [
+    {
+      "invoke_id": "1",
+      "service": "12",
+      "request_frame": "9",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 253,
+        "actual_len": 253,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "1",
+      "service": "12",
+      "request_frame": "19",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 22,
+        "actual_len": 22,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "1",
+      "service": "12",
+      "request_frame": "29",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 25,
+        "actual_len": 25,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "1",
+      "service": "12",
+      "request_frame": "39",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "error",
+        "expected_len": 13,
+        "actual_len": 13,
+        "length_match": true,
+        "match": "exact"
+      }
+    }
+  ]
+}

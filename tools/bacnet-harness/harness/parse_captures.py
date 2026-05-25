@@ -56,9 +56,35 @@ FIELDS = [
 ]
 
 
+def _tshark_bin():
+    """Locate tshark — PATH first, then standard Wireshark install locations
+    on Windows / macOS. Cached at module level after first lookup."""
+    global _TSHARK_CACHED
+    try:
+        return _TSHARK_CACHED
+    except NameError:
+        pass
+    import shutil
+    found = shutil.which("tshark")
+    if not found:
+        for candidate in (
+            r"C:\Program Files\Wireshark\tshark.exe",
+            r"C:\Program Files (x86)\Wireshark\tshark.exe",
+            "/Applications/Wireshark.app/Contents/MacOS/tshark",
+        ):
+            if os.path.exists(candidate):
+                found = candidate
+                break
+    if not found:
+        sys.exit("ERROR: tshark not found. Install Wireshark and ensure tshark "
+                 "is on PATH (or at a standard install location).")
+    globals()["_TSHARK_CACHED"] = found
+    return found
+
+
 def run_tshark(path):
     """Decode one capture into a list of per-frame dicts."""
-    cmd = ["tshark", "-r", path, "-Y", "bacnet || bacapp || bvlc", "-T", "fields"]
+    cmd = [_tshark_bin(), "-r", path, "-Y", "bacnet || bacapp || bvlc", "-T", "fields"]
     for f in FIELDS:
         cmd += ["-e", f]
     cmd += ["-E", "separator=\t", "-E", "occurrence=f"]
@@ -96,7 +122,7 @@ def run_tshark(path):
 
 def get_hex_payloads(path):
     """Map frame.number -> raw BACnet/IP UDP payload hex (for byte-level diffing)."""
-    cmd = ["tshark", "-r", path, "-Y", "bvlc", "-T", "fields",
+    cmd = [_tshark_bin(), "-r", path, "-Y", "bvlc", "-T", "fields",
            "-e", "frame.number", "-e", "data.data", "-e", "udp.payload"]
     out = subprocess.run(cmd, capture_output=True, text=True).stdout
     m = {}

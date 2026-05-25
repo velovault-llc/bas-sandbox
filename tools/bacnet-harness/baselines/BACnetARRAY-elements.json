@@ -1,0 +1,328 @@
+{
+  "capture": "BACnetARRAY-elements.cap",
+  "frame_count": 40,
+  "transactions": [
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "9",
+        "time": "0.001137000",
+        "src": "10.0.218.174",
+        "dst": "192.168.222.128",
+        "invoke_id": "1",
+        "service": "12",
+        "hex": "810a001101040003010c0c02003039194c"
+      },
+      "response": {
+        "frame": "10",
+        "time": "0.002120000",
+        "src": "192.168.222.128",
+        "dst": "10.0.218.174",
+        "invoke_id": "1",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a00fd010030010c0c02003039194c3ec402003039c400000000c400000001c400000002c400000003c400000004c400000005c400000006c400400000c400400001c400400002c400400003c400800000c400800001c400800002c400800003c400c00000c400c00001c400c00002c400c00003c400c00004c401000000c401000001c401000002c401000003c401000004c401000005c401400000c401400001c405400000c405400001c405400002c405400003c405400004c405400005c405400006c407000000c407000001c407000002c407000003c403800000c403800001c403800002c403800003c402800000c402800001c4028000023f"
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "19",
+        "time": "85.322304000",
+        "src": "10.0.218.174",
+        "dst": "192.168.222.128",
+        "invoke_id": "1",
+        "service": "12",
+        "hex": "810a001301040003010c0c02003039194c2900"
+      },
+      "response": {
+        "frame": "20",
+        "time": "85.323424000",
+        "src": "192.168.222.128",
+        "dst": "10.0.218.174",
+        "invoke_id": "1",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a0016010030010c0c02003039194c29003e212f3f"
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "29",
+        "time": "122.290154000",
+        "src": "10.0.218.174",
+        "dst": "192.168.222.128",
+        "invoke_id": "1",
+        "service": "12",
+        "hex": "810a001301040003010c0c02003039194c292f"
+      },
+      "response": {
+        "frame": "30",
+        "time": "122.290679000",
+        "src": "192.168.222.128",
+        "dst": "10.0.218.174",
+        "invoke_id": "1",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a0019010030010c0c02003039194c292f3ec4028000023f"
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "39",
+        "time": "126.983644000",
+        "src": "10.0.218.174",
+        "dst": "192.168.222.128",
+        "invoke_id": "1",
+        "service": "12",
+        "hex": "810a001301040003010c0c02003039194c2930"
+      },
+      "response": {
+        "frame": "40",
+        "time": "126.984655000",
+        "src": "192.168.222.128",
+        "dst": "10.0.218.174",
+        "invoke_id": "1",
+        "apdu_type": "error",
+        "error_class": "2",
+        "error_code": "42",
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a000d010050010c9102912a"
+      },
+      "status": "complete"
+    }
+  ],
+  "unconfirmed_events": [
+    {
+      "kind": "unconfirmed",
+      "frame": "2",
+      "time": "0.000057000",
+      "src": "10.0.218.174",
+      "dst": "192.168.222.128",
+      "service": "8",
+      "hex": "810900120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "4",
+      "time": "0.000437000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "8",
+      "hex": "810b00120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "5",
+      "time": "0.000556000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "810400180a00daaebac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "6",
+      "time": "0.000720000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "81040018c0a8de80bac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "7",
+      "time": "0.000854000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "0",
+      "hex": "810b00190120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "8",
+      "time": "0.000999000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "0",
+      "hex": "8104001fc0a8de80bac00120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "12",
+      "time": "85.321162000",
+      "src": "10.0.218.174",
+      "dst": "192.168.222.128",
+      "service": "8",
+      "hex": "810900120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "14",
+      "time": "85.321518000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "8",
+      "hex": "810b00120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "15",
+      "time": "85.321599000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "810400180a00daaebac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "16",
+      "time": "85.321676000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "81040018c0a8de80bac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "17",
+      "time": "85.321791000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "0",
+      "hex": "810b00190120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "18",
+      "time": "85.321949000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "0",
+      "hex": "8104001fc0a8de80bac00120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "22",
+      "time": "122.289406000",
+      "src": "10.0.218.174",
+      "dst": "192.168.222.128",
+      "service": "8",
+      "hex": "810900120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "24",
+      "time": "122.289694000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "8",
+      "hex": "810b00120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "25",
+      "time": "122.289774000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "810400180a00daaebac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "26",
+      "time": "122.289841000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "81040018c0a8de80bac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "27",
+      "time": "122.289878000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "0",
+      "hex": "810b00190120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "28",
+      "time": "122.289984000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "0",
+      "hex": "8104001fc0a8de80bac00120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "32",
+      "time": "126.982835000",
+      "src": "10.0.218.174",
+      "dst": "192.168.222.128",
+      "service": "8",
+      "hex": "810900120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "34",
+      "time": "126.983159000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "8",
+      "hex": "810b00120120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "35",
+      "time": "126.983255000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "810400180a00daaebac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "36",
+      "time": "126.983359000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "8",
+      "hex": "81040018c0a8de80bac00120ffff00ff10080a30391a3039"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "37",
+      "time": "126.983432000",
+      "src": "192.168.222.128",
+      "dst": "192.168.222.255",
+      "service": "0",
+      "hex": "810b00190120ffff00ff1000c4020030392201e09103220104"
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "38",
+      "time": "126.983519000",
+      "src": "192.168.222.128",
+      "dst": "10.0.218.174",
+      "service": "0",
+      "hex": "8104001fc0a8de80bac00120ffff00ff1000c4020030392201e09103220104"
+    }
+  ]
+}

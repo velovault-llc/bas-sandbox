@@ -1,0 +1,48 @@
+{
+  "capture": "BACnetARRAY-element-0.cap",
+  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "byte_exact": false,
+  "passed": 3,
+  "total": 3,
+  "results": [
+    {
+      "invoke_id": "30",
+      "service": "12",
+      "request_frame": "1",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 22,
+        "actual_len": 22,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "31",
+      "service": "12",
+      "request_frame": "3",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 22,
+        "actual_len": 22,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "32",
+      "service": "12",
+      "request_frame": "5",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 22,
+        "actual_len": 22,
+        "length_match": true,
+        "match": "exact"
+      }
+    }
+  ]
+}

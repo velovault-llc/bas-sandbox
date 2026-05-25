@@ -1,0 +1,178 @@
+{
+  "capture": "BACnetARRAY-element-0.cap",
+  "frame_count": 6,
+  "transactions": [
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "1",
+        "time": "0.000000000",
+        "src": "192.168.0.103",
+        "dst": "192.168.0.126",
+        "invoke_id": "30",
+        "service": "12",
+        "hex": "810a0013010400001e0c0c0100000119552900",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 12,
+          "invoke_id": 30,
+          "service_class": "ReadPropertyRequest",
+          "fields": {
+            "objectIdentifier": "binary-output,1",
+            "propertyIdentifier": 85,
+            "propertyArrayIndex": 0
+          }
+        }
+      },
+      "response": {
+        "frame": "2",
+        "time": "0.000447000",
+        "src": "192.168.0.126",
+        "dst": "192.168.0.103",
+        "invoke_id": "30",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a00160100301e0c0c01000001195529003e91003f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 12,
+          "invoke_id": 30,
+          "service_class": "ReadPropertyACK",
+          "fields": {
+            "objectIdentifier": "binary-output,1",
+            "propertyIdentifier": 85,
+            "propertyArrayIndex": 0,
+            "propertyValue": {
+              "_opaque": "Any"
+            }
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "3",
+        "time": "110.035371000",
+        "src": "192.168.0.103",
+        "dst": "192.168.0.126",
+        "invoke_id": "31",
+        "service": "12",
+        "hex": "810a0013010400001f0c0c02003039194c2900",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 12,
+          "invoke_id": 31,
+          "service_class": "ReadPropertyRequest",
+          "fields": {
+            "objectIdentifier": "device,12345",
+            "propertyIdentifier": 76,
+            "propertyArrayIndex": 0
+          }
+        }
+      },
+      "response": {
+        "frame": "4",
+        "time": "110.035797000",
+        "src": "192.168.0.126",
+        "dst": "192.168.0.103",
+        "invoke_id": "31",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a00160100301f0c0c02003039194c29003e212f3f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 12,
+          "invoke_id": 31,
+          "service_class": "ReadPropertyACK",
+          "fields": {
+            "objectIdentifier": "device,12345",
+            "propertyIdentifier": 76,
+            "propertyArrayIndex": 0,
+            "propertyValue": {
+              "_opaque": "Any"
+            }
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "5",
+        "time": "214.294764000",
+        "src": "192.168.0.103",
+        "dst": "192.168.0.126",
+        "invoke_id": "32",
+        "service": "12",
+        "hex": "810a001301040000200c0c0040000019572900",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 12,
+          "invoke_id": 32,
+          "service_class": "ReadPropertyRequest",
+          "fields": {
+            "objectIdentifier": "analog-output,0",
+            "propertyIdentifier": 87,
+            "propertyArrayIndex": 0
+          }
+        }
+      },
+      "response": {
+        "frame": "6",
+        "time": "214.295016000",
+        "src": "192.168.0.126",
+        "dst": "192.168.0.103",
+        "invoke_id": "32",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a0016010030200c0c00400000195729003e21103f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 12,
+          "invoke_id": 32,
+          "service_class": "ReadPropertyACK",
+          "fields": {
+            "objectIdentifier": "analog-output,0",
+            "propertyIdentifier": 87,
+            "propertyArrayIndex": 0,
+            "propertyValue": {
+              "_opaque": "Any"
+            }
+          }
+        }
+      },
+      "status": "complete"
+    }
+  ],
+  "unconfirmed_events": [],
+  "decode_stats": {
+    "req_ok": 3,
+    "req_fail": 0,
+    "resp_ok": 3,
+    "resp_fail": 0
+  }
+}
