@@ -1,0 +1,48 @@
+{
+  "capture": "atomic_write_file_bad_ack.cap",
+  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "byte_exact": false,
+  "passed": 3,
+  "total": 3,
+  "results": [
+    {
+      "invoke_id": "1",
+      "service": "7",
+      "request_frame": "3",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 11,
+        "actual_len": 11,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "1",
+      "service": "7",
+      "request_frame": "5",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 11,
+        "actual_len": 11,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "1",
+      "service": "7",
+      "request_frame": "7",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 11,
+        "actual_len": 11,
+        "length_match": true,
+        "match": "exact"
+      }
+    }
+  ]
+}
