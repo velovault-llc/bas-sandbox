@@ -18,11 +18,12 @@ the intended build order. This README is just the quickstart.
 
 ## Dependencies
 
-- **tshark** (Wireshark CLI) — does the BACnet decoding. `apt install tshark`
-  or `brew install wireshark`. Verify: `tshark --version`.
+- **tshark** (Wireshark CLI) — does the initial BACnet decoding for parsing
+  fresh captures. `apt install tshark` or `brew install wireshark`. Only
+  needed if you fetch new `.cap` files; the shipped baselines are pre-parsed.
 - **Python 3.9+**
-- `pip install -r requirements.txt` (scapy for framing peeks, bacpypes for the
-  Stage-3 live reference device).
+- `pip install -r requirements.txt` — `scapy` for framing peeks and
+  `bacpypes3` for the enrich/diff/Stage-3 paths.
 
 ## Quickstart
 
@@ -30,17 +31,36 @@ the intended build order. This README is just the quickstart.
 # 1. fetch the curated edge-case captures (offline-friendly after first run)
 python -m harness.fetch_corpus            # or --all for the whole collection
 
-# 2. parse them into structured baselines
+# 2. parse them into structured baselines (tshark required)
 python -m harness.parse_captures corpus/*.cap --json-dir baselines/
 
-# 3. prove the harness works (echo adapter = all pass, null = all fail)
+# 3. enrich the baselines with decoded BACnet fields (uses bacpypes3)
+python -m harness.enrich_baselines baselines/*.json
+# -> baselines/*.enriched.json — adds a `decoded` field per request/response
+#    with service class, object identifier, property identifier, etc.
+#    Idempotent: re-running ignores existing *.enriched.json files.
+
+# 4. prove the harness works (echo adapter = all pass, null = all fail)
 python -m harness.diff_harness baselines/atomic-read-file.json --adapter echo
 python -m harness.diff_harness baselines/atomic-read-file.json --adapter null
 
-# 4. wire YOUR simulator: implement a SimulatorAdapter (see diff_harness.py TODOs)
+# 5. wire YOUR simulator: implement a SimulatorAdapter (see diff_harness.py TODOs)
 #    then:
 python -m harness.diff_harness baselines/*.json --adapter yourmodule:YourAdapter
 ```
+
+## The corpus today
+
+Three captures, parsed + enriched and committed in `baselines/`:
+
+| Capture | Tx | Service | Notable |
+|---|---:|---|---|
+| atomic-read-file.cap | 64 | AtomicReadFile (svc 6) | file:0 stream-access reads, all complex-ack |
+| atomic_write_file_bad_ack.cap | 3 | AtomicWriteFile (svc 7) | retransmit-after-bad-ack sequence |
+| bacapp-malform.cap | 832 | ReadProperty (svc 12) | every response is BVLL-malformed (declared length ≠ actual) — exercises stack hardening |
+
+Top targeted objects after enrichment: `device,111` and `analog-input,0..N`
+(a multi-input device with the supervisor walking its object-list).
 
 ## Layout
 
@@ -51,11 +71,14 @@ requirements.txt
 harness/
   fetch_corpus.py         <- Stage 1: mirror the corpus
   parse_captures.py       <- Stage 1: pcap -> structured transactions (WORKING)
+  enrich_baselines.py     <- Stage 1.5: bacpypes3-decode every transaction
   diff_harness.py         <- Stage 2: replay requests at sim, diff responses
   reference_device.py     <- Stage 3: live bacpypes device (STUB)
   schema.md               <- baseline JSON schema (the stable contract)
 corpus/                   <- downloaded captures
 baselines/                <- parsed transaction JSON (the reusable asset)
+                              *.json          = raw hex form
+                              *.enriched.json = + structured decoded fields
 reports/                  <- diff pass/fail reports
 ```
 

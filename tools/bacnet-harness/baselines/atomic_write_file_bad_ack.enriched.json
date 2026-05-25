@@ -1,0 +1,206 @@
+{
+  "capture": "atomic_write_file_bad_ack.cap",
+  "frame_count": 8,
+  "transactions": [
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "3",
+        "time": "0.000600000",
+        "src": "192.168.0.13",
+        "dst": "192.168.0.32",
+        "invoke_id": "1",
+        "service": "7",
+        "hex": "810a01d7010400030107c4028000000e310065fe01c02369666e64656620434f4e4649475f480a23646566696e6520434f4e4649475f480a0a2f2a206465636c61726520612073696e676c6520706879736963616c206c61796572202a2f0a2f2a23696e636c75646520226269702e6822202a2f0a2f2a23696e636c756465202265746865726e65742e6822202a2f0a2f2a23696e636c75646520226172636e65742e6822202a2f0a2f2a23696e636c75646520226d7374702e6822202a2f0a0a2f2a204d6178206e756d626572206f6620627974657320696e20616e20415044552e202a2f0a2f2a205479706963616c2073697a6573206172652035302c203132382c203230362c203438302c20313032342c20616e642031343736206f6374657473202a2f0a2f2a2054686973206973207573656420696e20636f6e737472756374696e67206d6573736167657320616e6420746f2074656c6c206f7468657273206f7572206c696d697473202a2f0a2f2a20353020697320746865206d696e696d756d3b2061646a75737420746f20796f7572206d656d6f727920616e6420706879736963616c206c6179657220636f6e73747261696e7473202a2f0a2f2a204c6f6e3d3230362c204d532f54503d3438302c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 7,
+          "invoke_id": 1,
+          "service_class": "AtomicWriteFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "4",
+        "time": "0.001328000",
+        "src": "192.168.0.32",
+        "dst": "192.168.0.13",
+        "invoke_id": "1",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a000b01003001070900",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 7,
+          "invoke_id": 1,
+          "service_class": "AtomicWriteFileACK",
+          "fields": {
+            "fileStartPosition": 0,
+            "fileStartRecord": null
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "5",
+        "time": "2.306398000",
+        "src": "192.168.0.13",
+        "dst": "192.168.0.32",
+        "invoke_id": "1",
+        "service": "7",
+        "hex": "810a01d7010400030107c4028000000e310065fe01c02369666e64656620434f4e4649475f480a23646566696e6520434f4e4649475f480a0a2f2a206465636c61726520612073696e676c6520706879736963616c206c61796572202a2f0a2f2a23696e636c75646520226269702e6822202a2f0a2f2a23696e636c756465202265746865726e65742e6822202a2f0a2f2a23696e636c75646520226172636e65742e6822202a2f0a2f2a23696e636c75646520226d7374702e6822202a2f0a0a2f2a204d6178206e756d626572206f6620627974657320696e20616e20415044552e202a2f0a2f2a205479706963616c2073697a6573206172652035302c203132382c203230362c203438302c20313032342c20616e642031343736206f6374657473202a2f0a2f2a2054686973206973207573656420696e20636f6e737472756374696e67206d6573736167657320616e6420746f2074656c6c206f7468657273206f7572206c696d697473202a2f0a2f2a20353020697320746865206d696e696d756d3b2061646a75737420746f20796f7572206d656d6f727920616e6420706879736963616c206c6179657220636f6e73747261696e7473202a2f0a2f2a204c6f6e3d3230362c204d532f54503d3438302c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 7,
+          "invoke_id": 1,
+          "service_class": "AtomicWriteFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "6",
+        "time": "2.307158000",
+        "src": "192.168.0.32",
+        "dst": "192.168.0.13",
+        "invoke_id": "1",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a000b01003001070900",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 7,
+          "invoke_id": 1,
+          "service_class": "AtomicWriteFileACK",
+          "fields": {
+            "fileStartPosition": 0,
+            "fileStartRecord": null
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "7",
+        "time": "5.325002000",
+        "src": "192.168.0.13",
+        "dst": "192.168.0.32",
+        "invoke_id": "1",
+        "service": "7",
+        "hex": "810a01d7010400030107c4028000000e310065fe01c02369666e64656620434f4e4649475f480a23646566696e6520434f4e4649475f480a0a2f2a206465636c61726520612073696e676c6520706879736963616c206c61796572202a2f0a2f2a23696e636c75646520226269702e6822202a2f0a2f2a23696e636c756465202265746865726e65742e6822202a2f0a2f2a23696e636c75646520226172636e65742e6822202a2f0a2f2a23696e636c75646520226d7374702e6822202a2f0a0a2f2a204d6178206e756d626572206f6620627974657320696e20616e20415044552e202a2f0a2f2a205479706963616c2073697a6573206172652035302c203132382c203230362c203438302c20313032342c20616e642031343736206f6374657473202a2f0a2f2a2054686973206973207573656420696e20636f6e737472756374696e67206d6573736167657320616e6420746f2074656c6c206f7468657273206f7572206c696d697473202a2f0a2f2a20353020697320746865206d696e696d756d3b2061646a75737420746f20796f7572206d656d6f727920616e6420706879736963616c206c6179657220636f6e73747261696e7473202a2f0a2f2a204c6f6e3d3230362c204d532f54503d3438302c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 7,
+          "invoke_id": 1,
+          "service_class": "AtomicWriteFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "8",
+        "time": "5.325723000",
+        "src": "192.168.0.32",
+        "dst": "192.168.0.13",
+        "invoke_id": "1",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a000b01003001070900",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 7,
+          "invoke_id": 1,
+          "service_class": "AtomicWriteFileACK",
+          "fields": {
+            "fileStartPosition": 0,
+            "fileStartRecord": null
+          }
+        }
+      },
+      "status": "complete"
+    }
+  ],
+  "unconfirmed_events": [
+    {
+      "kind": "unconfirmed",
+      "frame": "1",
+      "time": "0.000000000",
+      "src": "192.168.0.13",
+      "dst": "192.168.0.255",
+      "service": "8",
+      "hex": "810a00100120ffff00ff1008097b197b",
+      "decoded": {
+        "bvll_function": "0xa",
+        "apdu_type": 1,
+        "apdu_class": "UnconfirmedRequestPDU",
+        "service_choice": 8,
+        "service_class": "WhoIsRequest",
+        "fields": {
+          "deviceInstanceRangeLowLimit": 123,
+          "deviceInstanceRangeHighLimit": 123
+        }
+      }
+    },
+    {
+      "kind": "unconfirmed",
+      "frame": "2",
+      "time": "0.000138000",
+      "src": "192.168.0.32",
+      "dst": "192.168.0.255",
+      "service": "0",
+      "hex": "810a00180120ffff00ff1000c40200007b2201e091032100",
+      "decoded": {
+        "bvll_function": "0xa",
+        "apdu_type": 1,
+        "apdu_class": "UnconfirmedRequestPDU",
+        "service_choice": 0,
+        "service_class": "IAmRequest",
+        "fields": {
+          "iAmDeviceIdentifier": "device,123",
+          "maxAPDULengthAccepted": 480,
+          "segmentationSupported": 3,
+          "vendorID": 0
+        }
+      }
+    }
+  ],
+  "decode_stats": {
+    "req_ok": 3,
+    "req_fail": 0,
+    "resp_ok": 3,
+    "resp_fail": 0
+  }
+}

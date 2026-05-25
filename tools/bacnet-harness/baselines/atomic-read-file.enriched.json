@@ -1,0 +1,3213 @@
+{
+  "capture": "atomic-read-file.cap",
+  "frame_count": 128,
+  "transactions": [
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "1",
+        "time": "0.000000000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.16",
+        "invoke_id": "66",
+        "service": "6",
+        "hex": "810a0016010402034206c4028000000e31002201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 66,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "2",
+        "time": "0.000724000",
+        "src": "192.168.0.16",
+        "dst": "192.168.0.50",
+        "invoke_id": "66",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a00300100304206110e3100652054686973206973206120746573742066696c6520666f72204241436e65742e0a0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 66,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 1,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "3",
+        "time": "64.615021000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "67",
+        "service": "6",
+        "hex": "810a0016010402034306c4028000000e31002201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 67,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "4",
+        "time": "64.621336000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "67",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01ca0100304306100e310065fe01b82f2f20546869732066696c6520776173206175746f6d61746963616c6c7920757064617465640d0a2f2f2062792053796e65726779206f6e2030342f32372f323030352031343a31322e0d0a0d0a56455253494f4e28352e30290d0a0d0a2f2f6e616d652c6c616e67756167652c6461746520666f726d61742c4241436e65742049440d0a2f2f6c61742c6c6f6e672c545a2c4453542c49324320542f4f2c626c696e6b2c6d6f6d656e746172792c666164652c742f6f2c7761726e2c687973742c70686173652c626565702c4152434e45542069640d0a2f2f7363686564756c65733a4d6f6e6461792c547565736461792c5765646e65736461792c54687572736461790d0a2f2f7363686564756c65733a4672696461792c53617475726461792c53756e6461792c486f6c696461790d0a434142494e45542031282253594e45524759222c454e474c4953482c414d45524943414e2c3130382c0d0a202033333a34352c2d38343a33302c2d30353a30302c5945532c31352e302c302e352c302e352c302e302c302c302c322c504841534520412c4e4f2c3130382c0d0a20205343484544554c4520302c5343484544554c4520302c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 67,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "5",
+        "time": "64.643961000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "68",
+        "service": "6",
+        "hex": "810a0017010402034406c4028000000e3201b82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 68,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "6",
+        "time": "64.651975000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "68",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304406100e3201b865fe01b85343484544554c4520302c5343484544554c4520302c0d0a20205343484544554c4520302c5343484544554c4520302c5343484544554c4520302c5343484544554c452030290d0a0d0a2f2f6e616d652c646174652c7363686564756c6520746f2072756e0d0a484f4c494441590d0a7b0d0a0d0a7d0d0a0d0a2f2f6e616d652c747970652c6e2f612b6f6e2f6f66662b7072696f726974792c742f6f2c7761726e74696d652c67726f75700d0a5357495443480d0a7b0d0a0d0a202053574954434820323031282253776974636820323031222c4c415443482c5945532c302c302c47524f555020323031290d0a202053574954434820323032282253776974636820323032222c4c415443482c5945532c302c302c47524f555020323032290d0a202053574954434820323033282253776974636820323033222c4c415443482c5945532c302c302c47524f555020323033290d0a202053574954434820323034282253776974636820323034222c4c415443482c5945532c302c302c47524f555020323034290d0a202053574954434820323035282253776974636820323035222c4c415443482c5945532c302c302c47524f55500f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 68,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "7",
+        "time": "64.671432000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "69",
+        "service": "6",
+        "hex": "810a0017010402034506c4028000000e3203702201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 69,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "8",
+        "time": "64.679213000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "69",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304506100e32037065fe01b820323031290d0a202053574954434820323036282253776974636820323036222c4c415443482c5945532c302c302c47524f555020323031290d0a202053574954434820323037282253776974636820323037222c4c415443482c5945532c302c302c47524f555020323031290d0a202053574954434820323038282253776974636820323038222c4c415443482c5945532c302c302c47524f555020323031290d0a202053574954434820333031282253776974636820333031222c4c415443482c5945532c302c302c47524f555020333031290d0a202053574954434820333032282253776974636820333032222c4c415443482c5945532c302c302c47524f555020333032290d0a7d0d0a0d0a2f2f6e616d652c747970652c6e2f612b6f6e2f6f66662b7072696f726974792c742f6f2c7761726e2c686967687365742c6c6f777365742c67726f75700d0a414e414c4f470d0a7b0d0a0d0a2020414e414c4f47203230312822416e616c6f6720323031222c5641524941424c452c5945532c302c302c31352c352c47524f555020323137290d0a2020414e414c4f47203230322822416e616c6f6720323032222c494e564552540f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 69,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "9",
+        "time": "64.698914000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "70",
+        "service": "6",
+        "hex": "810a0017010402034606c4028000000e3205282201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 70,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "10",
+        "time": "64.706938000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "70",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304606100e32052865fe01b845442c5945532c302c302c31352c352c47524f555020323137290d0a2020414e414c4f47203330312822416e616c6f6720333031222c494e5645525445442c5945532c302c302c31352c352c47524f555020323031290d0a2020414e414c4f47203330322822416e616c6f6720333032222c494e5645525445442c5945532c302c302c31352c352c47524f555020333138290d0a2020414e414c4f47203330332822416e616c6f6720333033222c494e5645525445442c5945532c302c302c31352c352c47524f555020333139290d0a7d0d0a0d0a2f2f6e616d652c747970652c6e2f612b6f6e2f6f66662b7072696f726974792c7761726e2c6c6576656c2c74696d652c67726f75700d0a54494d454f464441590d0a7b0d0a0d0a7d0d0a0d0a2f2f6e616d652c6e2f612b6f6e2f6f66662b7072696f726974792c742f6f2c7761726e2c67726f75700d0a50484f4e450d0a7b0d0a0d0a202050484f4e452031282250686f6e6531222c5945532c302c302c4e554c4c290d0a202050484f4e452032282250686f6e6532222c5945532c302c302c4e554c4c290d0a202050484f4e452033282250686f6e6533222c5945532c302c302c4e0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 70,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "11",
+        "time": "64.726393000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "71",
+        "service": "6",
+        "hex": "810a0017010402034706c4028000000e3206e02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 71,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "12",
+        "time": "64.734417000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "71",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304706100e3206e065fe01b8554c4c290d0a202050484f4e452034282250686f6e6534222c5945532c302c302c4e554c4c290d0a202050484f4e452035282250686f6e6535222c5945532c302c302c4e554c4c290d0a202050484f4e452036282250686f6e6536222c5945532c302c302c4e554c4c290d0a202050484f4e452037282250686f6e6537222c5945532c302c302c4e554c4c290d0a202050484f4e452038282250686f6e6538222c5945532c302c302c4e554c4c290d0a202050484f4e452039282250686f6e6539222c5945532c302c302c4e554c4c290d0a202050484f4e45203130282250686f6e653130222c5945532c302c302c4e554c4c290d0a202050484f4e4520323232322822222c5945532b4e4f2b4e4f2b4e4f2b5945532c302c302c4e554c4c290d0a7d0d0a0d0a2f2f6e616d652c6e2f612b6f6e2f6f66662b7072696f726974792c67726f75700d0a444d580d0a7b0d0a0d0a2020444d5820312822444d582031222c5945532c4e554c4c290d0a2020444d5820322822444d582032222c5945532c47524f55502030290d0a2020444d5820332822444d582033222c5945532c47524f55502032290d0a2020444d5820342822444d5820340f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 71,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "13",
+        "time": "64.755820000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "72",
+        "service": "6",
+        "hex": "810a0017010402034806c4028000000e3208982201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 72,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "14",
+        "time": "64.763843000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "72",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304806100e32089865fe01b8222c5945532c47524f55502033290d0a2020444d5820352822444d582035222c5945532c47524f55502034290d0a2020444d5820362822444d582036222c5945532c47524f55502035290d0a2020444d5820372822444d582037222c5945532c47524f555020313031290d0a2020444d5820382822444d582038222c5945532c47524f555020313032290d0a2020444d5820392822444d582039222c5945532c4e554c4c290d0a2020444d582031302822444d58203130222c5945532c4e554c4c290d0a2020444d5820313131312822222c5945532c4e554c4c290d0a7d0d0a0d0a2f2f6e616d652c747970652c6e2f612b6f6e2f6f66662b7072696f726974792c742f6f2c7761726e74696d652c67726f75700d0a425554544f4e0d0a7b0d0a0d0a2020425554544f4e203128225072657365742031222c414c5445524e4154452c5945532c302c302c47524f55502032303031290d0a2020425554544f4e20313028224469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032303130290d0a2020425554544f4e2031312822526573657276656420666f7220444f205374617475732028440f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 72,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "15",
+        "time": "64.783548000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "73",
+        "service": "6",
+        "hex": "810a0017010402034906c4028000000e320a502201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 73,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "16",
+        "time": "64.791565000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "73",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304906100e320a5065fe01b86f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e2031322822416e616c6f6720496e707574222c52414d50494e472c5945532c302c302c47524f55502032303132290d0a2020425554544f4e2031332822526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e2031342822496e766572746564204469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032303134290d0a2020425554544f4e2031352822496e76657274656420416e616c6f6720496e707574206f722050494420416e616c6f67204f7574707574222c52414d50494e472c5945532c302c302c47524f55502032303135290d0a2020425554544f4e2031362822504944204c6f77205472696d222c52414d50494e472c5945532c302c302c47524f55502032303136290d0a2020425554544f4e2031303128225072657365742031222c414c5445524e4154452c5945532c302c302c47524f55502032290d0a2020425554544f4e203130322822500f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 73,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "17",
+        "time": "64.811999000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "74",
+        "service": "6",
+        "hex": "810a0017010402034a06c4028000000e320c082201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 74,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "18",
+        "time": "64.820018000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "74",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304a06100e320c0865fe01b872657365742032222c52414d5055502c5945532c302c302c47524f55502032290d0a2020425554544f4e2031303328225072657365742033222c52414d50444f574e2c5945532c302c302c47524f55502032290d0a2020425554544f4e2031313028224469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032313130290d0a2020425554544f4e203131312822526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e203131322822416e616c6f6720496e707574222c52414d50494e472c5945532c302c302c47524f55502032313132290d0a2020425554544f4e203131332822526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e203131342822496e766572746564204469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032313134290d0a2020425554544f4e203131352822496e766572746564200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 74,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "19",
+        "time": "64.838991000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "75",
+        "service": "6",
+        "hex": "810a0017010402034b06c4028000000e320dc02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 75,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "20",
+        "time": "64.847265000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "75",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304b06100e320dc065fe01b8416e616c6f6720496e707574206f722050494420416e616c6f67204f757470222c52414d50494e472c5945532c302c302c47524f55502032313135290d0a2020425554544f4e203131362822504944204c6f77205472696d222c52414d50494e472c5945532c302c302c47524f55502032313136290d0a2020425554544f4e2032303128225072657365742031222c414c5445524e4154452c5945532c302c302c47524f55502032323131290d0a2020425554544f4e2032303228225072657365742032222c52414d5055502c5945532c302c302c47524f55502032323133290d0a2020425554544f4e2032303328225072657365742033222c52414d50444f574e2c5945532c302c302c47524f55502032323133290d0a2020425554544f4e2032303428225072657365742034222c4f4e2c5945532c302c302c47524f55502032323034290d0a2020425554544f4e2032303528225072657365742035222c4f4e2c5945532c302c302c47524f55502032323035290d0a2020425554544f4e2032303628225072657365742036222c4f4e2c5945532c302c302c47524f55502032323036290d0a2020425554544f4e20323037282250720f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 75,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "21",
+        "time": "64.866720000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "76",
+        "service": "6",
+        "hex": "810a0017010402034c06c4028000000e320f782201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 76,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "22",
+        "time": "64.874737000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "76",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304c06100e320f7865fe01b8657365742037222c4f4e2c5945532c302c302c47524f55502032323037290d0a2020425554544f4e2032303828225072657365742038222c4f4e2c5945532c302c302c47524f55502032323038290d0a2020425554544f4e2032303928225072657365742039222c4f4e2c5945532c302c302c47524f55502032323039290d0a2020425554544f4e2032313028224469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032323130290d0a2020425554544f4e203231312822526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e203231322822416e616c6f6720496e707574222c52414d50494e472c5945532c302c302c47524f55502032323132290d0a2020425554544f4e203231332822526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e203231342822496e766572746564204469676974616c20496e707574222c4d41494e5441494e2c590f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 76,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "23",
+        "time": "64.895412000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "77",
+        "service": "6",
+        "hex": "810a0017010402034d06c4028000000e3211302201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 77,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "24",
+        "time": "64.903435000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "77",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304d06100e32113065fe01b845532c302c302c47524f55502032323134290d0a2020425554544f4e203231352822496e76657274656420416e616c6f6720496e707574206f722050494420416e616c6f67204f757470222c52414d50494e472c5945532c302c302c47524f55502032323135290d0a2020425554544f4e203231362822504944204c6f77205472696d222c52414d50494e472c5945532c302c302c47524f55502032323136290d0a2020425554544f4e2033303128225072657365742031222c4f4e2c5945532c302c302c47524f55502032333031290d0a2020425554544f4e2033303228225072657365742032222c4f4e2c5945532c302c302c47524f55502032333032290d0a2020425554544f4e2033303328225072657365742033222c4f4e2c5945532c302c302c47524f55502032333033290d0a2020425554544f4e2033303428225072657365742034222c4f4e2c5945532c302c302c47524f55502032333034290d0a2020425554544f4e2033303528225072657365742035222c4f4e2c5945532c302c302c47524f55502032333035290d0a2020425554544f4e2033303628225072657365742036222c4f4e2c5945532c302c302c47524f0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 77,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "25",
+        "time": "64.923134000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "78",
+        "service": "6",
+        "hex": "810a0017010402034e06c4028000000e3212e82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 78,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "26",
+        "time": "64.931155000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "78",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304e06100e3212e865fe01b855502032333036290d0a2020425554544f4e2033303728225072657365742037222c4f4e2c5945532c302c302c47524f55502032333037290d0a2020425554544f4e2033303828225072657365742038222c4f4e2c5945532c302c302c47524f55502032333038290d0a2020425554544f4e2033303928225072657365742039222c4f4e2c5945532c302c302c47524f55502032333039290d0a2020425554544f4e2033313028224469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032333130290d0a2020425554544f4e203331312822526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e203331322822416e616c6f6720496e707574222c52414d50494e472c5945532c302c302c47524f55502032333132290d0a2020425554544f4e203331332822526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c52414d50494e472c5945532c302c302c4e554c4c290d0a2020425554544f4e203331342822496e7665727465640f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 78,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "27",
+        "time": "64.951099000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "79",
+        "service": "6",
+        "hex": "810a0017010402034f06c4028000000e3214a02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 79,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "28",
+        "time": "64.958878000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "79",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100304f06100e3214a065fe01b8204469676974616c20496e707574222c4d41494e5441494e2c5945532c302c302c47524f55502032333134290d0a2020425554544f4e203331352822496e76657274656420416e616c6f6720496e707574206f722050494420416e616c6f67204f7574707574222c52414d50494e472c5945532c302c302c47524f55502032333135290d0a2020425554544f4e203331362822504944204c6f77205472696d222c52414d50494e472c5945532c302c302c47524f55502032333136290d0a7d0d0a0d0a2f2f6e616d650d0a53544154494f4e0d0a7b0d0a0d0a202053544154494f4e2030282222290d0a202053544154494f4e2031282253746174696f6e203122290d0a202053544154494f4e2032282253746174696f6e203222290d0a202053544154494f4e2033282253746174696f6e203322290d0a202053544154494f4e2034282253746174696f6e203422290d0a202053544154494f4e2035282253746174696f6e203522290d0a202053544154494f4e2036282253746174696f6e203622290d0a202053544154494f4e2037282253746174696f6e203722290d0a202053544154494f4e2038282253746174696f6e203822290f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 79,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "29",
+        "time": "64.979064000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "80",
+        "service": "6",
+        "hex": "810a0017010402035006c4028000000e3216582201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 80,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "30",
+        "time": "64.986846000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "80",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305006100e32165865fe01b80d0a202053544154494f4e2039282253746174696f6e203922290d0a202053544154494f4e203130282253746174696f6e20313022290d0a202053544154494f4e203131282253746174696f6e20313122290d0a202053544154494f4e203132282253746174696f6e20313222290d0a7d0d0a0d0a2f2f6e616d652c747970652c444d582064697361626c652c70686173652c7468726573686f6c642c77617474730d0a52454c41590d0a7b0d0a0d0a202052454c4159203130312822427265616b657220313031222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203130322822427265616b657220313032222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203130332822427265616b657220313033222c54574f5f504f4c452c4e4f2c504841534520412c31290d0a202052454c4159203130342822427265616b657220313034222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203130352822427265616b657220313035222c5345434f4e445f504f4c452c4e4f2c504841534520412c31290d0a202052454c4159203130362822427265610f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 80,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "31",
+        "time": "65.008733000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "81",
+        "service": "6",
+        "hex": "810a0017010402035106c4028000000e3218102201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 81,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "32",
+        "time": "65.016523000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "81",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305106100e32181065fe01b86b657220313036222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203130372822427265616b657220313037222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203130382822427265616b657220313038222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203130392822427265616b657220313039222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131302822427265616b657220313130222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131312822427265616b657220313131222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131322822427265616b657220313132222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131332822427265616b657220313133222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131342822427265616b657220313134222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131352822427265616b657220313135220f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 81,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "33",
+        "time": "65.035494000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "82",
+        "service": "6",
+        "hex": "810a0017010402035206c4028000000e3219c82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 82,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "34",
+        "time": "65.043761000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "82",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305206100e3219c865fe01b82c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131362822427265616b657220313136222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131372822427265616b657220313137222c54574f5f504f4c452c4e4f2c504841534520412c31290d0a202052454c4159203131382822427265616b657220313138222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203131392822427265616b657220313139222c5345434f4e445f504f4c452c4e4f2c504841534520412c31290d0a202052454c4159203132302822427265616b657220313230222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132312822427265616b657220313231222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132322822427265616b657220313232222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132332822427265616b657220313233222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132342822427265616b657220313234222c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 82,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "35",
+        "time": "65.063459000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "83",
+        "service": "6",
+        "hex": "810a0017010402035306c4028000000e321b802201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 83,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "36",
+        "time": "65.071232000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "83",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305306100e321b8065fe01b84e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132352822427265616b657220313235222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132362822427265616b657220313236222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132372822427265616b657220313237222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132382822427265616b657220313238222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203132392822427265616b657220313239222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133302822427265616b657220313330222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133312822427265616b657220313331222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133322822427265616b657220313332222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133332822427265616b657220313333222c4e4f524d414c2c4e0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 83,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "37",
+        "time": "65.090939000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "84",
+        "service": "6",
+        "hex": "810a0017010402035406c4028000000e321d382201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 84,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "38",
+        "time": "65.098954000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "84",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305406100e321d3865fe01b84f2c504841534520412c31290d0a202052454c4159203133342822427265616b657220313334222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133352822427265616b657220313335222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133362822427265616b657220313336222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133372822427265616b657220313337222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133382822427265616b657220313338222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203133392822427265616b657220313339222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203134302822427265616b657220313430222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203134312822427265616b657220313431222c4e4f524d414c2c4e4f2c504841534520412c31290d0a202052454c4159203134322822427265616b657220313432222c4e4f524d414c2c4e4f2c5048415345200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 84,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "39",
+        "time": "65.118899000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "85",
+        "service": "6",
+        "hex": "810a0017010402035506c4028000000e321ef02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 85,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "40",
+        "time": "65.126925000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "85",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305506100e321ef065fe01b8412c31290d0a202052454c415920323031282252656c617920323031222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c415920323032282252656c617920323032222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c415920323033282252656c617920323033222c4e4f524d414c2c4e4f2c504841534520422c3530290d0a202052454c415920323034282252656c617920323034222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c415920323035282252656c617920323035222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c415920323036282252656c617920323036222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c415920323037282252656c617920323037222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c415920323038282252656c617920323038222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c4159203230303128224469676974616c204f757470757420666f722053746174696f6e2030222c4e4f524d414c2c4e4f2c504841530f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 85,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "41",
+        "time": "65.155383000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "86",
+        "service": "6",
+        "hex": "810a0017010402035606c4028000000e3220a82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 86,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "42",
+        "time": "65.163399000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "86",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305606100e3220a865fe01b84520412c3530290d0a202052454c4159203231303128224469676974616c204f757470757420666f722053746174696f6e2031222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c4159203232303128224469676974616c204f757470757420666f722053746174696f6e2032222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a202052454c4159203233303128224469676974616c204f757470757420666f722053746174696f6e2033222c4e4f524d414c2c4e4f2c504841534520412c3530290d0a7d0d0a0d0a2f2f6e616d652c747970652c444d582064697361626c652c68696768207365742c6c6f77207365742c77617474730d0a44494d4d45520d0a7b0d0a0d0a202044494d4d455220333031282244696d6d657220333031222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220333032282244696d6d657220333032222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220333033282244696d6d657220333033222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d45522033303428220f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 86,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "43",
+        "time": "65.183587000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "87",
+        "service": "6",
+        "hex": "810a0017010402035706c4028000000e3222602201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 87,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "44",
+        "time": "65.191366000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "87",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305706100e32226065fe01b844696d6d657220333034222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220333035282244696d6d657220333035222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220333036282244696d6d657220333036222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220323030322822416e616c6f67204f757470757420666f722053746174696f6e2030222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220323130322822416e616c6f67204f757470757420666f722053746174696f6e2031222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220323230322822416e616c6f67204f757470757420666f722053746174696f6e2032222c494e43414e44455343454e542c4e4f2c3130302c30290d0a202044494d4d455220323330322822416e616c6f67204f757470757420666f722053746174696f6e2033222c494e43414e44455343454e542c4e4f2c3130302c30290d0a0d0a20204c45474143592d44494d4d4552203128224c65676163792044696d6d0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 87,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "45",
+        "time": "65.211065000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "88",
+        "service": "6",
+        "hex": "810a0017010402035806c4028000000e3224182201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 88,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "46",
+        "time": "65.219091000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "88",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305806100e32241865fe01b865722031222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203228224c65676163792044696d6d65722032222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203328224c65676163792044696d6d65722033222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203428224c65676163792044696d6d65722034222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203528224c65676163792044696d6d65722035222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203628224c65676163792044696d6d65722036222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203728224c65676163792044696d6d65722037222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552203828224c65676163792044696d6d65722038222c494e43414e44455343454e542c4e0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 88,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "47",
+        "time": "65.238305000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "89",
+        "service": "6",
+        "hex": "810a0017010402035906c4028000000e3225d02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 89,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "48",
+        "time": "65.246578000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "89",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305906100e3225d065fe01b84f2c3130302c30290d0a20204c45474143592d44494d4d4552203928224c65676163792044696d6d65722039222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313028224c65676163792044696d6d6572203130222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313128224c65676163792044696d6d6572203131222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313228224c65676163792044696d6d6572203132222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313328224c65676163792044696d6d6572203133222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313428224c65676163792044696d6d6572203134222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313528224c65676163792044696d6d6572203135222c494e43414e44455343454e542c4e4f2c3130302c30290f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 89,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "49",
+        "time": "65.265791000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "90",
+        "service": "6",
+        "hex": "810a0017010402035a06c4028000000e3227882201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 90,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "50",
+        "time": "65.273807000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "90",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305a06100e32278865fe01b80d0a20204c45474143592d44494d4d455220313628224c65676163792044696d6d6572203136222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313728224c65676163792044696d6d6572203137222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313828224c65676163792044696d6d6572203138222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220313928224c65676163792044696d6d6572203139222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323028224c65676163792044696d6d6572203230222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323128224c65676163792044696d6d6572203231222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323228224c65676163792044696d6d6572203232222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c450f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 90,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "51",
+        "time": "65.295695000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "91",
+        "service": "6",
+        "hex": "810a0017010402035b06c4028000000e3229402201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 91,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "52",
+        "time": "65.303962000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "91",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305b06100e32294065fe01b8474143592d44494d4d455220323328224c65676163792044696d6d6572203233222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323428224c65676163792044696d6d6572203234222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323528224c65676163792044696d6d6572203235222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323628224c65676163792044696d6d6572203236222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323728224c65676163792044696d6d6572203237222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323828224c65676163792044696d6d6572203238222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220323928224c65676163792044696d6d6572203239222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d440f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 91,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "53",
+        "time": "65.323175000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "92",
+        "service": "6",
+        "hex": "810a0017010402035c06c4028000000e322af82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 92,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "54",
+        "time": "65.331202000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "92",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305c06100e322af865fe01b8494d4d455220333028224c65676163792044696d6d6572203330222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333128224c65676163792044696d6d6572203331222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333228224c65676163792044696d6d6572203332222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333328224c65676163792044696d6d6572203333222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333428224c65676163792044696d6d6572203334222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333528224c65676163792044696d6d6572203335222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333628224c65676163792044696d6d6572203336222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d4552200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 92,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "55",
+        "time": "65.351148000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "93",
+        "service": "6",
+        "hex": "810a0017010402035d06c4028000000e322cb02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 93,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "56",
+        "time": "65.359170000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "93",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305d06100e322cb065fe01b8333728224c65676163792044696d6d6572203337222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333828224c65676163792044696d6d6572203338222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220333928224c65676163792044696d6d6572203339222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343028224c65676163792044696d6d6572203430222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343128224c65676163792044696d6d6572203431222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343228224c65676163792044696d6d6572203432222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343328224c65676163792044696d6d6572203433222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343428224c650f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 93,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "57",
+        "time": "65.378623000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "94",
+        "service": "6",
+        "hex": "810a0017010402035e06c4028000000e322e682201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 94,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "58",
+        "time": "65.386401000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "94",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305e06100e322e6865fe01b8676163792044696d6d6572203434222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343528224c65676163792044696d6d6572203435222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343628224c65676163792044696d6d6572203436222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343728224c65676163792044696d6d6572203437222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343828224c65676163792044696d6d6572203438222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220343928224c65676163792044696d6d6572203439222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353028224c65676163792044696d6d6572203530222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353128224c656761637920440f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 94,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "59",
+        "time": "65.408056000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "95",
+        "service": "6",
+        "hex": "810a0017010402035f06c4028000000e3230202201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 95,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "60",
+        "time": "65.416072000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "95",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100305f06100e32302065fe01b8696d6d6572203531222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353228224c65676163792044696d6d6572203532222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353328224c65676163792044696d6d6572203533222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353428224c65676163792044696d6d6572203534222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353528224c65676163792044696d6d6572203535222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353628224c65676163792044696d6d6572203536222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353728224c65676163792044696d6d6572203537222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353828224c65676163792044696d6d6572200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 95,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "61",
+        "time": "65.435286000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "96",
+        "service": "6",
+        "hex": "810a0017010402036006c4028000000e3231d82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 96,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "62",
+        "time": "65.443309000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "96",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306006100e3231d865fe01b83538222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220353928224c65676163792044696d6d6572203539222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363028224c65676163792044696d6d6572203630222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363128224c65676163792044696d6d6572203631222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363228224c65676163792044696d6d6572203632222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363328224c65676163792044696d6d6572203633222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363428224c65676163792044696d6d6572203634222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363528224c65676163792044696d6d6572203635222c494e0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 96,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "63",
+        "time": "65.478579000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "97",
+        "service": "6",
+        "hex": "810a0017010402036106c4028000000e3233902201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 97,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "64",
+        "time": "65.486600000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "97",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306106100e32339065fe01b843414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363628224c65676163792044696d6d6572203636222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363728224c65676163792044696d6d6572203637222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363828224c65676163792044696d6d6572203638222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220363928224c65676163792044696d6d6572203639222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373028224c65676163792044696d6d6572203730222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373128224c65676163792044696d6d6572203731222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373228224c65676163792044696d6d6572203732222c494e43414e4445530f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 97,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "65",
+        "time": "65.506302000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "98",
+        "service": "6",
+        "hex": "810a0017010402036206c4028000000e3235482201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 98,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "66",
+        "time": "65.514330000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "98",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306206100e32354865fe01b843454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373328224c65676163792044696d6d6572203733222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373428224c65676163792044696d6d6572203734222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373528224c65676163792044696d6d6572203735222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373628224c65676163792044696d6d6572203736222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373728224c65676163792044696d6d6572203737222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373828224c65676163792044696d6d6572203738222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220373928224c65676163792044696d6d6572203739222c494e43414e44455343454e542c4e0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 98,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "67",
+        "time": "65.534753000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "99",
+        "service": "6",
+        "hex": "810a0017010402036306c4028000000e3237002201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 99,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "68",
+        "time": "65.543018000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "99",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306306100e32370065fe01b84f2c3130302c30290d0a20204c45474143592d44494d4d455220383028224c65676163792044696d6d6572203830222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383128224c65676163792044696d6d6572203831222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383228224c65676163792044696d6d6572203832222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383328224c65676163792044696d6d6572203833222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383428224c65676163792044696d6d6572203834222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383528224c65676163792044696d6d6572203835222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383628224c65676163792044696d6d6572203836222c494e43414e44455343454e542c4e4f2c3130302c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 99,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "69",
+        "time": "65.564664000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "100",
+        "service": "6",
+        "hex": "810a0017010402036406c4028000000e3238b82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 100,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "70",
+        "time": "65.572441000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "100",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306406100e3238b865fe01b830290d0a20204c45474143592d44494d4d455220383728224c65676163792044696d6d6572203837222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383828224c65676163792044696d6d6572203838222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220383928224c65676163792044696d6d6572203839222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393028224c65676163792044696d6d6572203930222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393128224c65676163792044696d6d6572203931222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393228224c65676163792044696d6d6572203932222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393328224c65676163792044696d6d6572203933222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 100,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "71",
+        "time": "65.592393000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "101",
+        "service": "6",
+        "hex": "810a0017010402036506c4028000000e323a702201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 101,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "72",
+        "time": "65.600408000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "101",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306506100e323a7065fe01b84c45474143592d44494d4d455220393428224c65676163792044696d6d6572203934222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393528224c65676163792044696d6d6572203935222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393628224c65676163792044696d6d6572203936222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393728224c65676163792044696d6d6572203937222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393828224c65676163792044696d6d6572203938222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d455220393928224c65676163792044696d6d6572203939222c494e43414e44455343454e542c4e4f2c3130302c30290d0a20204c45474143592d44494d4d45522031303028224c65676163792044696d6d657220313030222c494e43414e44455343454e542c4e4f2c3130302c30290d0a7d0d0a0d0a530f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 101,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "73",
+        "time": "65.620108000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "102",
+        "service": "6",
+        "hex": "810a0017010402036606c4028000000e323c282201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 102,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "74",
+        "time": "65.627895000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "102",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306606100e323c2865fe01b843484544554c450d0a7b0d0a0d0a20205343484544554c4520302822222c4e4f4e45290d0a7d0d0a0d0a2f2f6e616d652c616374696f6e3b6661646574696d653b6c6576656c5b3b4241436e657449445d2c2e2e2e0d0a47524f55500d0a7b0d0a0d0a202047524f555020302822416c6c204f757470757473222c0d0a2020202052454c4159203130313b302e303b3130302c52454c4159203130323b302e303b3130302c52454c4159203130333b302e303b3130302c0d0a2020202052454c4159203130343b302e303b3130302c52454c4159203130353b302e303b3130302c52454c4159203130363b302e303b3130302c0d0a2020202052454c4159203130373b302e303b3130302c52454c4159203130383b302e303b3130302c52454c4159203130393b302e303b3130302c0d0a2020202052454c4159203131303b302e303b3130302c52454c4159203131313b302e303b3130302c52454c4159203131323b302e303b3130302c0d0a2020202052454c4159203131333b302e303b3130302c52454c4159203131343b302e303b3130302c52454c4159203131353b302e303b3130302c0d0a2020202052454c4159203131363b300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 102,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "75",
+        "time": "65.646864000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "103",
+        "service": "6",
+        "hex": "810a0017010402036706c4028000000e323de02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 103,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "76",
+        "time": "65.654893000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "103",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306706100e323de065fe01b82e303b3130302c52454c4159203131373b302e303b3130302c52454c4159203131383b302e303b3130302c0d0a2020202052454c4159203131393b302e303b3130302c52454c4159203132303b302e303b3130302c52454c4159203132313b302e303b3130302c0d0a2020202052454c4159203132323b302e303b3130302c52454c4159203132333b302e303b3130302c52454c4159203132343b302e303b3130302c0d0a2020202052454c4159203132353b302e303b3130302c52454c4159203132363b302e303b3130302c52454c4159203132373b302e303b3130302c0d0a2020202052454c4159203132383b302e303b3130302c52454c4159203132393b302e303b3130302c52454c4159203133303b302e303b3130302c0d0a2020202052454c4159203133313b302e303b3130302c52454c4159203133323b302e303b3130302c52454c4159203133333b302e303b3130302c0d0a2020202052454c4159203133343b302e303b3130302c52454c4159203133353b302e303b3130302c52454c4159203133363b302e303b3130302c0d0a2020202052454c4159203133373b302e303b3130302c52454c4159203133383b302e300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 103,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "77",
+        "time": "65.674831000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "104",
+        "service": "6",
+        "hex": "810a0017010402036806c4028000000e323f982201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 104,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "78",
+        "time": "65.682858000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "104",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306806100e323f9865fe01b83b3130302c52454c4159203133393b302e303b3130302c0d0a2020202052454c4159203134303b302e303b3130302c52454c4159203134313b302e303b3130302c52454c4159203134323b302e303b3130302c0d0a2020202052454c4159203230313b302e303b3130302c52454c4159203230323b302e303b3130302c52454c4159203230333b302e303b3130302c0d0a2020202052454c4159203230343b302e303b3130302c52454c4159203230353b302e303b3130302c52454c4159203230363b302e303b3130302c0d0a2020202052454c4159203230373b302e303b3130302c52454c4159203230383b302e303b3130302c44494d4d4552203330313b302e303b3130302c0d0a2020202044494d4d4552203330323b302e303b3130302c44494d4d4552203330333b302e303b3130302c44494d4d4552203330343b302e303b3130302c0d0a2020202044494d4d4552203330353b302e303b3130302c44494d4d4552203330363b302e303b3130302c4c45474143592d44494d4d455220313b302e303b3130302c0d0a202020204c45474143592d44494d4d455220323b302e303b3130302c4c45474143592d44494d4d455220330f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 104,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "79",
+        "time": "65.705231000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "105",
+        "service": "6",
+        "hex": "810a0017010402036906c4028000000e3241502201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 105,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "80",
+        "time": "65.713263000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "105",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306906100e32415065fe01b83b302e303b3130302c4c45474143592d44494d4d455220343b302e303b3130302c0d0a202020204c45474143592d44494d4d455220353b302e303b3130302c4c45474143592d44494d4d455220363b302e303b3130302c4c45474143592d44494d4d455220373b302e303b3130302c0d0a202020204c45474143592d44494d4d455220383b302e303b3130302c4c45474143592d44494d4d455220393b302e303b3130302c4c45474143592d44494d4d45522031303b302e303b3130302c0d0a202020204c45474143592d44494d4d45522031313b302e303b3130302c4c45474143592d44494d4d45522031323b302e303b3130302c4c45474143592d44494d4d45522031333b302e303b3130302c0d0a202020204c45474143592d44494d4d45522031343b302e303b3130302c4c45474143592d44494d4d45522031353b302e303b3130302c4c45474143592d44494d4d45522031363b302e303b3130302c0d0a202020204c45474143592d44494d4d45522031373b302e303b3130302c4c45474143592d44494d4d45522031383b302e303b3130302c4c45474143592d44494d4d45522031393b302e303b3130302c0d0a202020204c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 105,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "81",
+        "time": "65.733199000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "106",
+        "service": "6",
+        "hex": "810a0017010402036a06c4028000000e3243082201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 106,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "82",
+        "time": "65.741470000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "106",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306a06100e32430865fe01b845474143592d44494d4d45522032303b302e303b3130302c4c45474143592d44494d4d45522032313b302e303b3130302c4c45474143592d44494d4d45522032323b302e303b3130302c0d0a202020204c45474143592d44494d4d45522032333b302e303b3130302c4c45474143592d44494d4d45522032343b302e303b3130302c4c45474143592d44494d4d45522032353b302e303b3130302c0d0a202020204c45474143592d44494d4d45522032363b302e303b3130302c4c45474143592d44494d4d45522032373b302e303b3130302c4c45474143592d44494d4d45522032383b302e303b3130302c0d0a202020204c45474143592d44494d4d45522032393b302e303b3130302c4c45474143592d44494d4d45522033303b302e303b3130302c4c45474143592d44494d4d45522033313b302e303b3130302c0d0a202020204c45474143592d44494d4d45522033323b302e303b3130302c4c45474143592d44494d4d45522033333b302e303b3130302c4c45474143592d44494d4d45522033343b302e303b3130302c0d0a202020204c45474143592d44494d4d45522033353b302e303b3130302c4c45474143592d44494d4d0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 106,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "83",
+        "time": "65.761168000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "107",
+        "service": "6",
+        "hex": "810a0017010402036b06c4028000000e3244c02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 107,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "84",
+        "time": "65.769183000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "107",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306b06100e3244c065fe01b845522033363b302e303b3130302c4c45474143592d44494d4d45522033373b302e303b3130302c0d0a202020204c45474143592d44494d4d45522033383b302e303b3130302c4c45474143592d44494d4d45522033393b302e303b3130302c4c45474143592d44494d4d45522034303b302e303b3130302c0d0a202020204c45474143592d44494d4d45522034313b302e303b3130302c4c45474143592d44494d4d45522034323b302e303b3130302c4c45474143592d44494d4d45522034333b302e303b3130302c0d0a202020204c45474143592d44494d4d45522034343b302e303b3130302c4c45474143592d44494d4d45522034353b302e303b3130302c4c45474143592d44494d4d45522034363b302e303b3130302c0d0a202020204c45474143592d44494d4d45522034373b302e303b3130302c4c45474143592d44494d4d45522034383b302e303b3130302c4c45474143592d44494d4d45522034393b302e303b3130302c0d0a202020204c45474143592d44494d4d45522035303b302e303b3130302c4c45474143592d44494d4d45522035313b302e303b3130302c4c45474143592d44494d4d45522035323b302e303b0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 107,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "85",
+        "time": "65.789126000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "108",
+        "service": "6",
+        "hex": "810a0017010402036c06c4028000000e3246782201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 108,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "86",
+        "time": "65.797150000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "108",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306c06100e32467865fe01b83130302c0d0a202020204c45474143592d44494d4d45522035333b302e303b3130302c4c45474143592d44494d4d45522035343b302e303b3130302c4c45474143592d44494d4d45522035353b302e303b3130302c0d0a202020204c45474143592d44494d4d45522035363b302e303b3130302c4c45474143592d44494d4d45522035373b302e303b3130302c4c45474143592d44494d4d45522035383b302e303b3130302c0d0a202020204c45474143592d44494d4d45522035393b302e303b3130302c4c45474143592d44494d4d45522036303b302e303b3130302c4c45474143592d44494d4d45522036313b302e303b3130302c0d0a202020204c45474143592d44494d4d45522036323b302e303b3130302c4c45474143592d44494d4d45522036333b302e303b3130302c4c45474143592d44494d4d45522036343b302e303b3130302c0d0a202020204c45474143592d44494d4d45522036353b302e303b3130302c4c45474143592d44494d4d45522036363b302e303b3130302c4c45474143592d44494d4d45522036373b302e303b3130302c0d0a202020204c45474143592d44494d4d45522036383b302e303b3130302c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 108,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "87",
+        "time": "65.818064000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "109",
+        "service": "6",
+        "hex": "810a0017010402036d06c4028000000e3248302201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 109,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "88",
+        "time": "65.826333000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "109",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306d06100e32483065fe01b84c45474143592d44494d4d45522036393b302e303b3130302c4c45474143592d44494d4d45522037303b302e303b3130302c0d0a202020204c45474143592d44494d4d45522037313b302e303b3130302c4c45474143592d44494d4d45522037323b302e303b3130302c4c45474143592d44494d4d45522037333b302e303b3130302c0d0a202020204c45474143592d44494d4d45522037343b302e303b3130302c4c45474143592d44494d4d45522037353b302e303b3130302c4c45474143592d44494d4d45522037363b302e303b3130302c0d0a202020204c45474143592d44494d4d45522037373b302e303b3130302c4c45474143592d44494d4d45522037383b302e303b3130302c4c45474143592d44494d4d45522037393b302e303b3130302c0d0a202020204c45474143592d44494d4d45522038303b302e303b3130302c4c45474143592d44494d4d45522038313b302e303b3130302c4c45474143592d44494d4d45522038323b302e303b3130302c0d0a202020204c45474143592d44494d4d45522038333b302e303b3130302c4c45474143592d44494d4d45522038343b302e303b3130302c4c45474143592d44494d0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 109,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "89",
+        "time": "65.845547000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "110",
+        "service": "6",
+        "hex": "810a0017010402036e06c4028000000e3249e82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 110,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "90",
+        "time": "65.853566000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "110",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306e06100e3249e865fe01b84d45522038353b302e303b3130302c0d0a202020204c45474143592d44494d4d45522038363b302e303b3130302c4c45474143592d44494d4d45522038373b302e303b3130302c4c45474143592d44494d4d45522038383b302e303b3130302c0d0a202020204c45474143592d44494d4d45522038393b302e303b3130302c4c45474143592d44494d4d45522039303b302e303b3130302c4c45474143592d44494d4d45522039313b302e303b3130302c0d0a202020204c45474143592d44494d4d45522039323b302e303b3130302c4c45474143592d44494d4d45522039333b302e303b3130302c4c45474143592d44494d4d45522039343b302e303b3130302c0d0a202020204c45474143592d44494d4d45522039353b302e303b3130302c4c45474143592d44494d4d45522039363b302e303b3130302c4c45474143592d44494d4d45522039373b302e303b3130302c0d0a202020204c45474143592d44494d4d45522039383b302e303b3130302c4c45474143592d44494d4d45522039393b302e303b3130302c4c45474143592d44494d4d4552203130303b302e303b313030290d0a202047524f55502032282247726f7570200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 110,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "91",
+        "time": "65.873030000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "111",
+        "service": "6",
+        "hex": "810a0017010402036f06c4028000000e324ba02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 111,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "92",
+        "time": "65.881047000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "111",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100306f06100e324ba065fe01b832222c0d0a2020202052454c415920323130313b302e303b3130302c44494d4d455220323130323b302e303b313030290d0a202047524f55502033282247726f75702033222c0d0a2020202047524f555020323b302e303b313030290d0a202047524f55502034282247726f75702034222c0d0a2020202047524f555020333b302e303b313030290d0a202047524f55502035282247726f75702035222c0d0a20202020504152544954494f4e20313b302e303b3130302c504152544954494f4e20323b302e303b3130302c504152544954494f4e20333b302e303b3130302c0d0a20202020504152544954494f4e20343b302e303b3130302c504152544954494f4e20353b302e303b3130302c504152544954494f4e2031313b302e303b3130302c0d0a20202020504152544954494f4e2031323b302e303b3130302c504152544954494f4e2031333b302e303b3130302c504152544954494f4e2031343b302e303b3130302c0d0a20202020504152544954494f4e2031353b302e303b3130302c504152544954494f4e2031363b302e303b3130302c504152544954494f4e2032313b302e303b3130302c0d0a2020202050415254490f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 111,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "93",
+        "time": "65.900995000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "112",
+        "service": "6",
+        "hex": "810a0017010402037006c4028000000e324d582201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 112,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "94",
+        "time": "65.909017000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "112",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307006100e324d5865fe01b854494f4e2032323b302e303b3130302c504152544954494f4e2032333b302e303b3130302c504152544954494f4e2032343b302e303b3130302c0d0a20202020504152544954494f4e2032353b302e303b313030290d0a202047524f555020313031282247726f757020313031222c0d0a2020202052454c4159203130313b302e303b313030290d0a202047524f555020313032282247726f757020313032222c0d0a2020202052454c4159203130323b302e303b313030290d0a202047524f555020313033282247726f757020313033222c0d0a2020202052454c4159203130333b302e303b313030290d0a202047524f555020313034282247726f757020313034222c0d0a2020202052454c4159203130343b302e303b313030290d0a202047524f555020313035282247726f757020313035222c0d0a2020202052454c4159203130353b302e303b313030290d0a202047524f555020313036282247726f757020313036222c0d0a2020202052454c4159203130363b302e303b313030290d0a202047524f555020313037282247726f757020313037222c0d0a2020202052454c4159203130373b302e303b313030290d0a2020470f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 112,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "95",
+        "time": "65.928472000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "113",
+        "service": "6",
+        "hex": "810a0017010402037106c4028000000e324f102201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 113,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "96",
+        "time": "65.936495000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "113",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307106100e324f1065fe01b8524f555020313038282247726f757020313038222c0d0a2020202052454c4159203130383b302e303b313030290d0a202047524f5550203130392822222c0d0a2020202052454c4159203130393b302e303b313030290d0a202047524f5550203131302822222c0d0a2020202052454c4159203131303b302e303b313030290d0a202047524f5550203131312822222c0d0a2020202052454c4159203131313b302e303b313030290d0a202047524f5550203131322822222c0d0a2020202052454c4159203131323b302e303b313030290d0a202047524f5550203131332822222c0d0a2020202052454c4159203131333b302e303b313030290d0a202047524f5550203131342822222c0d0a2020202052454c4159203131343b302e303b313030290d0a202047524f5550203131352822222c0d0a2020202052454c4159203131353b302e303b313030290d0a202047524f5550203131362822222c0d0a2020202052454c4159203131363b302e303b313030290d0a202047524f555020313137282247726f757020313137222c0d0a2020202052454c4159203131373b302e303b313030290d0a202047524f5550203131382822222c0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 113,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "97",
+        "time": "65.957897000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "114",
+        "service": "6",
+        "hex": "810a0017010402037206c4028000000e3250c82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 114,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "98",
+        "time": "65.965920000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "114",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307206100e3250c865fe01b80d0a2020202052454c4159203131383b302e303b313030290d0a202047524f5550203131392822222c0d0a2020202052454c4159203131393b302e303b313030290d0a202047524f5550203132302822222c0d0a2020202052454c4159203132303b302e303b313030290d0a202047524f5550203132312822222c0d0a2020202052454c4159203132313b302e303b313030290d0a202047524f5550203132322822222c0d0a2020202052454c4159203132323b302e303b313030290d0a202047524f5550203132332822222c0d0a2020202052454c4159203132333b302e303b313030290d0a202047524f5550203132342822222c0d0a2020202052454c4159203132343b302e303b313030290d0a202047524f5550203132352822222c0d0a2020202052454c4159203132353b302e303b313030290d0a202047524f5550203132362822222c0d0a2020202052454c4159203132363b302e303b313030290d0a202047524f5550203132372822222c0d0a2020202052454c4159203132373b302e303b313030290d0a202047524f5550203132382822222c0d0a2020202052454c4159203132383b302e303b313030290d0a202047520f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 114,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "99",
+        "time": "65.986112000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "115",
+        "service": "6",
+        "hex": "810a0017010402037306c4028000000e3252802201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 115,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "100",
+        "time": "65.994129000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "115",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307306100e32528065fe01b84f5550203132392822222c0d0a2020202052454c4159203132393b302e303b313030290d0a202047524f5550203133302822222c0d0a2020202052454c4159203133303b302e303b313030290d0a202047524f5550203133312822222c0d0a2020202052454c4159203133313b302e303b313030290d0a202047524f5550203133322822222c0d0a2020202052454c4159203133323b302e303b313030290d0a202047524f5550203133332822222c0d0a2020202052454c4159203133333b302e303b313030290d0a202047524f5550203133342822222c0d0a2020202052454c4159203133343b302e303b313030290d0a202047524f5550203133352822222c0d0a2020202052454c4159203133353b302e303b313030290d0a202047524f5550203133362822222c0d0a2020202052454c4159203133363b302e303b313030290d0a202047524f5550203133372822222c0d0a2020202052454c4159203133373b302e303b313030290d0a202047524f5550203133382822222c0d0a2020202052454c4159203133383b302e303b313030290d0a202047524f5550203133392822222c0d0a2020202052454c4159203133393b302e300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 115,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "101",
+        "time": "66.017239000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "116",
+        "service": "6",
+        "hex": "810a0017010402037406c4028000000e3254382201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 116,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "102",
+        "time": "66.025257000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "116",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307406100e32543865fe01b83b313030290d0a202047524f5550203134302822222c0d0a2020202052454c4159203134303b302e303b313030290d0a202047524f5550203134312822222c0d0a2020202052454c4159203134313b302e303b313030290d0a202047524f5550203134322822222c0d0a2020202052454c4159203134323b302e303b313030290d0a202047524f555020323031282247726f757020323031222c0d0a2020202052454c4159203230313b302e303b313030290d0a202047524f555020323032282247726f757020323032222c0d0a2020202052454c4159203230323b302e303b313030290d0a202047524f555020323033282247726f757020323033222c0d0a2020202052454c4159203230333b302e303b313030290d0a202047524f555020323034282247726f757020323034222c0d0a2020202052454c4159203230343b302e303b313030290d0a202047524f555020323035282247726f757020323035222c0d0a2020202052454c4159203230353b302e303b313030290d0a202047524f555020323036282247726f757020323036222c0d0a2020202052454c4159203230363b302e303b313030290d0a202047524f55502032300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 116,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "103",
+        "time": "66.043748000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "117",
+        "service": "6",
+        "hex": "810a0017010402037506c4028000000e3255f02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 117,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "104",
+        "time": "66.051766000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "117",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307506100e3255f065fe01b837282247726f757020323037222c0d0a2020202052454c4159203230373b302e303b313030290d0a202047524f555020323038282247726f757020323038222c0d0a2020202052454c4159203230383b302e303b313030290d0a202047524f555020323137282247726f757020323137222c0d0a2020202052454c4159203230313b302e303b3130302c52454c4159203230323b302e303b3130302c52454c4159203230333b302e303b3130302c0d0a2020202052454c4159203230343b302e303b3130302c52454c4159203230353b302e303b3130302c52454c4159203230363b302e303b3130302c0d0a2020202052454c4159203230373b302e303b3130302c52454c4159203230383b302e303b313030290d0a202047524f555020323138282247726f757020323138222c0d0a2020202047524f5550203230313b302e303b3130302c47524f5550203230323b302e303b3130302c47524f5550203230333b302e303b3130302c0d0a2020202047524f5550203230343b302e303b3130302c47524f5550203230353b302e303b3130302c47524f5550203230363b302e303b3130302c0d0a2020202047524f5550203230373b302e0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 117,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "105",
+        "time": "66.071230000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "118",
+        "service": "6",
+        "hex": "810a0017010402037606c4028000000e3257a82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 118,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "106",
+        "time": "66.079249000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "118",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307606100e3257a865fe01b8303b3130302c47524f5550203230383b302e303b313030290d0a202047524f555020333031282247726f757020333031222c0d0a2020202044494d4d4552203330313b302e303b3130302c44494d4d4552203330323b302e303b3130302c44494d4d4552203330333b302e303b313030290d0a202047524f555020333032282247726f757020333032222c0d0a2020202044494d4d4552203330343b302e303b3130302c44494d4d4552203330353b302e303b3130302c44494d4d4552203330363b302e303b313030290d0a202047524f555020333137282247726f757020333137222c0d0a2020202044494d4d4552203330313b302e303b3130302c44494d4d4552203330323b302e303b313030290d0a202047524f555020333138282247726f757020333138222c0d0a2020202044494d4d4552203330333b302e303b3130302c44494d4d4552203330343b302e303b313030290d0a202047524f555020333139282247726f757020333139222c0d0a2020202044494d4d4552203330353b302e303b3130302c44494d4d4552203330363b302e303b313030290d0a202047524f5550203230303128224353302050726573657420310f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 118,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "107",
+        "time": "66.099434000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "119",
+        "service": "6",
+        "hex": "810a0017010402037706c4028000000e3259602201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 119,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "108",
+        "time": "66.107459000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "119",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307706100e32596065fe01b8222c0d0a2020202052454c415920323030313b302e303b3130302c44494d4d455220323030323b302e303b313030290d0a202047524f555020323030322822435330205072657365742032222c0d0a2020202044494d4d455220323030323b302e303b313030290d0a202047524f555020323030332822435330205072657365742033222c4e4f4e45290d0a202047524f555020323030362822222c4e4f4e45290d0a202047524f555020323030392822222c4e4f4e45290d0a202047524f555020323031302822435330204469676974616c20496e707574222c4e4f4e45290d0a202047524f55502032303131282243533020526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c0d0a2020202052454c415920323030313b302e303b313030290d0a202047524f55502032303132282243533020416e616c6f6720496e707574222c4e4f4e45290d0a202047524f55502032303133282243533020526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c0d0a2020202044494d4d455220323030323b302e303b313030290d0a202047524f55502032300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 119,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "109",
+        "time": "66.127156000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "120",
+        "service": "6",
+        "hex": "810a0017010402037806c4028000000e325b182201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 120,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "110",
+        "time": "66.135178000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "120",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307806100e325b1865fe01b83134282243533020496e766572746564204469676974616c20496e707574222c4e4f4e45290d0a202047524f55502032303135282243533020496e76657274656420416e616c6f6720496e707574206f722050494420416e616c6f67204f7574707574222c4e4f4e45290d0a202047524f55502032303136282243533020504944204c6f77205472696d222c4e4f4e45290d0a202047524f555020323031372822435330204368616e6e656c2031222c4e4f4e45290d0a202047524f555020323031382822435330204368616e6e656c2032222c4e4f4e45290d0a202047524f555020323031392822435330204368616e6e656c2033222c4e4f4e45290d0a202047524f555020323032302822435330204368616e6e656c2034222c4e4f4e45290d0a202047524f555020323032312822435330204368616e6e656c2035222c4e4f4e45290d0a202047524f555020323032322822435330204368616e6e656c2036222c4e4f4e45290d0a202047524f555020323032332822435330204368616e6e656c2037222c4e4f4e45290d0a202047524f555020323032342822435330204368616e6e656c2038222c4e4f4e45290d0a202047524f0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 120,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "111",
+        "time": "66.154642000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "121",
+        "service": "6",
+        "hex": "810a0017010402037906c4028000000e325cd02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 121,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "112",
+        "time": "66.162658000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "121",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307906100e325cd065fe01b8555020323032352822435330204368616e6e656c2039222c4e4f4e45290d0a202047524f555020323032362822435330204368616e6e656c203130222c4e4f4e45290d0a202047524f555020323032372822435330204368616e6e656c203131222c4e4f4e45290d0a202047524f555020323032382822435330204368616e6e656c203132222c4e4f4e45290d0a202047524f555020323130312822435331205072657365742031222c0d0a2020202052454c415920323130313b302e303b3130302c44494d4d455220323130323b302e303b313030290d0a202047524f555020323130322822435331205072657365742032222c4e4f4e45290d0a202047524f555020323130332822435331205072657365742033222c4e4f4e45290d0a202047524f555020323130342822435331205072657365742034222c4e4f4e45290d0a202047524f555020323131302822435331204469676974616c20496e707574222c4e4f4e45290d0a202047524f55502032313131282243533120526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c0d0a2020202052454c415920323130313b302e303b31300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 121,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "113",
+        "time": "66.182115000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "122",
+        "service": "6",
+        "hex": "810a0017010402037a06c4028000000e325e882201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 122,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "114",
+        "time": "66.189896000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "122",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307a06100e325e8865fe01b830290d0a202047524f55502032313132282243533120416e616c6f6720496e707574222c4e4f4e45290d0a202047524f55502032313133282243533120526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c0d0a2020202044494d4d455220323130323b302e303b313030290d0a202047524f55502032313134282243533120496e766572746564204469676974616c20496e707574222c4e4f4e45290d0a202047524f55502032313135282243533120496e76657274656420416e616c6f6720496e707574206f722050494420416e616c6f67222c4e4f4e45290d0a202047524f55502032313136282243533120504944204c6f77205472696d222c4e4f4e45290d0a202047524f555020323131372822435331204368616e6e656c2031222c4e4f4e45290d0a202047524f555020323131382822435331204368616e6e656c2032222c4e4f4e45290d0a202047524f555020323131392822435331204368616e6e656c2033222c4e4f4e45290d0a202047524f555020323132302822435331204368616e6e656c2034222c4e4f4e45290d0a202047524f5550203231323128224353312043680f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 122,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "115",
+        "time": "66.225653000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "123",
+        "service": "6",
+        "hex": "810a0017010402037b06c4028000000e3260402201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 123,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "116",
+        "time": "66.233673000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "123",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307b06100e32604065fe01b8616e6e656c2035222c4e4f4e45290d0a202047524f555020323132322822435331204368616e6e656c2036222c4e4f4e45290d0a202047524f555020323132332822435331204368616e6e656c2037222c4e4f4e45290d0a202047524f555020323132342822435331204368616e6e656c2038222c4e4f4e45290d0a202047524f555020323132352822435331204368616e6e656c2039222c4e4f4e45290d0a202047524f555020323132362822435331204368616e6e656c203130222c4e4f4e45290d0a202047524f555020323132372822435331204368616e6e656c203131222c4e4f4e45290d0a202047524f555020323132382822435331204368616e6e656c203132222c4e4f4e45290d0a202047524f555020323230342822222c4e4f4e45290d0a202047524f555020323230352822222c4e4f4e45290d0a202047524f555020323230362822222c4e4f4e45290d0a202047524f555020323230372822222c4e4f4e45290d0a202047524f555020323230382822222c4e4f4e45290d0a202047524f555020323230392822222c4e4f4e45290d0a202047524f555020323231302822222c4e4f4e45290d0a202047524f5550200f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 123,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "117",
+        "time": "66.252397000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "124",
+        "service": "6",
+        "hex": "810a0017010402037c06c4028000000e3261f82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 124,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "118",
+        "time": "66.260663000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "124",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307c06100e3261f865fe01b832323131282243533220526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c0d0a2020202052454c415920323230313b302e303b313030290d0a202047524f555020323231322822222c4e4f4e45290d0a202047524f55502032323133282243533220526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c0d0a2020202044494d4d455220323230323b302e303b313030290d0a202047524f555020323231342822222c4e4f4e45290d0a202047524f555020323231352822222c4e4f4e45290d0a202047524f555020323231362822222c4e4f4e45290d0a202047524f555020323232322822222c0d0a2020202052454c4159203230313b302e303b3130302c52454c4159203230323b302e303b3130302c52454c4159203230333b302e303b30290d0a202047524f555020323330312822435333205072657365742031222c4e4f4e45290d0a202047524f555020323330322822435333205072657365742032222c4e4f4e45290d0a202047524f555020323330332822435333205072657365742033222c4e4f4e45290d0a202047524f55502032330f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 124,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "119",
+        "time": "66.279640000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "125",
+        "service": "6",
+        "hex": "810a0017010402037d06c4028000000e3263b02201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 125,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "120",
+        "time": "66.287656000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "125",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307d06100e3263b065fe01b830342822435333205072657365742034222c4e4f4e45290d0a202047524f555020323330352822435333205072657365742035222c4e4f4e45290d0a202047524f555020323330362822435333205072657365742036222c4e4f4e45290d0a202047524f555020323330372822435333205072657365742037222c4e4f4e45290d0a202047524f555020323330382822435333205072657365742038222c4e4f4e45290d0a202047524f555020323330392822435333205072657365742039222c4e4f4e45290d0a202047524f555020323331302822435333204469676974616c20496e707574222c4e4f4e45290d0a202047524f55502032333131282243533320526573657276656420666f7220444f205374617475732028446f6e2774204564697429222c0d0a2020202052454c415920323330313b302e303b313030290d0a202047524f55502032333132282243533320416e616c6f6720496e707574222c4e4f4e45290d0a202047524f55502032333133282243533320526573657276656420666f7220414f205374617475732028446f6e2774204564697429222c0d0a2020202044494d4d455220323330323b302e303b31300f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 125,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "121",
+        "time": "66.307114000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "126",
+        "service": "6",
+        "hex": "810a0017010402037e06c4028000000e3265682201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 126,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "122",
+        "time": "66.315383000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "126",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307e06100e32656865fe01b830290d0a202047524f55502032333134282243533320496e766572746564204469676974616c20496e707574222c4e4f4e45290d0a202047524f55502032333135282243533320496e76657274656420416e616c6f6720496e707574206f722050494420416e616c6f67204f7574707574222c4e4f4e45290d0a202047524f55502032333136282243533320504944204c6f77205472696d222c4e4f4e45290d0a7d0d0a0d0a2f2f6e616d652c706172746974696f6e3d726f6f6d2c2e2e2e2c73746174696f6e2c2e2e2e0d0a524f4f4d0d0a7b0d0a0d0a2020524f4f4d20312822524f4f4d2031222c0d0a20202020504152544954494f4e20313d524f4f4d20322c0d0a20202020504152544954494f4e2031313d524f4f4d2037290d0a2020524f4f4d20322822526f6f6d2032222c0d0a20202020504152544954494f4e20313d524f4f4d20312c0d0a20202020504152544954494f4e20323d524f4f4d20332c0d0a20202020504152544954494f4e2031323d524f4f4d2038290d0a2020524f4f4d20332822524f4f4d2033222c0d0a20202020504152544954494f4e20323d524f4f4d20322c0d0a20202020504152544954494f0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 126,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "123",
+        "time": "66.334354000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "127",
+        "service": "6",
+        "hex": "810a0017010402037f06c4028000000e3267202201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 127,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "124",
+        "time": "66.342381000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "127",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100307f06100e32672065fe01b84e20333d524f4f4d20342c0d0a20202020504152544954494f4e2031333d524f4f4d2039290d0a2020524f4f4d20342822524f4f4d2034222c0d0a20202020504152544954494f4e20333d524f4f4d20332c0d0a20202020504152544954494f4e20343d524f4f4d20352c0d0a20202020504152544954494f4e2031343d524f4f4d2031302c0d0a2020202053544154494f4e2034290d0a2020524f4f4d20352822524f4f4d2035222c0d0a20202020504152544954494f4e20343d524f4f4d20342c0d0a20202020504152544954494f4e20353d524f4f4d20362c0d0a20202020504152544954494f4e2031353d524f4f4d2031312c0d0a2020202053544154494f4e2035290d0a2020524f4f4d20362822524f4f4d2036222c0d0a20202020504152544954494f4e20353d524f4f4d20352c0d0a20202020504152544954494f4e2031363d524f4f4d2031322c0d0a2020202053544154494f4e2036290d0a2020524f4f4d20372822524f4f4d2037222c0d0a20202020504152544954494f4e2031313d524f4f4d20312c0d0a20202020504152544954494f4e2032313d524f4f4d20382c0d0a2020202053544154494f4e2037290d0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 127,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "125",
+        "time": "66.363537000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "128",
+        "service": "6",
+        "hex": "810a0017010402038006c4028000000e3268d82201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 128,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "126",
+        "time": "66.371558000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "128",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a01cb0100308006100e3268d865fe01b80a2020524f4f4d20382822524f4f4d2038222c0d0a20202020504152544954494f4e2031323d524f4f4d20322c0d0a20202020504152544954494f4e2032313d524f4f4d20372c0d0a20202020504152544954494f4e2032323d524f4f4d20392c0d0a2020202053544154494f4e2038290d0a2020524f4f4d20392822524f4f4d2039222c0d0a20202020504152544954494f4e2031333d524f4f4d20332c0d0a20202020504152544954494f4e2032323d524f4f4d20382c0d0a20202020504152544954494f4e2032333d524f4f4d2031302c0d0a2020202053544154494f4e2039290d0a2020524f4f4d2031302822524f4f4d203130222c0d0a20202020504152544954494f4e2031343d524f4f4d20342c0d0a20202020504152544954494f4e2032333d524f4f4d20392c0d0a20202020504152544954494f4e2032343d524f4f4d2031312c0d0a2020202053544154494f4e203130290d0a2020524f4f4d2031312822524f4f4d203131222c0d0a20202020504152544954494f4e2031353d524f4f4d20352c0d0a20202020504152544954494f4e2032343d524f4f4d2031302c0d0a20202020504152544954494f4e2032353d0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 128,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 0,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    },
+    {
+      "kind": "confirmed",
+      "request": {
+        "frame": "127",
+        "time": "66.406097000",
+        "src": "192.168.0.50",
+        "dst": "192.168.0.51",
+        "invoke_id": "129",
+        "service": "6",
+        "hex": "810a0017010402038106c4028000000e326a902201b80f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 0,
+          "apdu_class": "ConfirmedRequestPDU",
+          "service_choice": 6,
+          "invoke_id": 129,
+          "service_class": "AtomicReadFileRequest",
+          "fields": {
+            "fileIdentifier": "file,0",
+            "accessMethod": {}
+          }
+        }
+      },
+      "response": {
+        "frame": "128",
+        "time": "66.409494000",
+        "src": "192.168.0.51",
+        "dst": "192.168.0.50",
+        "invoke_id": "129",
+        "apdu_type": "complex-ack",
+        "error_class": null,
+        "error_code": null,
+        "reject_reason": null,
+        "abort_reason": null,
+        "hex": "810a008d0100308106110e326a90657c524f4f4d2031322c0d0a2020202053544154494f4e203131290d0a2020524f4f4d2031322822524f4f4d203132222c0d0a20202020504152544954494f4e2031363d524f4f4d20362c0d0a20202020504152544954494f4e2032353d524f4f4d2031312c0d0a2020202053544154494f4e203132290d0a7d0d0a0d0a0f",
+        "decoded": {
+          "bvll_function": "0xa",
+          "apdu_type": 3,
+          "apdu_class": "ComplexAckPDU",
+          "service_choice": 6,
+          "invoke_id": 129,
+          "service_class": "AtomicReadFileACK",
+          "fields": {
+            "endOfFile": 1,
+            "accessMethod": {}
+          }
+        }
+      },
+      "status": "complete"
+    }
+  ],
+  "unconfirmed_events": [],
+  "decode_stats": {
+    "req_ok": 64,
+    "req_fail": 0,
+    "resp_ok": 64,
+    "resp_fail": 0
+  }
+}
