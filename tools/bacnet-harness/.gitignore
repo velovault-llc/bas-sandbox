@@ -1,0 +1,6 @@
+corpus/*.cap
+corpus/*.pcap
+corpus/*.pcapng
+reports/*.json
+__pycache__/
+*.pyc
