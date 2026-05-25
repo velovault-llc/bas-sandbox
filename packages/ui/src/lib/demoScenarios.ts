@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG, type SingleZoneConfig } from './sim/thermal';
 import type { BasScenarioV1, WiredTargetSpec } from './scenario';
 
 type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
-type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller';
+type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller' | 'vahu';
 
 type SpecNode = {
   id: string;
@@ -1141,6 +1141,136 @@ export const DEMOS: readonly Demo[] = [
       edges: [
         // The two supervisors talk BACnet/IP across the same subnet.
         { source: 'jace', target: 'nae', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // vAHU G36 §5.18 — live single-zone AHU sequence
+  // ═══════════════════════════════════════════════════════════════════
+
+  {
+    id: 'g36-ahu-sequence',
+    name: 'G36 §5.18 AHU — live sequence',
+    blurb:
+      'Single-zone VAV AHU running ASHRAE Guideline 36 §5.18. Cold-start: OAT 28°F, zone at 62°F — watch the AHU enter heating mode, ramp the hot-water valve, and climb toward setpoint. Open the BACnet packet log to see SubscribeCOV for DAT, ZN-T, CV-POS + periodic ReadProperty polls from the JACE.',
+    scenario: buildScenario({
+      nodes: [
+        // Supervisor: Tridium JACE polling the AHU over BACnet/IP.
+        {
+          id: 'jace',
+          kind: 'supervisor',
+          label: 'JACE-8000',
+          x: 320,
+          y: 60,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'Polls AHU-1 over BACnet/IP',
+          },
+        },
+        // vAHU — G36 §5.18 sequence, cold-start conditions.
+        // OAT and zone temp come from the sim clock; vahuConfig
+        // overrides here push the AHU into heating mode immediately.
+        {
+          id: 'ahu',
+          kind: 'vahu',
+          label: 'AHU-1',
+          x: 320,
+          y: 240,
+          data: {
+            ipAddress: '10.0.1.30',
+            subnetMask: '255.255.255.0',
+            subtitle: 'G36 §5.18 · heat mode on cold start',
+            // Drive OAT below econ lockout and zone below setpoint so
+            // the unit starts in heating mode — the most interesting
+            // sequence to watch on first load.
+          },
+        },
+        // Zone node — couples to the AHU so zone temp reflects the
+        // AHU's discharge air warming the room over time.
+        {
+          id: 'zone',
+          kind: 'zone',
+          label: 'ZONE-1',
+          x: 320,
+          y: 430,
+          data: {
+            zoneConfig: {
+              // Cold morning start: zone is 62°F, building lost heat
+              // overnight. The AHU will heat it back to 72°F setpoint.
+              T_zone_init: 62,
+              // Medium thermal mass (conference room / open office).
+              volume_ft3: 18000,
+              peak_occupants: 20,
+            },
+            subtitle: '18 000 ft³ · cold start 62°F',
+          },
+        },
+      ],
+      edges: [
+        // Supervisor ↔ AHU: BACnet/IP (triggers SubscribeCOV + polls).
+        { source: 'jace', target: 'ahu', wireKind: 'bacnet-ip' },
+        // AHU ↔ Zone: the AHU's supply air warms the zone each tick.
+        { source: 'ahu', target: 'zone', wireKind: 'hardwired' },
+      ],
+    }),
+  },
+
+  {
+    id: 'g36-ahu-economizer',
+    name: 'G36 §5.18 AHU — economizer mode',
+    blurb:
+      'Same AHU, warm spring morning: OAT 58°F, zone at 76°F (too warm). Economizer kicks in — outside air damper opens above minimum ventilation, mechanical cooling stays off. Watch the packet log for OAD-POS and CV-POS COVs.',
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'jace',
+          kind: 'supervisor',
+          label: 'JACE-8000',
+          x: 320,
+          y: 60,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'Polling AHU over BACnet/IP',
+          },
+        },
+        {
+          id: 'ahu',
+          kind: 'vahu',
+          label: 'AHU-1',
+          x: 320,
+          y: 240,
+          data: {
+            ipAddress: '10.0.1.30',
+            subnetMask: '255.255.255.0',
+            subtitle: 'G36 §5.18 · economizer on warm spring day',
+          },
+        },
+        {
+          id: 'zone',
+          kind: 'zone',
+          label: 'ZONE-1',
+          x: 320,
+          y: 430,
+          data: {
+            zoneConfig: {
+              // Warm start: afternoon sun loaded the room.
+              T_zone_init: 76,
+              volume_ft3: 18000,
+              peak_occupants: 20,
+            },
+            subtitle: '18 000 ft³ · warm start 76°F',
+          },
+        },
+      ],
+      edges: [
+        { source: 'jace', target: 'ahu', wireKind: 'bacnet-ip' },
+        { source: 'ahu', target: 'zone', wireKind: 'hardwired' },
       ],
     }),
   },

@@ -76,6 +76,10 @@
     emitReadPropertyAck,
     emitCovNotification,
     BACNET_IP_RTT_SECONDS,
+    stepVAhu,
+    initVAhuState,
+    DEFAULT_VAHU_CONFIG,
+    synthesizeVAhuObjects,
     type StEnv,
     type MstpFinding,
     type BacnetIpDevice,
@@ -87,6 +91,9 @@
     type ZoneState,
     type MstpDevice,
     type MstpTrunkState,
+    type VAhuState,
+    type VAhuConfig,
+    type VAhuInputs,
   } from '@bas/core';
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
@@ -266,7 +273,7 @@
     nodes = nodes.filter((n) => n.id !== zoneId);
   }
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd' | 'virtual-controller';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd' | 'virtual-controller' | 'vahu';
 
   // ============ Wire kinds (trunk types) ============
 
@@ -341,9 +348,9 @@
    */
   function defaultWireKind(sourceKind: Kind | undefined, targetKind: Kind | undefined): WireKind {
     const involves = (k: Kind) => sourceKind === k || targetKind === k;
-    // Anything touching a router or a BBMD is BACnet/IP — they live on
-    // the IP backbone, not on field-level RS-485.
-    if (involves('router') || involves('bbmd')) return 'bacnet-ip';
+    // Anything touching a router, a BBMD, or a vAHU is BACnet/IP — they
+    // live on the IP backbone, not on field-level RS-485.
+    if (involves('router') || involves('bbmd') || involves('vahu')) return 'bacnet-ip';
     // Hardwired covers the entire physical-cable-from-terminal-block category:
     //   - sensor / safety devices land on hardwired AI / BI terminals
     //   - expansion modules clip onto their parent controller via a vendor
@@ -564,6 +571,13 @@
       defaultName: 'vVAV-1',
       icon: '◌',
       description: 'Soft controller — exists entirely in software, hosted inside a supervisor (JACE / AS-P / NCE). Has its own BACnet Device Instance but no physical box. Common in modern installs for lighting, energy aggregation, roll-up alarms. If the host goes down, every virtual controller hosted on it goes with it.',
+    },
+    {
+      kind: 'vahu',
+      label: 'AHU — G36 §5.18',
+      defaultName: 'AHU-1',
+      icon: '▣',
+      description: 'Virtual single-zone AHU running the ASHRAE Guideline 36 §5.18 sequence. Picks heating / cooling / economizer / unoccupied mode each tick from OAT, zone temp, and occupancy. Manages supply-air-temp setpoint, OA damper, heat/cool valve PI loops, and VFD speed. Synthesizes 15 BACnet objects (5 AI, 3 AV, 4 AO, 3 BV) and emits realistic COV notifications. Wire to a supervisor via BACnet/IP and optionally to a Zone node for live room-temp coupling.',
     },
   ];
 
@@ -1049,6 +1063,21 @@
   /** Pairs we've already announced (Who-Is + I-Am + SubscribeCOV) so
    *  re-render doesn't spam the bus with re-discoveries every tick. */
   let announcedIpPairs = new Set<string>();
+
+  // ── vAHU per-node state ────────────────────────────────────────────
+  // Each canvas node of kind 'vahu' runs a full G36 §5.18 sequence.
+  // State is keyed by node.id so the canvas handles any number of
+  // AHU nodes without them sharing loop state. Initialized lazily on
+  // first tick; reset on stop().
+  let vahuStates = $state.raw<Map<string, VAhuState>>(new Map());
+  /** Per-tick cache of synthesized BACnet objects for each vAHU,
+   *  populated during the vAHU dynamics step and consumed by the
+   *  BACnet/IP COV detection pass that follows. Avoids re-synthesizing
+   *  the 15-object set multiple times per tick. */
+  let vahuObjectsCache = new Map<string, import('@bas/core').BacnetObject[]>();
+  /** Previous-tick vAHU inputs per node — needed by vAhuCovDeltas to
+   *  know what changed since the last notification was emitted. */
+  let vahuPrevInputs = new Map<string, VAhuInputs>();
   // Per-trunk poll cadence (sim-seconds). Real supervisors use a SLOW
   // poll as a heartbeat/redundancy on top of COV subscriptions — if a
   // value drifts without firing a CoV (e.g. the deadband never gets
@@ -2065,6 +2094,81 @@
       });
     }
 
+    // ── Virtual AHU (G36 §5.18) state machine ────────────────────────
+    // Each canvas node of kind 'vahu' runs the full G36 §5.18 sequence
+    // every tick. Inputs:
+    //   OAT  — weather sim (or OAT from first running system)
+    //   RAT  — zone temp of any Zone node wired to this AHU
+    //   Occ  — simulated schedule (defaultOccupancySchedule)
+    // Outputs: 15 BACnet objects (5 AI, 3 AV, 4 AO, 3 BV) available to
+    // the BACnet/IP emission pass that follows in the MS/TP block.
+    {
+      vahuObjectsCache = new Map();  // refresh each tick
+      const vahuStateNext = new Map<string, VAhuState>(vahuStates);
+      for (const node of nodes) {
+        if (nodeKind(node) !== 'vahu') continue;
+        const vahuData = node.data as {
+          label?: string;
+          poweredOff?: boolean;
+          vahuConfig?: Partial<VAhuConfig>;
+        };
+        if (vahuData.poweredOff) continue;
+        const cfg: VAhuConfig = { ...DEFAULT_VAHU_CONFIG, ...(vahuData.vahuConfig ?? {}) };
+
+        // OAT: prefer weather sim; fall back to first running system's T_OA.
+        const oat = oatForZones;
+
+        // Occupancy: derived from the same office-hours schedule zones use.
+        const occupied = defaultOccupancySchedule(simHourForZones) > 0.5;
+
+        // Zone (return air) temp: use the T_zone of any Zone node wired to
+        // this AHU. Falls back to the configured setpoint — no zone wired
+        // means the AHU runs against a "perfectly comfortable room".
+        let zoneTemp = cfg.zoneSetpoint;
+        for (const e of edges) {
+          const otherId =
+            e.source === node.id ? e.target
+            : e.target === node.id ? e.source
+            : null;
+          if (!otherId) continue;
+          const otherNode = nodes.find((n) => n.id === otherId);
+          if (!otherNode || nodeKind(otherNode) !== 'zone') continue;
+          const zst = (otherNode.data as { zoneState?: ZoneState } | undefined)?.zoneState;
+          if (zst) { zoneTemp = zst.T_zone; break; }
+        }
+
+        const inputs: VAhuInputs = { oat, rat: zoneTemp, zoneTemp, occupied };
+        const prev = vahuStates.get(node.id) ?? initVAhuState(0, cfg);
+        const next = stepVAhu(prev, inputs, simSecondsElapsed, cfg);
+        vahuStateNext.set(node.id, next);
+
+        // Synthesize BACnet objects now; cache them for the COV pass.
+        const objects = synthesizeVAhuObjects(next, cfg, inputs);
+        vahuObjectsCache.set(node.id, objects);
+        vahuPrevInputs.set(node.id, inputs);
+
+        // Node card display.
+        const modeDisp =
+          next.mode === 'heating'    ? 'Heating'
+          : next.mode === 'cooling'    ? 'Cooling'
+          : next.mode === 'economizer' ? 'Economizer'
+          : next.mode === 'unoccupied' ? 'Unoccupied'
+          : 'Off';
+        let actuatorStr = '';
+        if (next.mode === 'heating')
+          actuatorStr = ` · HV ${next.heatValvePct.toFixed(0)}% · Fan ${Math.round(next.fanSpeed * 100)}%`;
+        else if (next.mode === 'cooling')
+          actuatorStr = ` · CV ${next.coolValvePct.toFixed(0)}% · Fan ${Math.round(next.fanSpeed * 100)}%`;
+        else if (next.mode === 'economizer')
+          actuatorStr = ` · OAD ${next.oaDamperPct.toFixed(0)}% · Fan ${Math.round(next.fanSpeed * 100)}%`;
+        physicsValueByNode.set(node.id, {
+          value: `${modeDisp} · OAT ${oat.toFixed(0)}°F → DAT ${next.dat.toFixed(1)}°F${actuatorStr}`,
+          status: 'responded',
+        });
+      }
+      vahuStates = vahuStateNext;
+    }
+
     // ── MS/TP token-passing simulation ───────────────────────────────
     // Group every MS/TP edge into trunks (connected components via the
     // shared MS/TP wireKind), assign each device a MAC, and advance
@@ -2583,22 +2687,46 @@
             trunkLabel: `${supLabel} · host-internal`,
           });
         }
+        // 3. Virtual AHU (G36 §5.18) nodes wired via BACnet/IP to this supervisor.
+        for (const e of edges) {
+          const touches = e.source === sup.id || e.target === sup.id;
+          if (!touches) continue;
+          const wireKind2 = (e.data as { wireKind?: string } | undefined)?.wireKind;
+          if (wireKind2 !== 'bacnet-ip') continue;
+          const otherId2 = e.source === sup.id ? e.target : e.source;
+          const other2 = nodes.find((n) => n.id === otherId2);
+          if (!other2 || nodeKind(other2) !== 'vahu') continue;
+          if (offline.has(other2.id)) continue;
+          const vahuLabel2 = (other2.data as { label?: string } | undefined)?.label ?? 'AHU';
+          ipChildren.push({
+            nodeId: other2.id,
+            label: vahuLabel2,
+            trunkId: `ip-edge:${e.id}`,
+            trunkLabel: `BACnet/IP · ${supLabel} ↔ ${vahuLabel2}`,
+          });
+        }
         if (ipChildren.length === 0) continue;
 
         for (const child of ipChildren) {
           const pairKey = `${sup.id}|${child.nodeId}`;
-          // Resolve the child's first AI object so we have something
-          // real to subscribe to + poll.
+          // Resolve the child's BACnet objects. For vAHU nodes use the
+          // pre-synthesized cache from the vAHU dynamics step; for all
+          // other node types fall back to synthesizeBacnetObjects().
           const childNode = nodes.find((n) => n.id === child.nodeId);
           if (!childNode) continue;
-          const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
-          const childProg = programStore.byId[child.nodeId];
-          const childObjects = synthesizeBacnetObjects({
-            vendorModelId,
-            bindings: childProg?.bindings,
-            envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
-            envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
-          });
+          let childObjects: import('@bas/core').BacnetObject[];
+          if (nodeKind(childNode) === 'vahu') {
+            childObjects = vahuObjectsCache.get(child.nodeId) ?? [];
+          } else {
+            const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+            const childProg = programStore.byId[child.nodeId];
+            childObjects = synthesizeBacnetObjects({
+              vendorModelId,
+              bindings: childProg?.bindings,
+              envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
+              envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
+            });
+          }
           const aiObj = childObjects.find((o) => o.type === 'analog-input');
           if (!aiObj) continue;
 
@@ -2705,15 +2833,22 @@
         if (offline.has(sub.childNodeId)) continue;
         const childNode = nodes.find((n) => n.id === sub.childNodeId);
         if (!childNode) continue;
-        const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
-        const childProg = programStore.byId[sub.childNodeId];
-        const childObjects = synthesizeBacnetObjects({
-          vendorModelId,
-          bindings: childProg?.bindings,
-          envInputs: controllerBridge.envInputsByCtrl.get(sub.childNodeId),
-          envOutputs: controllerBridge.envOutputsByCtrl.get(sub.childNodeId),
-        });
-        const obj = childObjects.find((o) => o.id === sub.objectId);
+        // vAHU nodes expose their BACnet objects via the cache populated
+        // this tick; all other node types use synthesizeBacnetObjects.
+        let childObjectsCov: import('@bas/core').BacnetObject[];
+        if (nodeKind(childNode) === 'vahu') {
+          childObjectsCov = vahuObjectsCache.get(sub.childNodeId) ?? [];
+        } else {
+          const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
+          const childProg = programStore.byId[sub.childNodeId];
+          childObjectsCov = synthesizeBacnetObjects({
+            vendorModelId,
+            bindings: childProg?.bindings,
+            envInputs: controllerBridge.envInputsByCtrl.get(sub.childNodeId),
+            envOutputs: controllerBridge.envOutputsByCtrl.get(sub.childNodeId),
+          });
+        }
+        const obj = childObjectsCov.find((o) => o.id === sub.objectId);
         if (!obj) continue;
         const cur = obj.presentValue;
         const last = sub.lastReportedValue;
@@ -3216,6 +3351,12 @@
           status = s.status;
           break;
         }
+        case 'vahu': {
+          // Show idle hint before sim is running.
+          value = 'G36 §5.18 — hit Run to start';
+          status = 'idle';
+          break;
+        }
         default:
           value = 'idle';
       }
@@ -3418,6 +3559,11 @@
     logEvent(simSecondsElapsed, 'info', 'sim', `Run stopped at t=${Math.round(simSecondsElapsed)}s.`);
     runningSnapshot = [];
     runningSystems = new Map();
+    // Reset vAHU state so the next Run() starts fresh (cold-start sequence).
+    vahuStates = new Map();
+    vahuObjectsCache = new Map();
+    vahuPrevInputs = new Map();
+    announcedIpPairs = new Set();
     if (intervalId) clearInterval(intervalId);
     intervalId = null;
     edges = edges.map((e) => withStyle({ ...e, animated: false }));
