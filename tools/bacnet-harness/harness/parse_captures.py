@@ -224,9 +224,23 @@ def parse_file(path):
     frames = run_tshark(path)
     hexmap = get_hex_payloads(path)
     txns, standalone = pair_transactions(frames, hexmap)
+    # Drop transactions where we can't recover the BACnet/IP UDP payload —
+    # captures mixing BACnet/IP with BACnet-over-Ethernet/LLC (e.g.
+    # atomic-write-file-seg.cap) leave the LLC frames with empty udp.payload,
+    # so they show up as transactions with empty `hex` and can't be diffed.
+    # The diff harness needs raw bytes; without them, there's nothing to
+    # compare. Logged in the meta for visibility.
+    pre = len(txns)
+    txns = [t for t in txns
+            if (t.get("request", {}).get("hex") or "") != ""
+            or (t.get("response", {}).get("hex") or "") != ""]
+    dropped_no_hex = pre - len(txns)
+    standalone = [e for e in standalone if (e.get("hex") or "") != ""]
+    out_meta = {"dropped_transactions_no_hex": dropped_no_hex} if dropped_no_hex else {}
     return {
         "capture": os.path.basename(path),
         "frame_count": len(frames),
+        **out_meta,
         "transactions": txns,
         "unconfirmed_events": standalone,
     }

@@ -45,6 +45,8 @@ from bacpypes3.apdu import (
     ComplexAckPDU,
     ErrorPDU,
     SimpleAckPDU,
+    RejectPDU,
+    AbortPDU,
     AtomicReadFileACK,
 )
 from bacpypes3.basetypes import (
@@ -125,26 +127,39 @@ class CodecRoundtripAdapter(SimulatorAdapter):
             return ""
 
         invoke_id = apdu.apduInvokeID
-        svc = apdu.apduService
 
-        # SimpleAcks have no service body — just a header. Skip the
-        # APCISequence.decode (which only handles types with a body) and
-        # build the shell directly.
-        if apdu.apduType == 2:
-            shell = SimpleAckPDU(service_choice=svc, invoke_id=invoke_id)
+        # SimpleAck / Reject / Abort carry no service body. Skip
+        # APCISequence.decode (it throws on header-only PDU types) and
+        # construct the right shell directly.
+        if apdu.apduType == 2:  # SimpleAck
+            shell = SimpleAckPDU(service_choice=apdu.apduService, invoke_id=invoke_id)
             apdu_wire = shell.encode()
-        elif apdu.apduType in (3, 5):
+        elif apdu.apduType == 6:  # Reject
+            shell = RejectPDU(invoke_id=invoke_id, reason=apdu.apduAbortRejectReason)
+            apdu_wire = shell.encode()
+        elif apdu.apduType == 7:  # Abort
+            shell = AbortPDU(srv=getattr(apdu, "apduSrv", 0),
+                              invoke_id=invoke_id,
+                              reason=apdu.apduAbortRejectReason)
+            apdu_wire = shell.encode()
+        elif apdu.apduType in (3, 5):  # ComplexAck / Error
             try:
                 svc_obj = APCISequence.decode(apdu)
             except Exception:
                 return ""
             if apdu.apduType == 3:
-                shell = ComplexAckPDU(service_choice=svc, invoke_id=invoke_id)
+                shell = ComplexAckPDU(service_choice=apdu.apduService, invoke_id=invoke_id)
                 shell.apduSeg = getattr(apdu, "apduSeg", 0)
                 shell.apduMor = getattr(apdu, "apduMor", 0)
                 shell.apduSA = 0  # SA is request-only; ack has no SA
+                # Segmented complex-acks carry sequence + window size in the
+                # APDU header (bytes 3-4 when apduSeg=1). Preserve them or
+                # the encoder AttributeErrors on missing apduSeq.
+                if shell.apduSeg:
+                    shell.apduSeq = getattr(apdu, "apduSeq", 0)
+                    shell.apduWin = getattr(apdu, "apduWin", 16)
             else:
-                shell = ErrorPDU(service_choice=svc, invoke_id=invoke_id)
+                shell = ErrorPDU(service_choice=apdu.apduService, invoke_id=invoke_id)
             shell.put_data(Sequence.encode(svc_obj).encode().pduData)
             apdu_wire = shell.encode()
         else:

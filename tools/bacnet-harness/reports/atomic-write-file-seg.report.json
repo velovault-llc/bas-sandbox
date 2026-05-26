@@ -1,0 +1,3623 @@
+{
+  "capture": "atomic-write-file-seg.cap",
+  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "byte_exact": false,
+  "passed": 278,
+  "total": 278,
+  "results": [
+    {
+      "invoke_id": "1",
+      "service": "6",
+      "request_frame": "3180",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 482,
+        "actual_len": 482,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "2",
+      "service": "6",
+      "request_frame": "3184",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "3",
+      "service": "6",
+      "request_frame": "3187",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "4",
+      "service": "6",
+      "request_frame": "3189",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "5",
+      "service": "6",
+      "request_frame": "3191",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "6",
+      "service": "6",
+      "request_frame": "3193",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "7",
+      "service": "6",
+      "request_frame": "3195",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "8",
+      "service": "6",
+      "request_frame": "3197",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "9",
+      "service": "6",
+      "request_frame": "3199",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "10",
+      "service": "6",
+      "request_frame": "3201",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "11",
+      "service": "6",
+      "request_frame": "3203",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "12",
+      "service": "6",
+      "request_frame": "3205",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "13",
+      "service": "6",
+      "request_frame": "3207",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "14",
+      "service": "6",
+      "request_frame": "3209",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "15",
+      "service": "6",
+      "request_frame": "3211",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "16",
+      "service": "6",
+      "request_frame": "3213",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "17",
+      "service": "6",
+      "request_frame": "3215",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "18",
+      "service": "6",
+      "request_frame": "3217",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "19",
+      "service": "6",
+      "request_frame": "3219",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "20",
+      "service": "6",
+      "request_frame": "3221",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "21",
+      "service": "6",
+      "request_frame": "3223",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "22",
+      "service": "6",
+      "request_frame": "3225",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "23",
+      "service": "6",
+      "request_frame": "3227",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "24",
+      "service": "6",
+      "request_frame": "3229",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "25",
+      "service": "6",
+      "request_frame": "3231",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "26",
+      "service": "6",
+      "request_frame": "3233",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "27",
+      "service": "6",
+      "request_frame": "3235",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "28",
+      "service": "6",
+      "request_frame": "3237",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "29",
+      "service": "6",
+      "request_frame": "3239",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "30",
+      "service": "6",
+      "request_frame": "3241",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "31",
+      "service": "6",
+      "request_frame": "3243",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "32",
+      "service": "6",
+      "request_frame": "3245",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "33",
+      "service": "6",
+      "request_frame": "3247",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "34",
+      "service": "6",
+      "request_frame": "3249",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "35",
+      "service": "6",
+      "request_frame": "3251",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "36",
+      "service": "6",
+      "request_frame": "3253",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "37",
+      "service": "6",
+      "request_frame": "3255",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "38",
+      "service": "6",
+      "request_frame": "3257",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "39",
+      "service": "6",
+      "request_frame": "3259",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "40",
+      "service": "6",
+      "request_frame": "3261",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "41",
+      "service": "6",
+      "request_frame": "3263",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "42",
+      "service": "6",
+      "request_frame": "3265",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "43",
+      "service": "6",
+      "request_frame": "3267",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "44",
+      "service": "6",
+      "request_frame": "3269",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "45",
+      "service": "6",
+      "request_frame": "3271",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "46",
+      "service": "6",
+      "request_frame": "3273",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "47",
+      "service": "6",
+      "request_frame": "3275",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "48",
+      "service": "6",
+      "request_frame": "3277",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "49",
+      "service": "6",
+      "request_frame": "3279",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "50",
+      "service": "6",
+      "request_frame": "3281",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "51",
+      "service": "6",
+      "request_frame": "3283",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "52",
+      "service": "6",
+      "request_frame": "3285",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "53",
+      "service": "6",
+      "request_frame": "3287",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "54",
+      "service": "6",
+      "request_frame": "3289",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "55",
+      "service": "6",
+      "request_frame": "3291",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "56",
+      "service": "6",
+      "request_frame": "3293",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "57",
+      "service": "6",
+      "request_frame": "3295",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "58",
+      "service": "6",
+      "request_frame": "3297",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "59",
+      "service": "6",
+      "request_frame": "3299",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "60",
+      "service": "6",
+      "request_frame": "3301",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "61",
+      "service": "6",
+      "request_frame": "3303",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "62",
+      "service": "6",
+      "request_frame": "3305",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "63",
+      "service": "6",
+      "request_frame": "3307",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "64",
+      "service": "6",
+      "request_frame": "3309",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "65",
+      "service": "6",
+      "request_frame": "3311",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "66",
+      "service": "6",
+      "request_frame": "3313",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "67",
+      "service": "6",
+      "request_frame": "3315",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "68",
+      "service": "6",
+      "request_frame": "3317",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "69",
+      "service": "6",
+      "request_frame": "3319",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "70",
+      "service": "6",
+      "request_frame": "3321",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "71",
+      "service": "6",
+      "request_frame": "3323",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "72",
+      "service": "6",
+      "request_frame": "3325",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "73",
+      "service": "6",
+      "request_frame": "3327",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "74",
+      "service": "6",
+      "request_frame": "3329",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "75",
+      "service": "6",
+      "request_frame": "3331",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "76",
+      "service": "6",
+      "request_frame": "3333",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "77",
+      "service": "6",
+      "request_frame": "3335",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "78",
+      "service": "6",
+      "request_frame": "3337",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "79",
+      "service": "6",
+      "request_frame": "3339",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "80",
+      "service": "6",
+      "request_frame": "3341",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "81",
+      "service": "6",
+      "request_frame": "3343",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "82",
+      "service": "6",
+      "request_frame": "3345",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "83",
+      "service": "6",
+      "request_frame": "3347",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "84",
+      "service": "6",
+      "request_frame": "3349",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "85",
+      "service": "6",
+      "request_frame": "3351",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "86",
+      "service": "6",
+      "request_frame": "3353",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "87",
+      "service": "6",
+      "request_frame": "3355",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "88",
+      "service": "6",
+      "request_frame": "3357",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "89",
+      "service": "6",
+      "request_frame": "3359",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "90",
+      "service": "6",
+      "request_frame": "3361",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "91",
+      "service": "6",
+      "request_frame": "3363",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "92",
+      "service": "6",
+      "request_frame": "3365",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "93",
+      "service": "6",
+      "request_frame": "3367",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "94",
+      "service": "6",
+      "request_frame": "3369",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "95",
+      "service": "6",
+      "request_frame": "3371",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "96",
+      "service": "6",
+      "request_frame": "3373",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "97",
+      "service": "6",
+      "request_frame": "3375",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "98",
+      "service": "6",
+      "request_frame": "3377",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "99",
+      "service": "6",
+      "request_frame": "3379",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "100",
+      "service": "6",
+      "request_frame": "3381",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "101",
+      "service": "6",
+      "request_frame": "3383",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "102",
+      "service": "6",
+      "request_frame": "3385",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "103",
+      "service": "6",
+      "request_frame": "3387",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "104",
+      "service": "6",
+      "request_frame": "3389",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "105",
+      "service": "6",
+      "request_frame": "3391",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "106",
+      "service": "6",
+      "request_frame": "3393",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "107",
+      "service": "6",
+      "request_frame": "3395",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "108",
+      "service": "6",
+      "request_frame": "3397",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "109",
+      "service": "6",
+      "request_frame": "3399",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "110",
+      "service": "6",
+      "request_frame": "3401",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "111",
+      "service": "6",
+      "request_frame": "3403",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "112",
+      "service": "6",
+      "request_frame": "3405",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "113",
+      "service": "6",
+      "request_frame": "3407",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "114",
+      "service": "6",
+      "request_frame": "3409",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "115",
+      "service": "6",
+      "request_frame": "3411",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "116",
+      "service": "6",
+      "request_frame": "3413",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "117",
+      "service": "6",
+      "request_frame": "3415",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "118",
+      "service": "6",
+      "request_frame": "3417",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "119",
+      "service": "6",
+      "request_frame": "3419",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "120",
+      "service": "6",
+      "request_frame": "3421",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "121",
+      "service": "6",
+      "request_frame": "3423",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "122",
+      "service": "6",
+      "request_frame": "3425",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "123",
+      "service": "6",
+      "request_frame": "3427",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "124",
+      "service": "6",
+      "request_frame": "3429",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "125",
+      "service": "6",
+      "request_frame": "3431",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "126",
+      "service": "6",
+      "request_frame": "3433",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "127",
+      "service": "6",
+      "request_frame": "3435",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "128",
+      "service": "6",
+      "request_frame": "3437",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "129",
+      "service": "6",
+      "request_frame": "3439",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "130",
+      "service": "6",
+      "request_frame": "3441",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "131",
+      "service": "6",
+      "request_frame": "3443",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "132",
+      "service": "6",
+      "request_frame": "3445",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "133",
+      "service": "6",
+      "request_frame": "3447",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "134",
+      "service": "6",
+      "request_frame": "3449",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "135",
+      "service": "6",
+      "request_frame": "3451",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "136",
+      "service": "6",
+      "request_frame": "3453",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "137",
+      "service": "6",
+      "request_frame": "3455",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "138",
+      "service": "6",
+      "request_frame": "3457",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "139",
+      "service": "6",
+      "request_frame": "3459",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 223,
+        "actual_len": 223,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "1",
+      "service": "6",
+      "request_frame": "3464",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 482,
+        "actual_len": 482,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "2",
+      "service": "6",
+      "request_frame": "3467",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "3",
+      "service": "6",
+      "request_frame": "3470",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "4",
+      "service": "6",
+      "request_frame": "3473",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "5",
+      "service": "6",
+      "request_frame": "3475",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "6",
+      "service": "6",
+      "request_frame": "3477",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "7",
+      "service": "6",
+      "request_frame": "3479",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "8",
+      "service": "6",
+      "request_frame": "3481",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "9",
+      "service": "6",
+      "request_frame": "3483",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "10",
+      "service": "6",
+      "request_frame": "3485",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "11",
+      "service": "6",
+      "request_frame": "3487",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "12",
+      "service": "6",
+      "request_frame": "3489",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "13",
+      "service": "6",
+      "request_frame": "3491",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "14",
+      "service": "6",
+      "request_frame": "3493",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "15",
+      "service": "6",
+      "request_frame": "3495",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "16",
+      "service": "6",
+      "request_frame": "3497",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "17",
+      "service": "6",
+      "request_frame": "3499",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "18",
+      "service": "6",
+      "request_frame": "3501",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "19",
+      "service": "6",
+      "request_frame": "3503",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "20",
+      "service": "6",
+      "request_frame": "3505",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "21",
+      "service": "6",
+      "request_frame": "3507",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "22",
+      "service": "6",
+      "request_frame": "3509",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "23",
+      "service": "6",
+      "request_frame": "3511",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "24",
+      "service": "6",
+      "request_frame": "3513",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "25",
+      "service": "6",
+      "request_frame": "3515",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "26",
+      "service": "6",
+      "request_frame": "3517",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "27",
+      "service": "6",
+      "request_frame": "3519",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "28",
+      "service": "6",
+      "request_frame": "3521",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "29",
+      "service": "6",
+      "request_frame": "3523",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "30",
+      "service": "6",
+      "request_frame": "3525",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "31",
+      "service": "6",
+      "request_frame": "3527",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "32",
+      "service": "6",
+      "request_frame": "3529",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "33",
+      "service": "6",
+      "request_frame": "3531",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "34",
+      "service": "6",
+      "request_frame": "3533",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "35",
+      "service": "6",
+      "request_frame": "3535",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "36",
+      "service": "6",
+      "request_frame": "3537",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "37",
+      "service": "6",
+      "request_frame": "3539",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "38",
+      "service": "6",
+      "request_frame": "3541",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "39",
+      "service": "6",
+      "request_frame": "3543",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "40",
+      "service": "6",
+      "request_frame": "3545",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "41",
+      "service": "6",
+      "request_frame": "3547",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "42",
+      "service": "6",
+      "request_frame": "3549",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "43",
+      "service": "6",
+      "request_frame": "3551",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "44",
+      "service": "6",
+      "request_frame": "3553",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "45",
+      "service": "6",
+      "request_frame": "3555",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "46",
+      "service": "6",
+      "request_frame": "3557",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "47",
+      "service": "6",
+      "request_frame": "3559",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "48",
+      "service": "6",
+      "request_frame": "3561",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "49",
+      "service": "6",
+      "request_frame": "3563",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "50",
+      "service": "6",
+      "request_frame": "3565",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "51",
+      "service": "6",
+      "request_frame": "3567",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "52",
+      "service": "6",
+      "request_frame": "3569",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "53",
+      "service": "6",
+      "request_frame": "3571",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "54",
+      "service": "6",
+      "request_frame": "3573",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "55",
+      "service": "6",
+      "request_frame": "3575",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "56",
+      "service": "6",
+      "request_frame": "3577",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "57",
+      "service": "6",
+      "request_frame": "3579",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "58",
+      "service": "6",
+      "request_frame": "3581",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "59",
+      "service": "6",
+      "request_frame": "3583",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "60",
+      "service": "6",
+      "request_frame": "3585",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "61",
+      "service": "6",
+      "request_frame": "3587",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "62",
+      "service": "6",
+      "request_frame": "3589",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "63",
+      "service": "6",
+      "request_frame": "3591",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "64",
+      "service": "6",
+      "request_frame": "3593",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "65",
+      "service": "6",
+      "request_frame": "3595",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "66",
+      "service": "6",
+      "request_frame": "3597",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "67",
+      "service": "6",
+      "request_frame": "3599",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "68",
+      "service": "6",
+      "request_frame": "3601",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "69",
+      "service": "6",
+      "request_frame": "3603",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "70",
+      "service": "6",
+      "request_frame": "3605",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "71",
+      "service": "6",
+      "request_frame": "3607",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 483,
+        "actual_len": 483,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "72",
+      "service": "6",
+      "request_frame": "3609",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "73",
+      "service": "6",
+      "request_frame": "3611",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "74",
+      "service": "6",
+      "request_frame": "3613",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "75",
+      "service": "6",
+      "request_frame": "3615",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "76",
+      "service": "6",
+      "request_frame": "3617",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "77",
+      "service": "6",
+      "request_frame": "3619",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "78",
+      "service": "6",
+      "request_frame": "3621",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "79",
+      "service": "6",
+      "request_frame": "3623",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "80",
+      "service": "6",
+      "request_frame": "3625",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "81",
+      "service": "6",
+      "request_frame": "3627",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "82",
+      "service": "6",
+      "request_frame": "3629",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "83",
+      "service": "6",
+      "request_frame": "3631",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "84",
+      "service": "6",
+      "request_frame": "3633",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "85",
+      "service": "6",
+      "request_frame": "3635",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "86",
+      "service": "6",
+      "request_frame": "3637",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "87",
+      "service": "6",
+      "request_frame": "3639",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "88",
+      "service": "6",
+      "request_frame": "3641",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "89",
+      "service": "6",
+      "request_frame": "3643",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "90",
+      "service": "6",
+      "request_frame": "3645",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "91",
+      "service": "6",
+      "request_frame": "3647",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "92",
+      "service": "6",
+      "request_frame": "3649",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "93",
+      "service": "6",
+      "request_frame": "3651",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "94",
+      "service": "6",
+      "request_frame": "3653",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "95",
+      "service": "6",
+      "request_frame": "3655",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "96",
+      "service": "6",
+      "request_frame": "3657",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "97",
+      "service": "6",
+      "request_frame": "3659",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "98",
+      "service": "6",
+      "request_frame": "3661",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "99",
+      "service": "6",
+      "request_frame": "3663",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "100",
+      "service": "6",
+      "request_frame": "3665",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "101",
+      "service": "6",
+      "request_frame": "3667",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "102",
+      "service": "6",
+      "request_frame": "3669",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "103",
+      "service": "6",
+      "request_frame": "3671",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "104",
+      "service": "6",
+      "request_frame": "3673",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "105",
+      "service": "6",
+      "request_frame": "3675",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "106",
+      "service": "6",
+      "request_frame": "3677",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "107",
+      "service": "6",
+      "request_frame": "3679",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "108",
+      "service": "6",
+      "request_frame": "3681",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "109",
+      "service": "6",
+      "request_frame": "3683",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "110",
+      "service": "6",
+      "request_frame": "3685",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "111",
+      "service": "6",
+      "request_frame": "3687",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "112",
+      "service": "6",
+      "request_frame": "3689",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "113",
+      "service": "6",
+      "request_frame": "3691",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "114",
+      "service": "6",
+      "request_frame": "3693",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "115",
+      "service": "6",
+      "request_frame": "3695",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "116",
+      "service": "6",
+      "request_frame": "3697",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "117",
+      "service": "6",
+      "request_frame": "3699",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "118",
+      "service": "6",
+      "request_frame": "3701",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "119",
+      "service": "6",
+      "request_frame": "3703",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "120",
+      "service": "6",
+      "request_frame": "3705",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "121",
+      "service": "6",
+      "request_frame": "3707",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "122",
+      "service": "6",
+      "request_frame": "3709",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "123",
+      "service": "6",
+      "request_frame": "3711",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "124",
+      "service": "6",
+      "request_frame": "3713",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "125",
+      "service": "6",
+      "request_frame": "3715",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "126",
+      "service": "6",
+      "request_frame": "3717",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "127",
+      "service": "6",
+      "request_frame": "3719",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "128",
+      "service": "6",
+      "request_frame": "3721",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "129",
+      "service": "6",
+      "request_frame": "3723",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "130",
+      "service": "6",
+      "request_frame": "3725",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "131",
+      "service": "6",
+      "request_frame": "3727",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "132",
+      "service": "6",
+      "request_frame": "3729",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "133",
+      "service": "6",
+      "request_frame": "3731",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "134",
+      "service": "6",
+      "request_frame": "3733",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "135",
+      "service": "6",
+      "request_frame": "3735",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "136",
+      "service": "6",
+      "request_frame": "3737",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "137",
+      "service": "6",
+      "request_frame": "3739",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "138",
+      "service": "6",
+      "request_frame": "3741",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 484,
+        "actual_len": 484,
+        "length_match": true,
+        "match": "exact"
+      }
+    },
+    {
+      "invoke_id": "139",
+      "service": "6",
+      "request_frame": "3743",
+      "passed": true,
+      "details": {
+        "expected_apdu_type": "complex-ack",
+        "expected_len": 223,
+        "actual_len": 223,
+        "length_match": true,
+        "match": "exact"
+      }
+    }
+  ]
+}
