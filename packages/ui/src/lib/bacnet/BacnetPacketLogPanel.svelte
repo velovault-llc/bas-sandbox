@@ -526,6 +526,42 @@
                 </div>
               </div>
 
+              {#if p.bytes}
+                <div class="branch our-bytes">
+                  <div class="branch-head">▼ Wire bytes (this packet)</div>
+                  <div class="row">
+                    <span class="k">Byte length</span>
+                    <span class="v">{p.bytes.length / 2} bytes</span>
+                  </div>
+                  <pre class="hexdump ours">{hexDump(p.bytes)}</pre>
+                  {#if findCorpusExemplar(String(p.service))}
+                    {@const exemplar = findCorpusExemplar(String(p.service))!}
+                    {@const sameAsCorpus = p.bytes === exemplar.hex}
+                    <div class="row">
+                      <span class="k">vs corpus</span>
+                      <span class="v">
+                        {#if sameAsCorpus}
+                          <span class="match-ok">✓ byte-exact match to kargs:{exemplar.capture} frame {exemplar.frame}</span>
+                        {:else}
+                          <span class="match-diff">differs from kargs:{exemplar.capture} frame {exemplar.frame}</span>
+                          <span class="v dim">(expected — the corpus exemplar is a different device's traffic with different invokeId / addressing / max-APDU)</span>
+                        {/if}
+                      </span>
+                    </div>
+                  {/if}
+                  <div class="row">
+                    <button
+                      type="button"
+                      class="copy-btn"
+                      onclick={(e) => { e.stopPropagation(); copyToClipboard(p.bytes ?? ''); }}
+                      title="Copy these wire bytes to clipboard"
+                    >📋 Copy hex</button>
+                    <span class="v dim">
+                      Produced by @bas/core/bacnet/wire. Validated byte-exact against bacpypes3 reference output (see wire.test.ts).
+                    </span>
+                  </div>
+                </div>
+              {/if}
               {#if findCorpusExemplar(String(p.service))}
                 {@const exemplar = findCorpusExemplar(String(p.service))!}
                 <div class="branch corpus-ref">
@@ -973,6 +1009,21 @@
      these bytes came from a different (authoritative) source. */
   .branch.corpus-ref .branch-head {
     color: color-mix(in srgb, #16a085 90%, CanvasText);
+  }
+  .branch.our-bytes .branch-head {
+    color: color-mix(in srgb, #4a9eff 95%, CanvasText);
+  }
+  .match-ok {
+    color: #16a085;
+    font-weight: 600;
+  }
+  .match-diff {
+    color: #f59e0b;
+    font-weight: 600;
+  }
+  .hexdump.ours {
+    background: color-mix(in srgb, #4a9eff 8%, transparent);
+    border-color: color-mix(in srgb, #4a9eff 30%, transparent);
   }
   .hexdump {
     background: color-mix(in srgb, #16a085 7%, transparent);

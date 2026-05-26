@@ -266,6 +266,22 @@ export { CORPUS_EXEMPLARS, findCorpusExemplar, hexDump } from './corpus/exemplar
 export type { CorpusExemplar } from './corpus/exemplars.js';
 
 export {
+  encodeWhoIs,
+  encodeIAm,
+  encodeReadProperty,
+  encodeSimpleAck,
+  bytesToHex,
+  BVLC_TYPE_BACNET_IP,
+  BVLC_FN_ORIGINAL_UNICAST_NPDU,
+  BVLC_FN_ORIGINAL_BROADCAST_NPDU,
+  BVLC_FN_FORWARDED_NPDU,
+  APDU_TYPE_CONFIRMED_REQUEST,
+  APDU_TYPE_UNCONFIRMED_REQUEST,
+  APDU_TYPE_SIMPLE_ACK,
+  APDU_TYPE_COMPLEX_ACK,
+} from './bacnet/wire.js';
+
+export {
   EXPERIMENT_CATALOG,
   findExperiment,
   experimentsByTag,

@@ -81,6 +81,10 @@ export interface BacnetPacket {
   readonly summary: string;
   /** Optional category for filter coloring. */
   readonly layer: 'link' | 'app';
+  /** Real BACnet/IP wire bytes (lowercase hex). Populated by the emit
+   *  module when the wire encoder supports the service. The packet
+   *  inspector renders these alongside the real-corpus reference. */
+  readonly bytes?: string;
 }
 
 export type LayerFilter = 'all' | 'link' | 'app';

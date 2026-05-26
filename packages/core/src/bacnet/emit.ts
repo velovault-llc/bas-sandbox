@@ -34,6 +34,12 @@
 // ConformancePacket. Callers cast/extend as needed.
 
 import type { ConformancePacket } from './conformance.js';
+import {
+  encodeWhoIs as wireEncodeWhoIs,
+  encodeIAm as wireEncodeIAm,
+  encodeReadProperty as wireEncodeReadProperty,
+  bytesToHex,
+} from './wire.js';
 
 /** Transport that wraps the packet. Drives the BVLC function code
  *  suffix in the summary line. */
@@ -86,6 +92,12 @@ export interface BuiltPacket {
   /** 'app' = application layer (ReadProperty etc.). 'link' = MS/TP
    *  link-layer (Token-Pass etc.). */
   readonly layer: 'app' | 'link';
+  /** Real BACnet/IP wire bytes when the wire encoder supports this
+   *  service. Lowercase hex. Optional because not every service has a
+   *  TS encoder yet (see packages/core/src/bacnet/wire.ts for the
+   *  currently-covered set). The packet inspector renders these
+   *  alongside the real-corpus reference when present. */
+  readonly bytes?: string;
 }
 
 /** Convert a BuiltPacket to a ConformancePacket (drops UI-only
@@ -152,6 +164,8 @@ export function emitWhoIs(opts: {
     srcLabel: opts.srcLabel,
     trunkId: opts.trunkId,
     layer: 'app',
+    // Real wire bytes — the unbounded form is byte-stable.
+    bytes: bytesToHex(wireEncodeWhoIs()),
   };
 }
 
@@ -191,6 +205,13 @@ export function emitIAm(opts: {
     dstMac: opts.dstMac,
     trunkId: opts.trunkId,
     layer: 'app',
+    bytes: bytesToHex(wireEncodeIAm({
+      deviceInstance: opts.deviceInstance,
+      maxApdu: maxApdu,
+      segmentation: seg,
+      vendorId: opts.vendorId,
+      broadcast: transport !== 'unicast-ip',
+    })),
   };
 }
 
@@ -214,6 +235,19 @@ export function emitReadProperty(opts: {
   const summary =
     `${opts.srcLabel}${dstPart}: ReadProperty ${opts.objectId} ` +
     `${opts.propertyName} (${opts.propertyId}) · invokeId ${opts.invokeId} · NPDU Expecting-Reply`;
+  // Real wire bytes when the object-id syntax matches our known set.
+  // Fall through to undefined for unsupported object types — the
+  // inspector renders honest placeholder text rather than fake bytes.
+  let wireBytes: string | undefined;
+  try {
+    wireBytes = bytesToHex(wireEncodeReadProperty({
+      invokeId: opts.invokeId,
+      objectId: opts.objectId,
+      propertyId: opts.propertyId,
+    }));
+  } catch {
+    wireBytes = undefined;
+  }
   return {
     simSec: opts.simSec,
     service: 'ReadProperty',
@@ -227,6 +261,7 @@ export function emitReadProperty(opts: {
     propertyId: opts.propertyId,
     propertyName: opts.propertyName,
     layer: 'app',
+    bytes: wireBytes,
   };
 }
 
