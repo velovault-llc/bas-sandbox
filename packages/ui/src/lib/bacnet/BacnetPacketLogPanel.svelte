@@ -118,11 +118,20 @@
     // MAC display for MS/TP frames. The fixed-width MAC column gets
     // padded; label columns expand to fit so JACE-MAIN and VAV-101
     // don't get truncated to "MAC".
+    //
+    // Defensive: also reject the literal STRING "undefined" — that's
+    // what shows up when a caller template-literal-stringified an
+    // undefined JS value into the label field (`${undef}` → "undefined").
+    // Treating it as missing falls through to the MAC display or "?".
+    const cleanLabel = (s: string | undefined): string | undefined =>
+      s && s !== 'undefined' && s.trim().length > 0 ? s : undefined;
+    const srcLbl = cleanLabel(p.srcLabel);
+    const dstLbl = cleanLabel(p.dstLabel);
     const srcStr =
-      p.srcLabel ??
+      srcLbl ??
       (p.srcMac !== undefined ? `MAC ${String(p.srcMac).padStart(3, ' ')}` : '   ?');
     const dstStr =
-      p.dstLabel ??
+      dstLbl ??
       (p.dstMac !== undefined ? `MAC ${String(p.dstMac).padStart(3, ' ')}` : '  *');
     return `${srcStr} → ${dstStr}`;
   }

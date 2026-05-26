@@ -14,6 +14,7 @@
   import BasNode from './BasNode.svelte';
   import SubnetZone from './SubnetZone.svelte';
   import MiniChart, { type ChartSeries } from './MiniChart.svelte';
+  import CorpusBadge from './bacnet/CorpusBadge.svelte';
   import {
     SingleZoneSystem,
     DEFAULT_CONFIG,
@@ -1611,6 +1612,37 @@
     // Trigger reactivity on the samples map for the chart.
     runningSamples = new Map(samples);
 
+    // ── Helper: compute fallback AI present-values for a controller ──
+    // When a controller has no user program (no bindings, no envInputs),
+    // synthesizeBacnetObjects normally fills every AI with 0. That made the
+    // COV firehose demo's packet log show "AI:1 = 0" forever even when the
+    // wired thermal sim was producing rich data. This helper pulls the
+    // running sample's T_sensed (and a few more fields) so AI:1..4 carry
+    // the values a real device would actually report. Sensor.1 fix.
+    function defaultAiSeed(childNodeId: string): {
+      values: readonly number[];
+      units?: string;
+      name?: string;
+    } {
+      const sample = sampleByCtrl.get(childNodeId);
+      if (sample) {
+        // AI:1 = zone-temp from the wired sensor; AI:2 = OAT; AI:3 = current
+        // setpoint; AI:4 = PI command (0-100% scale). Matches the kind of
+        // object map a real VAV controller publishes for upstream readback.
+        return {
+          values: [
+            sample.T_sensed,
+            sample.T_OA,
+            sample.setpoint,
+            sample.actuator * 100,
+          ],
+          units: '°F',
+          name: 'Zone Temp',
+        };
+      }
+      return { values: [] };
+    }
+
     // Build a node-id → physics-driven-value lookup so the runtime pass is direct.
     const physicsValueByNode = new Map<
       string,
@@ -2384,9 +2416,13 @@
             const childNode = nodes.find((n) => n.id === d.nodeId);
             const vendorModelId = (childNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
             const childProg = programStore.byId[d.nodeId];
+            const aiSeed = defaultAiSeed(d.nodeId);
             const childObjects = synthesizeBacnetObjects({
               vendorModelId,
               bindings: childProg?.bindings,
+              defaultAiValues: aiSeed.values,
+              defaultAiUnits: aiSeed.units,
+              defaultAi1Name: aiSeed.name,
               envInputs: controllerBridge.envInputsByCtrl.get(d.nodeId),
               envOutputs: controllerBridge.envOutputsByCtrl.get(d.nodeId),
             });
@@ -2493,14 +2529,19 @@
           while (simSecondsElapsed >= nextSimSec && firedThisTick < 3) {
             const child = children[nextChildIdx % children.length];
             // Synthesize the child's BACnet objects so we can name a real
-            // AI to read. Falls back to AI:1 with the value 0 if the child
-            // has no bindings yet.
+            // AI to read. With Sensor.1 in place, unprogrammed children fall
+            // back to the wired sensor's reading (T_sensed) for AI:1 — the
+            // packet log now shows real zone temps instead of 0.
             const childNode = nodes.find((n) => n.id === child.nodeId);
             const vendorModelId = (childNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
             const childProg = programStore.byId[child.nodeId];
+            const aiSeed = defaultAiSeed(child.nodeId);
             const childObjects = synthesizeBacnetObjects({
               vendorModelId,
               bindings: childProg?.bindings,
+              defaultAiValues: aiSeed.values,
+              defaultAiUnits: aiSeed.units,
+              defaultAi1Name: aiSeed.name,
               envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
               envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
             });
@@ -2720,9 +2761,13 @@
           } else {
             const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
             const childProg = programStore.byId[child.nodeId];
+            const aiSeed = defaultAiSeed(child.nodeId);
             childObjects = synthesizeBacnetObjects({
               vendorModelId,
               bindings: childProg?.bindings,
+              defaultAiValues: aiSeed.values,
+              defaultAiUnits: aiSeed.units,
+              defaultAi1Name: aiSeed.name,
               envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
               envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
             });
@@ -2841,9 +2886,13 @@
         } else {
           const vendorModelId = (childNode.data as { vendorModelId?: string } | undefined)?.vendorModelId;
           const childProg = programStore.byId[sub.childNodeId];
+          const aiSeed = defaultAiSeed(sub.childNodeId);
           childObjectsCov = synthesizeBacnetObjects({
             vendorModelId,
             bindings: childProg?.bindings,
+            defaultAiValues: aiSeed.values,
+            defaultAiUnits: aiSeed.units,
+            defaultAi1Name: aiSeed.name,
             envInputs: controllerBridge.envInputsByCtrl.get(sub.childNodeId),
             envOutputs: controllerBridge.envOutputsByCtrl.get(sub.childNodeId),
           });
@@ -7013,6 +7062,7 @@
             >
               ⟲ Reset
             </button>
+            <CorpusBadge />
           </div>
         </Panel>
 

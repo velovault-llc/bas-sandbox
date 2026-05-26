@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG, type SingleZoneConfig } from './sim/thermal';
 import type { BasScenarioV1, WiredTargetSpec } from './scenario';
 
 type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
-type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller' | 'vahu';
+type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller' | 'vahu' | 'zone';
 
 type SpecNode = {
   id: string;

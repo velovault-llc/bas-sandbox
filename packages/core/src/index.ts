@@ -256,6 +256,13 @@ export {
   findByCitation as findLibraryByCitation,
 } from './references/library.js';
 
+export { CORPUS_VALIDATION_SUMMARY } from './corpus/index.js';
+export type {
+  CorpusValidationSummary,
+  CorpusCaptureResult,
+  CorpusAdapter,
+} from './corpus/index.js';
+
 export {
   EXPERIMENT_CATALOG,
   findExperiment,

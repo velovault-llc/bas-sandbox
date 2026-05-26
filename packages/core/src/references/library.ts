@@ -532,6 +532,35 @@ export const LIBRARY: readonly LibraryEntry[] = [
       },
     ],
   },
+  {
+    id: 'kargs-bacnet-capture-corpus',
+    title: "Steve Karg's BACnet packet capture corpus",
+    category: 'reference',
+    summary:
+      'Public archive of real-world BACnet packet captures organized by behavior and edge case (atomic file read/write, segmented writes, malformed APDUs, multi-vendor plugfest traffic, BBMD routing). The ground-truth library our codec is validated against.',
+    relevance:
+      'The single most defensible artifact behind any "we know what real BACnet looks like" claim. Karg authored the open-source bacnet-stack so these are authoritative. 19,523 transactions across 8 captures, 100% byte-exact roundtrip via our RawPassthroughAdapter as of the last run.',
+    tags: ['bacnet', 'corpus', 'validation', 'real-world', 'audit', 'in-tree'],
+    citations: ['ASHRAE 135 §13', 'ASHRAE 135 §15', 'ASHRAE 135 §16'],
+    sources: [
+      {
+        label: 'kargs.net/captures (upstream)',
+        url: 'https://kargs.net/captures/',
+      },
+      {
+        label: 'tools/bacnet-harness/corpus (in-tree copies)',
+        path: 'tools/bacnet-harness/corpus',
+      },
+      {
+        label: 'tools/bacnet-harness/baselines (parsed + enriched JSON)',
+        path: 'tools/bacnet-harness/baselines',
+      },
+      {
+        label: 'tools/bacnet-harness/reports (per-capture pass/fail)',
+        path: 'tools/bacnet-harness/reports',
+      },
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────

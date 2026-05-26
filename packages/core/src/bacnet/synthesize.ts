@@ -28,6 +28,25 @@ export interface SynthesizeInputs {
   readonly envInputs: Record<string, number | boolean> | undefined;
   /** Latest env.outputs map for the controller. */
   readonly envOutputs: Record<string, number> | undefined;
+  /**
+   * Fallback present-value for unbound AI objects, indexed 0-based
+   * (defaultAiValues[0] → AI:1, [1] → AI:2, ...). Callers fill this in
+   * with real sensor readings from the running physics so a
+   * controller without a user program still surfaces meaningful
+   * data on the wire — the showcase demo VAVs used to report AI:1=0
+   * for every poll which made the packet log look broken even when
+   * the thermal sim was producing rich data. With this populated,
+   * AI:1 reports the wired sensor's reading instead.
+   * Optional. Falls back to 0 when missing.
+   */
+  readonly defaultAiValues?: readonly number[];
+  /** Default AI units to apply when a position has no role binding —
+   *  usually '°F' for a zone-temp fallback. Optional. */
+  readonly defaultAiUnits?: string;
+  /** Optional default name for unbound AI:1 (e.g. "Zone Temp" from a
+   *  wired sensor's subject). Helps the packet log read like a real
+   *  device's name table instead of "AI-1 (unassigned)". */
+  readonly defaultAi1Name?: string;
 }
 
 /**
@@ -52,7 +71,19 @@ export function synthesizeBacnetObjects(input: SynthesizeInputs): BacnetObject[]
       const binding = bindings.find((b) => b.terminalId === terminalId);
       const roleTpl = binding ? findTileTemplate(binding.role) : undefined;
       const envKey = roleTpl?.envKey;
-      const value = envKey && envKey in envIn ? envIn[envKey] : 0;
+      // Preference order for an AI's presentValue:
+      //   1. program-bound role (envIn[envKey])
+      //   2. caller-supplied fallback for THIS AI position
+      //   3. zero
+      // (2) is what makes unprogrammed controllers report real sensor
+      // readings instead of 0 — the canvas tick loop populates it from
+      // any running thermal sample for IP-paired children.
+      let value: number | boolean = 0;
+      if (envKey && envKey in envIn) {
+        value = envIn[envKey];
+      } else if (kind !== 'BI' && input.defaultAiValues && aiInstance - 1 < input.defaultAiValues.length) {
+        value = input.defaultAiValues[aiInstance - 1];
+      }
       const treatAsBinary = kind === 'BI' ||
         binding?.role === 'occupancy' ||
         roleTpl?.envKey === 'occ' ||
@@ -69,13 +100,22 @@ export function synthesizeBacnetObjects(input: SynthesizeInputs): BacnetObject[]
           terminalId,
         });
       } else {
+        const usingFallback =
+          !(envKey && envKey in envIn) &&
+          input.defaultAiValues !== undefined &&
+          aiInstance - 1 < input.defaultAiValues.length;
+        const fallbackName = aiInstance === 1 ? input.defaultAi1Name : undefined;
         objects.push({
           id: bacnetObjectId('analog-input', aiInstance),
           type: 'analog-input',
           instance: aiInstance++,
-          name: roleTpl ? roleTpl.display : `${terminalId} (unassigned)`,
+          name: roleTpl ? roleTpl.display :
+                fallbackName ? fallbackName :
+                usingFallback ? `${terminalId} (sensor reading)` :
+                `${terminalId} (unassigned)`,
           description: roleTpl?.description,
-          units: bacnetUnitsForRole(binding?.role),
+          units: bacnetUnitsForRole(binding?.role) ||
+                 (usingFallback ? input.defaultAiUnits : undefined),
           presentValue: typeof value === 'number' ? value : 0,
           terminalId,
         });
