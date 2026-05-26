@@ -11,6 +11,7 @@
   // Lives bottom-left so it doesn't fight the runtime log for space.
 
   import { onMount } from 'svelte';
+  import { findCorpusExemplar, hexDump } from '@bas/core';
   import {
     bacnetPacketLog,
     clearPackets,
@@ -525,14 +526,53 @@
                 </div>
               </div>
 
-              <div class="branch hex-todo">
-                <div class="branch-head dim">▾ Raw bytes</div>
-                <div class="row dim">
-                  Hex dump not yet available — emit.ts currently produces
-                  human summaries, not wire bytes. The Node bridge
-                  milestone (planned) will populate this section.
+              {#if findCorpusExemplar(String(p.service))}
+                {@const exemplar = findCorpusExemplar(String(p.service))!}
+                <div class="branch corpus-ref">
+                  <div class="branch-head">▼ Real-corpus reference</div>
+                  <div class="row">
+                    <span class="k">Source</span>
+                    <span class="v">
+                      <code>kargs:{exemplar.capture}</code> frame {exemplar.frame}
+                    </span>
+                  </div>
+                  <div class="row">
+                    <span class="k">Real-device context</span>
+                    <span class="v">{exemplar.context}</span>
+                  </div>
+                  <div class="row">
+                    <span class="k">Byte length</span>
+                    <span class="v">{exemplar.byteLength} bytes</span>
+                  </div>
+                  <pre class="hexdump">{hexDump(exemplar.hex)}</pre>
+                  <div class="row">
+                    <button
+                      type="button"
+                      class="copy-btn"
+                      onclick={(e) => { e.stopPropagation(); copyToClipboard(exemplar.hex); }}
+                      title="Copy raw hex to clipboard"
+                    >📋 Copy hex</button>
+                    <span class="v dim">
+                      Real bytes captured on a {exemplar.capture.includes('plugfest') ? 'multi-vendor plugfest' : 'real BACnet'} network. Our sandbox doesn't emit these bytes yet — coming with the Node bridge milestone.
+                    </span>
+                  </div>
                 </div>
-              </div>
+              {:else}
+                <div class="branch hex-todo">
+                  <div class="branch-head dim">▾ Real-corpus reference</div>
+                  <div class="row dim">
+                    <span class="k">Service</span>
+                    <span class="v">No corpus exemplar for <code>{p.service}</code> yet.</span>
+                  </div>
+                  <div class="row dim">
+                    <span class="v">
+                      Closes when the bacpypes3 reference-device milestone lands — that's the
+                      tool we'll use to generate real wire bytes for services not in the
+                      public capture corpus (Who-Is, I-Am, SubscribeCOV, COV-Notification, etc.).
+                    </span>
+                  </div>
+                </div>
+              {/if}
             </div>
           </div>
         {/if}
@@ -927,5 +967,28 @@
   .copy-btn:hover {
     background: color-mix(in srgb, CanvasText 8%, transparent);
     color: CanvasText;
+  }
+  /* Real-corpus reference branch — visually distinct from the
+     sandbox-synthesized branches above it so the user understands
+     these bytes came from a different (authoritative) source. */
+  .branch.corpus-ref .branch-head {
+    color: color-mix(in srgb, #16a085 90%, CanvasText);
+  }
+  .hexdump {
+    background: color-mix(in srgb, #16a085 7%, transparent);
+    border: 1px solid color-mix(in srgb, #16a085 25%, transparent);
+    color: color-mix(in srgb, CanvasText 88%, transparent);
+    padding: 0.45rem 0.6rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    margin: 0.3rem 0 0.3rem 0.8rem;
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 18rem;
+    overflow-y: auto;
   }
 </style>

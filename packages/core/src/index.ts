@@ -262,6 +262,8 @@ export type {
   CorpusCaptureResult,
   CorpusAdapter,
 } from './corpus/index.js';
+export { CORPUS_EXEMPLARS, findCorpusExemplar, hexDump } from './corpus/exemplars.js';
+export type { CorpusExemplar } from './corpus/exemplars.js';
 
 export {
   EXPERIMENT_CATALOG,
