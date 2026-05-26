@@ -13,6 +13,8 @@ import {
   encodeReadProperty,
   encodeReadPropertyAck,
   encodeSubscribeCov,
+  encodeConfirmedCovNotification,
+  encodeUnconfirmedCovNotification,
   encodeSimpleAck,
   bytesToHex,
 } from '../src/bacnet/wire.js';
@@ -152,6 +154,65 @@ describe('wire encoder — byte-exact against bacpypes3 reference', () => {
       issueConfirmed: false,
       lifetimeSeconds: 0,
     }))).toBe('810a001501040005c805 092a 1c00800005 2900 3900'.replace(/\s/g, ''));
+  });
+
+  it('encodes ConfirmedCOVNotification (process=1, device:4321 reports AI:1 = 73.4)', () => {
+    // bacpypes3 reference (ConfirmedCOVNotificationRequest with the
+    // standard two-property listOfValues — present-value + status-flags
+    // all clear). Frame breakdown:
+    //   810a002b 0104 00 05 0b 01           ← BVLC + NPDU + APDU header (svc=1, inv=11)
+    //   09 01                                ← ctx0  procId=1
+    //   1c 020010e1                          ← ctx1  device,4321 (0x008<<22 | 0x10e1)
+    //   2c 00000001                          ← ctx2  analog-input,1
+    //   3a 021c                              ← ctx3  timeRemaining=540
+    //   4e                                   ← opening tag 4 (listOfValues)
+    //     09 55  2e 44 4292cccd 2f           ← present-value = 73.4 (Real)
+    //     09 6f  2e 82 04 00 2f              ← status-flags  = BitString (4 zero bits)
+    //   4f                                   ← closing tag 4
+    expect(bytesToHex(encodeConfirmedCovNotification({
+      invokeId: 11,
+      subscriberProcessId: 1,
+      initiatingDeviceId: 4321,
+      monitoredObjectId: 'AI:1',
+      timeRemainingSec: 540,
+      presentValue: 73.4,
+      statusFlags: { inAlarm: false, fault: false, overridden: false, outOfService: false },
+    }))).toBe('810a002b010400050b0109011c020010e12c000000013a021c4e09552e444292cccd2f096f2e8204002f4f');
+  });
+
+  it('encodes UnconfirmedCOVNotification (same payload, no invokeID, no Expecting-Reply)', () => {
+    // bacpypes3 reference. Differences vs the confirmed variant:
+    //   - APDU header is 2 bytes (10 02) — type 1 unconfirmed-req + svc 2
+    //   - NPDU control is 0x00 (no Expecting-Reply)
+    //   - Total 4 bytes shorter
+    expect(bytesToHex(encodeUnconfirmedCovNotification({
+      subscriberProcessId: 1,
+      initiatingDeviceId: 4321,
+      monitoredObjectId: 'AI:1',
+      timeRemainingSec: 540,
+      presentValue: 73.4,
+      statusFlags: { inAlarm: false, fault: false, overridden: false, outOfService: false },
+    }))).toBe('810a00290100100209011c020010e12c000000013a021c4e09552e444292cccd2f096f2e8204002f4f');
+  });
+
+  it('encodes COV-Notification with in-alarm status (statusFlags BitString = 0x80)', () => {
+    // inAlarm=true, others false → packed bits 1000 0000 = 0x80.
+    // Only the BitString data byte changes vs the previous test —
+    // tag header (82 04) and structure stay identical. Defends
+    // against accidentally swapping the bit-pack endianness.
+    const hex = bytesToHex(encodeUnconfirmedCovNotification({
+      subscriberProcessId: 1,
+      initiatingDeviceId: 4321,
+      monitoredObjectId: 'AI:1',
+      timeRemainingSec: 540,
+      presentValue: 73.4,
+      statusFlags: { inAlarm: true, fault: false, overridden: false, outOfService: false },
+    }));
+    expect(hex.endsWith('8204802f4f')).toBe(true);
+    // Earlier same-position byte (clean status) ended with 8204002f4f.
+    expect(hex.replace('8204802f4f', '8204002f4f')).toBe(
+      '810a00290100100209011c020010e12c000000013a021c4e09552e444292cccd2f096f2e8204002f4f'
+    );
   });
 
   it('produces structurally valid BVLC framing — length matches actual byte count', () => {

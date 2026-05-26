@@ -49,9 +49,11 @@ export const APDU_TYPE_COMPLEX_ACK = 3;
 
 // ── Service choices we emit (subset of §21 enumerations) ─────────────
 export const UNCONFIRMED_SVC_I_AM = 0;
+export const UNCONFIRMED_SVC_COV_NOTIFICATION = 2;
 export const UNCONFIRMED_SVC_WHO_IS = 8;
-export const CONFIRMED_SVC_READ_PROPERTY = 12;
+export const CONFIRMED_SVC_COV_NOTIFICATION = 1;
 export const CONFIRMED_SVC_SUBSCRIBE_COV = 5;
+export const CONFIRMED_SVC_READ_PROPERTY = 12;
 
 // ── Application tag numbers (§20.2) ──────────────────────────────────
 const APP_TAG_UNSIGNED = 2;
@@ -138,6 +140,26 @@ function encodeObjectId(typeCode: number, instance: number): number[] {
 function encodeUnsigned(v: number): number[] {
   const data = encodeUnsignedBytes(v);
   return appTagBytes(APP_TAG_UNSIGNED, data.length, data);
+}
+
+/** Encode a BACnet BitString (app tag 8) for the 4-bit statusFlags
+ *  field. Wire layout: 1 byte unused-bit-count + N bytes packed bits
+ *  MSB-first (§20.2.10). For statusFlags the standard always uses
+ *  1 data byte with 4 unused bits. */
+function encodeStatusFlags(flags: {
+  readonly inAlarm: boolean;
+  readonly fault: boolean;
+  readonly overridden: boolean;
+  readonly outOfService: boolean;
+}): number[] {
+  let bits = 0;
+  if (flags.inAlarm)       bits |= 0x80;
+  if (flags.fault)         bits |= 0x40;
+  if (flags.overridden)    bits |= 0x20;
+  if (flags.outOfService)  bits |= 0x10;
+  // tag header: app tag 8, length 2 → 0x82
+  // payload: [unused-bits=4, packed-bits]
+  return [0x82, 0x04, bits & 0xff];
 }
 
 /** Encode a Real (app tag 4) as 4-byte big-endian IEEE 754 single. */
@@ -388,6 +410,112 @@ export function encodeSubscribeCov(opts: {
     ...ctxTagBytes(3, encodeUnsignedBytes(opts.lifetimeSeconds)),
   ];
   const npdu = buildNpdu({ expectingReply: true });
+  return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
+}
+
+/** Public type for the four BACnet status-flag bits. */
+export interface StatusFlagsBits {
+  readonly inAlarm: boolean;
+  readonly fault: boolean;
+  readonly overridden: boolean;
+  readonly outOfService: boolean;
+}
+
+/** Build the listOfValues body shared by both ConfirmedCOVNotification
+ *  and UnconfirmedCOVNotification. The standard PropertyValue entry
+ *  layout is: ctx0=propId, ctx1=arrayIdx (optional, skipped),
+ *  ctx2=opening tag wrapping the Any value, closing tag 2, ctx3=
+ *  priority (optional, skipped). We emit two entries:
+ *     present-value (85, Real)
+ *     status-flags (111, BitString)
+ *  Wrapped in opening/closing tag 4. */
+function buildCovListOfValues(presentValue: number, flags: StatusFlagsBits): number[] {
+  return [
+    openingTag(4),
+      // ── property[0] present-value ──
+      ...ctxTagBytes(0, encodeUnsignedBytes(85)),
+      openingTag(2),
+        ...encodeReal(presentValue),
+      closingTag(2),
+      // ── property[1] status-flags ──
+      ...ctxTagBytes(0, encodeUnsignedBytes(111)),
+      openingTag(2),
+        ...encodeStatusFlags(flags),
+      closingTag(2),
+    closingTag(4),
+  ];
+}
+
+/** Encode a ConfirmedCOVNotification confirmed-request (§13.5.1).
+ *  Carries the standard payload shape used by every real BACnet
+ *  device: process-id, initiating-device, monitored-object,
+ *  time-remaining, and a listOfValues of (present-value, status-
+ *  flags). Real-only present-value for now; Boolean/Enumerated for
+ *  binary objects when we need them. */
+export function encodeConfirmedCovNotification(opts: {
+  readonly invokeId: number;
+  readonly subscriberProcessId: number;
+  /** Device instance of the controller sending this notification. */
+  readonly initiatingDeviceId: number;
+  /** The monitored object — "AI:1", "AV:3", "BV:2", etc. */
+  readonly monitoredObjectId: string;
+  /** Seconds remaining in the subscription's lifetime. 0 for indefinite
+   *  subscriptions on a real device. */
+  readonly timeRemainingSec: number;
+  readonly presentValue: number;
+  readonly statusFlags: StatusFlagsBits;
+}): Uint8Array {
+  const typeCode = objectTypeFromString(opts.monitoredObjectId);
+  if (typeCode === null) {
+    throw new Error(`encodeConfirmedCovNotification: unknown object-id "${opts.monitoredObjectId}"`);
+  }
+  const instance = objectInstanceFromString(opts.monitoredObjectId);
+  const apduHeader: number[] = [
+    APDU_TYPE_CONFIRMED_REQUEST << 4,
+    0x05,                                  // maxSegs=0, maxResp=5
+    opts.invokeId & 0xff,
+    CONFIRMED_SVC_COV_NOTIFICATION,
+  ];
+  const body: number[] = [
+    ...ctxTagBytes(0, encodeUnsignedBytes(opts.subscriberProcessId)),
+    ...ctxTagBytes(1, objectIdRawBytes(OBJECT_TYPE_DEVICE, opts.initiatingDeviceId)),
+    ...ctxTagBytes(2, objectIdRawBytes(typeCode, instance)),
+    ...ctxTagBytes(3, encodeUnsignedBytes(opts.timeRemainingSec)),
+    ...buildCovListOfValues(opts.presentValue, opts.statusFlags),
+  ];
+  const npdu = buildNpdu({ expectingReply: true });
+  return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
+}
+
+/** Encode an UnconfirmedCOVNotification unconfirmed-request (§13.6).
+ *  Same payload as the confirmed variant minus the invokeID + maxSegs/
+ *  maxResp byte. Apt for high-volume notifications where ACK overhead
+ *  isn't worth it. */
+export function encodeUnconfirmedCovNotification(opts: {
+  readonly subscriberProcessId: number;
+  readonly initiatingDeviceId: number;
+  readonly monitoredObjectId: string;
+  readonly timeRemainingSec: number;
+  readonly presentValue: number;
+  readonly statusFlags: StatusFlagsBits;
+}): Uint8Array {
+  const typeCode = objectTypeFromString(opts.monitoredObjectId);
+  if (typeCode === null) {
+    throw new Error(`encodeUnconfirmedCovNotification: unknown object-id "${opts.monitoredObjectId}"`);
+  }
+  const instance = objectInstanceFromString(opts.monitoredObjectId);
+  const apduHeader: number[] = [
+    APDU_TYPE_UNCONFIRMED_REQUEST << 4,
+    UNCONFIRMED_SVC_COV_NOTIFICATION,
+  ];
+  const body: number[] = [
+    ...ctxTagBytes(0, encodeUnsignedBytes(opts.subscriberProcessId)),
+    ...ctxTagBytes(1, objectIdRawBytes(OBJECT_TYPE_DEVICE, opts.initiatingDeviceId)),
+    ...ctxTagBytes(2, objectIdRawBytes(typeCode, instance)),
+    ...ctxTagBytes(3, encodeUnsignedBytes(opts.timeRemainingSec)),
+    ...buildCovListOfValues(opts.presentValue, opts.statusFlags),
+  ];
+  const npdu = buildNpdu({});
   return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
 }
 

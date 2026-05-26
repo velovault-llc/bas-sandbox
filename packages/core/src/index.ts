@@ -271,6 +271,8 @@ export {
   encodeReadProperty,
   encodeReadPropertyAck,
   encodeSubscribeCov,
+  encodeConfirmedCovNotification,
+  encodeUnconfirmedCovNotification,
   encodeSimpleAck,
   bytesToHex,
   BVLC_TYPE_BACNET_IP,
@@ -282,6 +284,7 @@ export {
   APDU_TYPE_SIMPLE_ACK,
   APDU_TYPE_COMPLEX_ACK,
 } from './bacnet/wire.js';
+export type { StatusFlagsBits } from './bacnet/wire.js';
 
 export {
   EXPERIMENT_CATALOG,

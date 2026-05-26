@@ -40,8 +40,22 @@ import {
   encodeReadProperty as wireEncodeReadProperty,
   encodeReadPropertyAck as wireEncodeReadPropertyAck,
   encodeSubscribeCov as wireEncodeSubscribeCov,
+  encodeConfirmedCovNotification as wireEncodeConfirmedCovNotification,
   bytesToHex,
+  type StatusFlagsBits,
 } from './wire.js';
+
+/** Parse the "T/F,T/F,T/F,T/F" statusFlags shorthand the sandbox uses
+ *  internally into the StatusFlagsBits shape the wire encoder takes. */
+function parseStatusFlags(s: string | undefined): StatusFlagsBits {
+  const tokens = (s ?? 'F,F,F,F').split(',').map((t) => t.trim().toUpperCase());
+  return {
+    inAlarm: tokens[0] === 'T',
+    fault: tokens[1] === 'T',
+    overridden: tokens[2] === 'T',
+    outOfService: tokens[3] === 'T',
+  };
+}
 
 /** Transport that wraps the packet. Drives the BVLC function code
  *  suffix in the summary line. */
@@ -413,6 +427,34 @@ export function emitCovNotification(opts: {
   const summary =
     `${opts.srcLabel}${dstPart}: ConfirmedCOVNotification ${opts.objectId} ` +
     `present-value=${opts.value} · statusFlags ${sf}`;
+  let wireBytes: string | undefined;
+  if (typeof opts.value === 'number') {
+    try {
+      wireBytes = bytesToHex(wireEncodeConfirmedCovNotification({
+        // BuildCanvas doesn't thread per-pair invoke IDs through to
+        // notifications today — supervisors normally cycle invoke IDs
+        // independently of the device. 0 is a canonical placeholder
+        // and matches what a freshly-booted device emits. Future:
+        // thread the real invoke ID once we surface it.
+        invokeId: 0,
+        subscriberProcessId: 1,
+        // Initiating-device instance: we don't have a guaranteed device
+        // ID on every COV-emitting node yet. Default to 1 — Future
+        // revision will thread the device's BACnet ObjectInstance ID
+        // (already on the node data as deviceInstance) through here.
+        initiatingDeviceId: 1,
+        monitoredObjectId: opts.objectId,
+        // Lifetime tracking happens at the subscription level. Surface
+        // 0 here — a real device reporting on an indefinite
+        // subscription emits 0 as well.
+        timeRemainingSec: 0,
+        presentValue: opts.value,
+        statusFlags: parseStatusFlags(opts.statusFlags),
+      }));
+    } catch {
+      wireBytes = undefined;
+    }
+  }
   return {
     simSec: opts.simSec,
     service: 'ConfirmedCOVNotification',
@@ -427,6 +469,7 @@ export function emitCovNotification(opts: {
     propertyId: 85,
     value: opts.value,
     layer: 'app',
+    bytes: wireBytes,
   };
 }
 
