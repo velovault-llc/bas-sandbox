@@ -45,6 +45,7 @@ from bacpypes3.apdu import (
     ComplexAckPDU,
     ErrorPDU,
     SimpleAckPDU,
+    SegmentAckPDU,
     RejectPDU,
     AbortPDU,
     AtomicReadFileACK,
@@ -168,6 +169,96 @@ class CodecRoundtripAdapter(SimulatorAdapter):
         # Preserve all NPDU routing fields (DNET/DADR/HopCount/SADR/etc.) —
         # captures from routed networks carry them in the response and the
         # diff fails byte-exact if we drop them.
+        npdu_out = NPDU()
+        npdu_out.npduVersion = npdu.npduVersion
+        npdu_out.npduControl = npdu.npduControl
+        for fld in (
+            "npduDADR",
+            "npduSADR",
+            "npduHopCount",
+            "npduNetMessage",
+            "npduVendorID",
+        ):
+            v = getattr(npdu, fld, None)
+            if v is not None:
+                setattr(npdu_out, fld, v)
+        npdu_out.put_data(apdu_wire.pduData)
+        npdu_wire = npdu_out.encode()
+
+        bvll = OriginalUnicastNPDU()
+        bvll.put_data(npdu_wire.pduData)
+        bvll_wire = bvll.encode()
+        return bvll_wire.pduData.hex()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Raw-passthrough adapter — preserve the APDU body verbatim, only re-encode
+# the BVLL + NPDU + APDU header. The right test for "does our transport-layer
+# pipeline preserve information," skipping bacpypes3's APDU-body codec
+# entirely. Closes the segmented + RPM-ACK gap because those bodies aren't
+# self-contained tag sequences and APCISequence.decode rejects them.
+# ─────────────────────────────────────────────────────────────────────────────
+class RawPassthroughAdapter(SimulatorAdapter):
+    """Decodes BVLL → NPDU → APDU-header, keeps the APDU service payload
+    BYTES verbatim, then re-wraps in fresh NPDU + BVLL with the same
+    routing/control fields. Tests transport-layer fidelity without
+    depending on bacpypes3's service-body codec.
+
+    This is the right "ratchet" for the sandbox use case: bas-sandbox
+    composes BACnet responses as bytes (via @bas/core/bacnet/emit) and
+    never re-decodes them. The harness should match that — verify the
+    transport wrapping is byte-stable, treat the service payload as
+    opaque."""
+
+    def send(self, request_hex: str, request_meta: dict) -> str:
+        resp_hex = request_meta.get("_expected_response_hex", "")
+        if not resp_hex:
+            return ""
+        try:
+            data = bytes.fromhex(resp_hex)
+            lpdu = LPDU.decode(PDU(data))
+            npdu = NPDU.decode(PDU(lpdu.pduData))
+            apdu = APDU.decode(PDU(npdu.pduData))
+        except Exception:
+            return ""
+
+        invoke_id = apdu.apduInvokeID
+        # Reconstruct the right APDU shell per type, but keep the body bytes
+        # verbatim — no APCISequence decode/re-encode on the service payload.
+        if apdu.apduType == 2:  # SimpleAck
+            shell = SimpleAckPDU(service_choice=apdu.apduService, invoke_id=invoke_id)
+        elif apdu.apduType == 4:  # SegmentAck (flow-control during segmented xfer)
+            shell = SegmentAckPDU(
+                nak=getattr(apdu, "apduNak", 0),
+                srv=getattr(apdu, "apduSrv", 0),
+                invoke_id=invoke_id,
+                sequenceNumber=getattr(apdu, "apduSeq", 0),
+                windowSize=getattr(apdu, "apduWin", 16),
+            )
+        elif apdu.apduType == 6:  # Reject
+            shell = RejectPDU(invoke_id=invoke_id, reason=apdu.apduAbortRejectReason)
+        elif apdu.apduType == 7:  # Abort
+            shell = AbortPDU(srv=getattr(apdu, "apduSrv", 0),
+                              invoke_id=invoke_id,
+                              reason=apdu.apduAbortRejectReason)
+        elif apdu.apduType == 3:  # ComplexAck
+            shell = ComplexAckPDU(service_choice=apdu.apduService, invoke_id=invoke_id)
+            shell.apduSeg = getattr(apdu, "apduSeg", 0)
+            shell.apduMor = getattr(apdu, "apduMor", 0)
+            shell.apduSA = 0
+            if shell.apduSeg:
+                shell.apduSeq = getattr(apdu, "apduSeq", 0)
+                shell.apduWin = getattr(apdu, "apduWin", 16)
+            shell.put_data(apdu.pduData)  # verbatim body bytes
+        elif apdu.apduType == 5:  # Error
+            shell = ErrorPDU(service_choice=apdu.apduService, invoke_id=invoke_id)
+            shell.put_data(apdu.pduData)  # verbatim body bytes
+        else:
+            return ""
+
+        apdu_wire = shell.encode()
+
+        # Preserve all NPDU routing fields (DNET/DADR/HopCount/SADR/etc.).
         npdu_out = NPDU()
         npdu_out.npduVersion = npdu.npduVersion
         npdu_out.npduControl = npdu.npduControl
