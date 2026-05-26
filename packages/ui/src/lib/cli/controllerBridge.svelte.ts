@@ -7,6 +7,32 @@
 // and the CLI reads it.
 
 import type { ControllerProgram } from './programStore.svelte';
+import type { RawSignal, TerminalConfig, ScaledReading } from '@bas/core';
+
+/** Per-terminal snapshot of what's currently on the wire and what the
+ *  controller scaled it to. Populated each tick by the sim loop;
+ *  consumed by the (session-2) multimeter / terminal-inspector UI. */
+export interface TerminalSignalSnapshot {
+  /** Raw electrical signal at the controller's terminal — what a multi-
+   *  meter clipped to the wire would read. */
+  readonly raw: RawSignal;
+  /** The controller's interpretation config for this terminal (input type
+   *  + engMin/engMax span). */
+  readonly config: TerminalConfig;
+  /** What the controller program actually sees on env.inputs.<key>. May
+   *  diverge from `raw` due to mismatched config (wrong input type) or
+   *  scaling faults. */
+  readonly scaled: ScaledReading;
+  /** Canvas node id of the sensor feeding this terminal, when known. */
+  readonly sensorNodeId?: string;
+  /** True when this terminal is wired to the controller's PRIMARY
+   *  physics-target sensor. The thermal sim owns that sensor's
+   *  engineering value (with the legacy `SensorState` faults applied);
+   *  the signal-layer raw + scaled values shown for primary terminals
+   *  are descriptive only — overriding the terminal's input type for
+   *  a primary sensor won't change what the program sees. */
+  readonly isPrimary?: boolean;
+}
 
 export interface ControllerSnapshot {
   sensed: number;
@@ -45,6 +71,10 @@ interface BridgeState {
   envInputsByCtrl: Map<string, Record<string, number | boolean>>;
   /** Latest env.outputs snapshot per controller. */
   envOutputsByCtrl: Map<string, Record<string, number>>;
+  /** Per-controller per-terminal signal snapshot. Outer key = controller
+   *  node id; inner key = terminal id (e.g., "UI-1"). Refreshed each tick
+   *  by the sim loop. The session-2 multimeter UI reads from here. */
+  terminalSignalsByCtrl: Map<string, Map<string, TerminalSignalSnapshot>>;
 }
 
 export const controllerBridge = $state<BridgeState>({
@@ -53,6 +83,7 @@ export const controllerBridge = $state<BridgeState>({
   programs: new Map(),
   envInputsByCtrl: new Map(),
   envOutputsByCtrl: new Map(),
+  terminalSignalsByCtrl: new Map(),
 });
 
 export function registerBridge(impl: ControllerBridge): void {

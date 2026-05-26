@@ -37,6 +37,11 @@ type SpecEdge = {
   wireKind: WireKind;
   /** Optional MS/TP-style baud rate, displayed on the trunk panel. */
   baud?: number;
+  /** Specific terminal id on the target node (e.g., "UI-2"). Lets a demo
+   *  wire a sensor into a particular controller input so the signal-
+   *  fidelity layer + Terminals inspector can identify the terminal. */
+  sourceHandle?: string;
+  targetHandle?: string;
 };
 
 type SpecWire = {
@@ -89,6 +94,8 @@ function buildScenario(spec: ScenarioSpec): BasScenarioV1 {
     id: `de-${idx}-${e.source}-${e.target}`,
     source: e.source,
     target: e.target,
+    ...(e.sourceHandle !== undefined ? { sourceHandle: e.sourceHandle } : {}),
+    ...(e.targetHandle !== undefined ? { targetHandle: e.targetHandle } : {}),
     data: {
       wireKind: e.wireKind,
       ...(e.baud !== undefined ? { baud: e.baud } : {}),
@@ -123,6 +130,64 @@ export type Demo = {
 };
 
 export const DEMOS: readonly Demo[] = [
+  {
+    id: 'signal-fidelity',
+    name: 'Signal fidelity (📐 Terminals)',
+    blurb:
+      'VAV-1 with a primary Pt1000 zone-temp sensor (drives the thermal loop) PLUS a secondary 4-20mA CO₂ sensor and a 2-10V damper-feedback sensor wired into UI-2 and UI-3. Hit Run, click VAV-1, then click 📐 Terminals — you\'ll see the raw signal at each terminal (~11.2 mA at 900 ppm, ~6 V at 50% damper) and the engineering value the controller decoded. Change a terminal\'s input type to the wrong kind and watch the MISMATCH badge appear with a wrong-but-plausible reading. Inject \'open\' fault on a sensor and watch the OPEN badge with the controller pegged at the fault rail.',
+    scenario: buildScenario({
+      nodes: [
+        { id: 'sup', kind: 'supervisor', label: 'NAE-SF', x: 240, y: 40 },
+        {
+          id: 'vav',
+          kind: 'controller',
+          label: 'VAV-SF',
+          x: 240,
+          y: 220,
+          // Distech ECY-VAV — 5 UI / 2 AO / 3 BO. Per-terminal handles
+          // become real (UI-1, UI-2, UI-3, …) so the wires below land on
+          // specific terminals and the Terminals inspector can label them.
+          data: { vendorModelId: 'distech-ecy-vav' },
+        },
+        // Primary zone-temp sensor — drives the thermal sim. Pt1000 RTD.
+        {
+          id: 'zn',
+          kind: 'sensor',
+          label: 'ZN-T',
+          x: 100,
+          y: 400,
+          data: { signal: 'rtd-pt1000' },
+        },
+        // Secondary: CO₂ sensor, 4-20mA. At 900 ppm reads ~11.2 mA.
+        {
+          id: 'co2',
+          kind: 'sensor',
+          label: 'CO2-1',
+          x: 240,
+          y: 400,
+          data: { signal: 'analog-4-20ma', sensorModelId: 'veris-cwe' },
+        },
+        // Secondary: damper-position feedback, 2-10V live-zero.
+        {
+          id: 'dmp',
+          kind: 'sensor',
+          label: 'DMP-FB',
+          x: 380,
+          y: 400,
+          data: { signal: 'analog-2-10v', sensorModelId: 'belimo-nf24a' },
+        },
+      ],
+      edges: [
+        { source: 'sup', target: 'vav', wireKind: 'mstp', baud: 38400 },
+        { source: 'zn', target: 'vav', wireKind: 'hardwired', targetHandle: 'UI-1' },
+        { source: 'co2', target: 'vav', wireKind: 'hardwired', targetHandle: 'UI-2' },
+        { source: 'dmp', target: 'vav', wireKind: 'hardwired', targetHandle: 'UI-3' },
+      ],
+      wires: [{ controllerId: 'vav', sensorId: 'zn' }],
+      focused: 'vav',
+    }),
+  },
+
   {
     id: 'quickstart',
     name: 'Quick start: 1 VAV',

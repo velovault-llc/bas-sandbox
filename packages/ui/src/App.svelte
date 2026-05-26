@@ -10,6 +10,7 @@
   import FBDCanvas from './lib/fbd/FBDCanvas.svelte';
   import SpecLangCanvas from './lib/speclang/SpecLangCanvas.svelte';
   import BacnetInspector from './lib/bacnet/BacnetInspector.svelte';
+  import TerminalInspector from './lib/TerminalInspector.svelte';
   import BacnetPacketLogPanel from './lib/bacnet/BacnetPacketLogPanel.svelte';
   import BacnetConformancePanel from './lib/bacnet/BacnetConformancePanel.svelte';
   import TrunkInspector from './lib/bacnet/TrunkInspector.svelte';
@@ -568,6 +569,9 @@
           {/if}
           {#if programStore.activeBacnetControllerId}
             <BacnetInspector />
+          {/if}
+          {#if programStore.activeTerminalsControllerId}
+            <TerminalInspector />
           {/if}
           <TrunkInspector />
           <ModelPickerModal />

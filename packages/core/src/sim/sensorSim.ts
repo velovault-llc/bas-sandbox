@@ -8,16 +8,24 @@
 //
 // The contract is intentionally narrow:
 //   - inputs: SensorSubject + a minimal SimContext (sim hour, primary
-//     actuator command, primary zone temp, etc.)
-//   - output: a numeric value + a display string + a canonical input-key
-//     used to inject the value into a controller program's env
+//     actuator command, primary zone temp, etc.) + optional sensor metadata
+//     (signal type + measurement range) used to produce the raw electrical
+//     signal a downstream controller would scale.
+//   - output: an engineering value + display string + canonical input key,
+//     plus the raw signal as the sensor would put it on the wire (mA, V,
+//     Ω, or dry-contact state).
+//
+// Faults injected at the sensor level (open circuit, short, etc.) flow
+// through `raw.fault` so the controller can detect them via terminal
+// scaling.
 //
 // First pass implements occupancy + damper/valve position behaviorally
 // (the two cases the VAV starter scenario needs). The rest return plausible
 // placeholder values so the sensor node displays something subject-relevant
 // instead of every sensor reading "73.1 °F".
 
-import type { SensorSubject } from '../equipment/sensors.js';
+import type { SensorSignal, SensorSubject } from '../equipment/sensors.js';
+import { engToSignal, type RawSignal, type SignalFault } from './signals.js';
 
 export interface SimContext {
   /** Sim hour of day, 0..24 (fractional). */
@@ -32,24 +40,54 @@ export interface SimContext {
   readonly outsideTemp: number;
 }
 
+/** Optional sensor wiring metadata. When present, the reading also includes
+ *  the raw electrical signal the sensor would put on the wire so a
+ *  downstream controller can scale it through its terminal config. */
+export interface SensorWiring {
+  readonly signal: SensorSignal;
+  readonly range: readonly [number, number];
+  /** Inject a fault at the sensor — open circuit, short, etc. Propagates
+   *  through `raw.fault`. */
+  readonly fault?: SignalFault;
+}
+
 export interface SensorReading {
   /** Numeric value in subject-native units (0/1 for occ, 0..100 for damper
-   *  percent, ppm for CO2, etc.). */
+   *  percent, ppm for CO2, etc.). This is the "ideal" engineering value
+   *  the sensor is sensing — what a perfectly-calibrated controller with
+   *  matching terminal config would read. */
   readonly value: number;
   /** Display string with units, ready to paint onto a sensor node. */
   readonly display: string;
   /** Canonical env-input key. The FBD INPUT block reads this name. */
   readonly inputKey: string;
+  /** Raw electrical signal at the sensor's output terminal — what a
+   *  multimeter would measure on the wire. Present whenever the caller
+   *  supplied `wiring`; absent when the caller only wants the engineering
+   *  value (back-compat path). */
+  readonly raw?: RawSignal;
 }
 
 /**
  * Compute the current reading for a sensor of the given subject under the
  * given sim context. Pure function — no side effects, deterministic.
+ *
+ * Pass `wiring` to also get the raw electrical signal (mA, V, Ω) the
+ * sensor would put on the wire. Without `wiring` only the engineering
+ * value is returned (back-compat path for existing callers).
  */
 export function computeSensorReading(
   subject: SensorSubject,
   ctx: SimContext,
+  wiring?: SensorWiring,
 ): SensorReading {
+  const eng = computeEngValue(subject, ctx);
+  if (!wiring) return eng;
+  const raw = engToSignal(eng.value, wiring.signal, wiring.range, wiring.fault);
+  return { ...eng, raw };
+}
+
+function computeEngValue(subject: SensorSubject, ctx: SimContext): SensorReading {
   switch (subject) {
     case 'temp': {
       // Temp sensors are still driven by the thermal sim's T_sensed via the

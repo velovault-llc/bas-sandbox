@@ -31,10 +31,17 @@
   import { importStore, canvasActions, openModelPicker, selectionStore, canvasSnapshot } from './canvasStore.svelte';
   import { log as logEvent } from './runtime/runtimeLogStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
-  import { openCli, openFbd, openSpecLang, openBacnet, programStore } from './cli/programStore.svelte';
+  import {
+    openCli,
+    openFbd,
+    openSpecLang,
+    openBacnet,
+    openTerminals,
+    programStore,
+  } from './cli/programStore.svelte';
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
-  import { registerBridge, controllerBridge, type ControllerSnapshot } from './cli/controllerBridge.svelte';
+  import { registerBridge, controllerBridge, bumpTick as bumpBridgeTick, type ControllerSnapshot } from './cli/controllerBridge.svelte';
   import { logPacket as logBacnetPacket } from './bacnet/bacnetPacketLog.svelte';
   import { openTrunkInspector, publishTrunkStates, publishMstpFindings, publishIpv4Findings } from './bacnet/trunkInspectorStore.svelte';
   import {
@@ -51,6 +58,9 @@
     findTileTemplate,
     formatPointBreakdown,
     computeSensorReading,
+    defaultTerminalConfig,
+    signalToEng,
+    type SignalFault,
     stepLoop,
     initLoopState,
     computeOaLockout,
@@ -99,6 +109,11 @@
   import { onMount } from 'svelte';
   import type { BasScenarioV1 } from './scenario';
   import { DEMOS } from './demoScenarios';
+  import {
+    resolveTerminalConfig,
+    clearAllTerminalConfig,
+    rehydrateTerminalConfigs,
+  } from './terminalConfigStore.svelte';
 
   const nodeTypes = { bas: BasNode, subnet: SubnetZone };
 
@@ -1046,6 +1061,17 @@
   let runningSystems = $state.raw<Map<string, SingleZoneSystem>>(new Map());
   let runningSamples = $state.raw<Map<string, Sample[]>>(new Map());
   let runningSnapshot = $state.raw<WiredTarget[]>([]);
+  // Stable controller→primary-sensor map. Updated via $effect from
+  // wiredTargets — the $effect only sees the SETTLED value of wiredTargets
+  // after svelte-flow's transient-empty bursts (click events that briefly
+  // wipe + restore wiredTargets) resolve. Used by the signal-fidelity
+  // bridge pass to flag the primary sensor without flickering.
+  let primaryByCtrlStable = $state.raw<Map<string, string>>(new Map());
+  $effect(() => {
+    const next = new Map<string, string>();
+    for (const wt of wiredTargets) next.set(wt.controllerId, wt.sensorId);
+    primaryByCtrlStable = next;
+  });
   // MS/TP trunk state by representative-edge-id. Tracks which MAC currently
   // owns the token, rotation counts, etc. Keyed by edge.id so SvelteFlow
   // edge inspectors can read it directly.
@@ -1351,6 +1377,160 @@
     // so the actuator-dynamics loop can route each actuator's commanded
     // value based on its bound role (rather than always using sample.actuator).
     const programOutputsByCtrl = new Map<string, Record<string, number>>();
+    // Per-tick cache: controllerId → (terminalId → {inputKey, value}) from the
+    // signal-fidelity pass. The program-gated block re-uses this to feed
+    // env.inputs without re-running the encode/scale path. Only SECONDARY
+    // sensors are added here; the primary physics-target sensor's value is
+    // already fed by the thermal sim via env.inputs.sensed.
+    const terminalScaledByCtrlThisTick = new Map<
+      string,
+      Map<string, { inputKey: string; value: number }>
+    >();
+
+    /**
+     * Pull signal + range + subject for a sensor node from either source
+     * we know about: the rich core SENSOR_CATALOG (when a specific
+     * vendor/model was dragged in) or the lighter UI SENSOR_TEMPLATES
+     * map (when a demo or generic drop only specified a signal type).
+     * Returns null when neither lookup succeeds.
+     */
+    function inferSensorMeta(senNode: Node): {
+      signal: import('@bas/core').SensorSignal;
+      range: readonly [number, number];
+      subject: import('@bas/core').SensorSubject;
+    } | null {
+      const data = senNode.data as
+        | { sensorModelId?: string; signal?: import('@bas/core').SensorSignal }
+        | undefined;
+      if (data?.sensorModelId) {
+        const m = findSensorModel(data.sensorModelId);
+        if (m) return { signal: m.signal, range: m.range, subject: m.subject };
+      }
+      if (data?.signal) {
+        const tpl = SENSOR_TEMPLATE_BY_ID.get(
+          data.signal as Parameters<typeof SENSOR_TEMPLATE_BY_ID.get>[0],
+        );
+        if (tpl) {
+          // UI SENSOR_TEMPLATES use a coarser 'subject' enum
+          // ('temp'|'pressure'|'humidity'|'position'|'status') than the
+          // core catalog. Map per-signal-type so the engineering-value
+          // computation in computeSensorReading picks the right path.
+          let subject: import('@bas/core').SensorSubject = 'temp';
+          switch (data.signal) {
+            case 'rtd-pt1000':
+            case 'thermistor-10k-t2':
+              subject = 'temp';
+              break;
+            case 'analog-0-10v':
+              subject = 'damper-position';
+              break;
+            case 'analog-4-20ma':
+              subject = 'pressure-differential';
+              break;
+            case 'binary-dry':
+              subject = 'occupancy';
+              break;
+          }
+          return { signal: data.signal, range: tpl.range, subject };
+        }
+      }
+      return null;
+    }
+
+    /**
+     * Signal-fidelity bridge pass for a single controller. Walks every
+     * sensor wired to it (in either edge direction — svelte-flow drag
+     * direction isn't physically meaningful), encodes the reading as the
+     * electrical signal the sensor would emit, scales it back via the
+     * controller's terminal config, and publishes per-terminal snapshots
+     * to controllerBridge.terminalSignalsByCtrl for the multimeter UI.
+     *
+     * For secondary sensors the scaled value also lands in the env-feed
+     * cache so the program block downstream can read it without re-running
+     * the encode/scale pipeline. Primary sensors get a display-only entry —
+     * their engineering value flows through the thermal sim's T_sensed
+     * path, which has its own fault pipeline (drift, calibration, noise,
+     * etc.) the signal layer doesn't model yet.
+     */
+    function runBridgePass(
+      controllerId: string,
+      primarySensorId: string | undefined,
+      simHour: number,
+      actuator: number,
+      zoneTemp: number,
+      outsideTemp: number,
+    ): void {
+      const sigForCtrl = new Map<string, { inputKey: string; value: number }>();
+      for (const edge of edges) {
+        let sensorEnd: string | null = null;
+        let terminalHandle: string | null | undefined = null;
+        if (edge.target === controllerId) {
+          sensorEnd = edge.source;
+          terminalHandle = edge.targetHandle;
+        } else if (edge.source === controllerId) {
+          sensorEnd = edge.target;
+          terminalHandle = edge.sourceHandle;
+        } else {
+          continue;
+        }
+        const senNode = nodes.find((n) => n.id === sensorEnd);
+        if (!senNode) continue;
+        if (nodeKind(senNode) !== 'sensor') continue;
+        // When the demo / user didn't pin the wire to a specific terminal
+        // (svelte-flow handle), synthesize an id from the sensor so the
+        // Terminals panel still has a row. Real wiring with discrete
+        // handles (UI-1, AI-2, …) keeps its precise label.
+        if (!terminalHandle) {
+          const senLabel = (senNode.data as { label?: string } | undefined)?.label ?? sensorEnd;
+          terminalHandle = `auto:${senLabel}`;
+        }
+        // Sensor metadata comes from either the rich core catalog (when
+        // the user dragged a specific make/model) or the lighter UI
+        // SENSOR_TEMPLATES table (when a demo just set `data.signal`).
+        const senMeta = inferSensorMeta(senNode);
+        if (!senMeta) continue;
+
+        const sFault = (senNode.data as { fault?: string } | undefined)?.fault;
+        const sigFault: SignalFault | undefined =
+          sFault === 'open'
+            ? 'open-circuit'
+            : sFault === 'short'
+              ? 'short-circuit'
+              : undefined;
+        const reading = computeSensorReading(
+          senMeta.subject,
+          { hour: simHour, actuator, zoneTemp, outsideTemp },
+          { signal: senMeta.signal, range: senMeta.range, fault: sigFault },
+        );
+        const defaultCfg = defaultTerminalConfig(senMeta.signal, senMeta.range);
+        const termCfg = resolveTerminalConfig(controllerId, terminalHandle, defaultCfg);
+        const scaled = reading.raw
+          ? signalToEng(reading.raw, termCfg)
+          : { value: reading.value };
+
+        const isPrimary = sensorEnd === primarySensorId;
+        let perCtrl = controllerBridge.terminalSignalsByCtrl.get(controllerId);
+        if (!perCtrl) {
+          perCtrl = new Map();
+          controllerBridge.terminalSignalsByCtrl.set(controllerId, perCtrl);
+        }
+        if (reading.raw) {
+          perCtrl.set(terminalHandle, {
+            raw: reading.raw,
+            config: termCfg,
+            scaled,
+            sensorNodeId: senNode.id,
+            isPrimary,
+          });
+        }
+        // Only SECONDARY sensors feed the program env. Primary is owned
+        // by the thermal sim's T_sensed path (which has its own faults).
+        if (!isPrimary) {
+          sigForCtrl.set(terminalHandle, { inputKey: reading.inputKey, value: scaled.value });
+        }
+      }
+      terminalScaledByCtrlThisTick.set(controllerId, sigForCtrl);
+    }
     const samples = runningSamples;
     const systems = runningSystems;
     // Recompute offline status each tick. If a target's controller OR sensor
@@ -1453,6 +1633,7 @@
       const vendorModelId = (ctrlNode?.data as { vendorModelId?: string } | undefined)?.vendorModelId;
       const stAllowed = !vendorModelId || (findControllerModel(vendorModelId)?.stPortable ?? true);
       const fbdAuthored = !!userProgram?.fbdGraph;
+
       if (userProgram?.compiled && (stAllowed || fbdAuthored)) {
         // Collect inputs from every sensor wired to this controller. The
         // primary thermal sensor still drives `sensed`, but secondary
@@ -1504,13 +1685,26 @@
             }
           }
 
-          const reading = computeSensorReading(senModel.subject, {
-            hour: simHour,
-            actuator: sample.actuator,
-            zoneTemp: sample.T_zone,
-            outsideTemp: sample.T_OA,
-          });
-          secondaryInputs[reading.inputKey] = reading.value;
+          // The bridge pass above already encoded + scaled the signal for
+          // every sensor wired to this controller. Pull the engineering
+          // value out of that cache and inject into env.inputs — no need
+          // to repeat the math here.
+          const cachedScaled = edge.targetHandle
+            ? terminalScaledByCtrlThisTick.get(target.controllerId)?.get(edge.targetHandle)
+            : undefined;
+          if (cachedScaled) {
+            secondaryInputs[cachedScaled.inputKey] = cachedScaled.value;
+          } else {
+            // Fall back to the pre-signal-fidelity behavior for sensors the
+            // bridge pass didn't reach (e.g., no targetHandle on the edge).
+            const reading = computeSensorReading(senModel.subject, {
+              hour: simHour,
+              actuator: sample.actuator,
+              zoneTemp: sample.T_zone,
+              outsideTemp: sample.T_OA,
+            });
+            secondaryInputs[reading.inputKey] = reading.value;
+          }
         }
 
         // Seasonal flags — derived from OAT vs changeover (65°F default).
@@ -3420,6 +3614,35 @@
         },
       };
     });
+
+    // Single signal-fidelity bridge pass — walks every controller on the
+    // canvas. Primary sensor comes from primaryByCtrlStable (an $effect-
+    // tracked snapshot of wiredTargets that ignores svelte-flow's
+    // transient empty bursts). Live thermal data is pulled from
+    // sampleByCtrl when the controller is physics-wired, else neutral
+    // defaults so the multimeter still has something to display on
+    // bare-wire setups.
+    {
+      const simHourNow = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
+      for (const node of nodes) {
+        if (nodeKind(node) !== 'controller') continue;
+        const primary = primaryByCtrlStable.get(node.id);
+        const s = sampleByCtrl.get(node.id);
+        runBridgePass(
+          node.id,
+          primary,
+          simHourNow,
+          s?.actuator ?? 0.5,
+          s?.T_zone ?? 70,
+          s?.T_OA ?? 65,
+        );
+      }
+    }
+
+    // Tick-end: bump the controller-bridge tick counter so any reactive
+    // consumer (BACnet inspector, Terminals inspector, etc.) re-derives
+    // off the freshly-published env / signal snapshots.
+    bumpBridgeTick();
   }
 
   /**
@@ -4338,6 +4561,11 @@
    */
   function onNodesDelete(deleted: Node[]) {
     const deletedIds = new Set(deleted.map((n) => n.id));
+    // Drop any persisted terminal-config overrides for deleted controllers
+    // so the localStorage map doesn't grow unbounded over time.
+    for (const node of deleted) {
+      if (nodeKind(node) === 'controller') clearAllTerminalConfig(node.id);
+    }
     const survivors = wiredTargets.filter(
       (t) => !deletedIds.has(t.controllerId) && !deletedIds.has(t.sensorId),
     );
@@ -5251,28 +5479,24 @@
     const sensor = findConnectedSensor(node.id);
     if (!sensor) return; // can't wire physics without a sensor
 
+    // Plain node click means "show me this controller's inspector" —
+    // svelte-flow handles the selection itself. We only handle the
+    // focus-shift case so the tune panel follows the user's attention
+    // when they're cycling through wired controllers. Explicit wire /
+    // unwire is now exclusively the inspector's "→ Make this the tune
+    // target" / "→ Wire as physics target" buttons (also reachable from
+    // the sidebar). The old click-to-unwire toggle was footgun-y: it
+    // ripped the physics target out from under anyone who clicked a
+    // controller just to open its inspector.
     const existing = wiredTargets.find((t) => t.controllerId === node.id);
     if (existing) {
-      if (focusedTargetId === node.id) {
-        // Click focused → unwire it
-        wiredTargets = wiredTargets.filter((t) => t.controllerId !== node.id);
-        focusedTargetId = wiredTargets[0]?.controllerId ?? null;
-      } else {
-        // Click already-wired but not focused → just focus
+      if (focusedTargetId !== node.id) {
         focusedTargetId = node.id;
+        syncRunningState();
       }
-    } else {
-      // New wiring — copy the focused target's config (or DEFAULT_CONFIG) as the starting point.
-      const startConfig: SingleZoneConfig = focusedTarget
-        ? { ...focusedTarget.config }
-        : { ...DEFAULT_CONFIG };
-      wiredTargets = [
-        ...wiredTargets,
-        { controllerId: node.id, sensorId: sensor.id, config: startConfig },
-      ];
-      focusedTargetId = node.id;
     }
-    syncRunningState();
+    // No-op when the controller isn't wired yet — the inspector shows
+    // a "→ Wire as physics target" button for that path.
   }
 
   /** Remove the focused target. Used by the sidebar ✕ button. */
@@ -5373,6 +5597,9 @@
   //   - apply `set setpoint 72` against the target's config (which the
   //     running SingleZoneSystem reads each tick — same object ref)
   onMount(() => {
+    // Load persisted terminal-config overrides before the first sim tick
+    // so user-set input types take effect from tick 1.
+    rehydrateTerminalConfigs();
     // Expose canvas actions to the App header so Clear / Reset / Save
     // are reachable without scrolling through the bottom dock.
     canvasActions.clear = clearAll;
@@ -6366,6 +6593,14 @@
                   {/each}
                 </div>
               </div>
+              <p class="fault-note">
+                <strong>open</strong> / <strong>short</strong> propagate through the
+                signal layer — visible on the controller's
+                <strong>📐 Terminals</strong> panel as OPEN / SHORT badges with the
+                raw wire reading pegged at the fault rail. The others perturb the
+                primary-sensor engineering value upstream (drift, calibration
+                offset, noise, etc.) via the thermal-sim's SensorState pipeline.
+              </p>
               {#if !wiredHere}
                 <span class="sensor-warn"
                   >Not wired to a controller — fault won't affect any sim yet.</span
@@ -6541,6 +6776,14 @@
                   onclick={() => openBacnet(selectedController.id, nodeLabel(selectedController))}
                 >
                   🔌 BACnet
+                </button>
+                <button
+                  type="button"
+                  class="inspector-terminals"
+                  title="Terminals — multimeter-style view of every wired terminal. See the raw signal on the wire (mA / V / Ω), pick the input type (Pt1000 vs 0-10V etc.), and spot mismatched / faulted terminals at a glance."
+                  onclick={() => openTerminals(selectedController.id, nodeLabel(selectedController))}
+                >
+                  📐 Terminals
                 </button>
                 <button
                   type="button"
@@ -9247,6 +9490,25 @@
     font-size: 0.65rem;
     color: color-mix(in srgb, CanvasText 60%, transparent);
     font-style: italic;
+  }
+
+  .fault-note {
+    margin: 0.45rem 0 0 0;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.7rem;
+    line-height: 1.45;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    background: color-mix(in srgb, CanvasText 4%, transparent);
+    border-left: 2px solid color-mix(in srgb, #4a9eff 40%, transparent);
+    border-radius: 0 4px 4px 0;
+  }
+
+  .fault-note strong {
+    color: CanvasText;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.68rem;
   }
 
   /* Inspector panels (sensor + controller) share a bottom-left anchor with

@@ -63,6 +63,9 @@ interface ProgramStore {
   /** Controller currently focused in the BACnet objects inspector. */
   activeBacnetControllerId: string | null;
   activeBacnetControllerLabel: string | null;
+  /** Controller currently focused in the Terminals (signal-level) inspector. */
+  activeTerminalsControllerId: string | null;
+  activeTerminalsControllerLabel: string | null;
 }
 
 export const programStore = $state<ProgramStore>({
@@ -75,6 +78,8 @@ export const programStore = $state<ProgramStore>({
   activeSpecLangControllerLabel: null,
   activeBacnetControllerId: null,
   activeBacnetControllerLabel: null,
+  activeTerminalsControllerId: null,
+  activeTerminalsControllerLabel: null,
 });
 
 /** Close every programming surface (CLI, FBD, SpecLang). Used when
@@ -89,6 +94,23 @@ function closeAllProgrammingSurfaces(): void {
   programStore.activeSpecLangControllerLabel = null;
   programStore.activeBacnetControllerId = null;
   programStore.activeBacnetControllerLabel = null;
+  programStore.activeTerminalsControllerId = null;
+  programStore.activeTerminalsControllerLabel = null;
+}
+
+/** Open the Terminals signal-level inspector pointed at this controller. */
+export function openTerminals(controllerId: string, label: string): void {
+  if (!(controllerId in programStore.byId)) {
+    programStore.byId[controllerId] = loadFromStorage(controllerId);
+  }
+  closeAllProgrammingSurfaces();
+  programStore.activeTerminalsControllerId = controllerId;
+  programStore.activeTerminalsControllerLabel = label;
+}
+
+export function closeTerminals(): void {
+  programStore.activeTerminalsControllerId = null;
+  programStore.activeTerminalsControllerLabel = null;
 }
 
 /** Open the BACnet objects inspector pointed at this controller. */

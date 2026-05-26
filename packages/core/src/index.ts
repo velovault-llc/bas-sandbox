@@ -109,7 +109,24 @@ export {
 export type { EquipmentModel, EquipmentKind } from './equipment/units.js';
 
 export { computeSensorReading } from './sim/sensorSim.js';
-export type { SensorReading, SimContext } from './sim/sensorSim.js';
+export type { SensorReading, SimContext, SensorWiring } from './sim/sensorSim.js';
+
+export {
+  engToSignal,
+  signalToEng,
+  defaultTerminalConfig,
+  defaultInputTypeFor,
+  kindForSensorSignal,
+  kindForTerminalInput,
+} from './sim/signals.js';
+export type {
+  SignalKind,
+  SignalFault,
+  RawSignal,
+  TerminalInputType,
+  TerminalConfig,
+  ScaledReading,
+} from './sim/signals.js';
 
 export {
   stepLoop,
