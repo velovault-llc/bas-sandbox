@@ -262,13 +262,15 @@ export type {
   CorpusCaptureResult,
   CorpusAdapter,
 } from './corpus/index.js';
-export { CORPUS_EXEMPLARS, findCorpusExemplar, hexDump } from './corpus/exemplars.js';
-export type { CorpusExemplar } from './corpus/exemplars.js';
+export { CORPUS_EXEMPLARS, findCorpusExemplar, hexDump, diffBytes } from './corpus/exemplars.js';
+export type { CorpusExemplar, DiffByte, DiffByteKind } from './corpus/exemplars.js';
 
 export {
   encodeWhoIs,
   encodeIAm,
   encodeReadProperty,
+  encodeReadPropertyAck,
+  encodeSubscribeCov,
   encodeSimpleAck,
   bytesToHex,
   BVLC_TYPE_BACNET_IP,

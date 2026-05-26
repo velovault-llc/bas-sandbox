@@ -140,6 +140,36 @@ function encodeUnsigned(v: number): number[] {
   return appTagBytes(APP_TAG_UNSIGNED, data.length, data);
 }
 
+/** Encode a Real (app tag 4) as 4-byte big-endian IEEE 754 single. */
+function encodeReal(v: number): number[] {
+  const buf = new ArrayBuffer(4);
+  new DataView(buf).setFloat32(0, v, false); // big-endian
+  const arr = new Uint8Array(buf);
+  return appTagBytes(4, 4, [arr[0], arr[1], arr[2], arr[3]]);
+}
+
+/** Encode a 4-byte BACnetObjectIdentifier as raw value bytes (no tag).
+ *  Used inside context-tag wrappers where the caller emits the tag. */
+function objectIdRawBytes(typeCode: number, instance: number): number[] {
+  const packed = ((typeCode & 0x3ff) << 22) | (instance & 0x3fffff);
+  return [
+    (packed >>> 24) & 0xff,
+    (packed >>> 16) & 0xff,
+    (packed >>> 8) & 0xff,
+    packed & 0xff,
+  ];
+}
+
+/** Opening tag for a context-tagged constructed sequence (§20.2.1). */
+function openingTag(tagNumber: number): number {
+  return ((tagNumber << 4) | 0x08 | 0x06) & 0xff;
+}
+
+/** Closing tag. */
+function closingTag(tagNumber: number): number {
+  return ((tagNumber << 4) | 0x08 | 0x07) & 0xff;
+}
+
 /** Encode an Enumerated (app tag 9). Same length rules as Unsigned. */
 function encodeEnumerated(v: number): number[] {
   const data = encodeUnsignedBytes(v);
@@ -289,6 +319,76 @@ export function encodeSimpleAck(opts: {
   ];
   const npdu = buildNpdu({});
   return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apdu]);
+}
+
+/** Encode a ReadProperty Complex-ACK (§15.5.2). Echoes the request's
+ *  object + property and carries the resolved value as a context-3-
+ *  tagged constructed sequence with one application-tagged primitive
+ *  inside. Real (IEEE 754 single) is the dominant case for analog
+ *  inputs; the only `valueType` we accept right now reflects that.
+ *  Future revisions can add Boolean / Unsigned / Enumerated as the
+ *  emit module starts surfacing them. */
+export function encodeReadPropertyAck(opts: {
+  readonly invokeId: number;
+  readonly objectId: string;
+  readonly propertyId: number;
+  readonly value: number;
+  readonly valueType?: 'real'; // future: 'unsigned' | 'boolean' | 'enumerated'
+}): Uint8Array {
+  const typeCode = objectTypeFromString(opts.objectId);
+  if (typeCode === null) {
+    throw new Error(`encodeReadPropertyAck: unknown object-id syntax "${opts.objectId}"`);
+  }
+  const instance = objectInstanceFromString(opts.objectId);
+  const apduHeader: number[] = [
+    APDU_TYPE_COMPLEX_ACK << 4,
+    opts.invokeId & 0xff,
+    CONFIRMED_SVC_READ_PROPERTY,
+  ];
+  const valueBytes = encodeReal(opts.value);
+  const body: number[] = [
+    ...ctxTagBytes(0, objectIdRawBytes(typeCode, instance)),
+    ...ctxTagBytes(1, encodeUnsignedBytes(opts.propertyId)),
+    openingTag(3),
+    ...valueBytes,
+    closingTag(3),
+  ];
+  // Complex-ack is a response — NPDU has no Expecting-Reply.
+  const npdu = buildNpdu({});
+  return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
+}
+
+/** Encode a SubscribeCOV confirmed-request (§13.1, §16.10.4). Four
+ *  context-tagged fields: subscriberProcessIdentifier, monitored
+ *  objectIdentifier, issueConfirmedNotifications, lifetime. The latter
+ *  two are technically optional but our supervisor always supplies them. */
+export function encodeSubscribeCov(opts: {
+  readonly invokeId: number;
+  readonly subscriberProcessId: number;
+  readonly monitoredObjectId: string;
+  readonly issueConfirmed: boolean;
+  /** Lifetime in seconds. 0 = indefinite. */
+  readonly lifetimeSeconds: number;
+}): Uint8Array {
+  const typeCode = objectTypeFromString(opts.monitoredObjectId);
+  if (typeCode === null) {
+    throw new Error(`encodeSubscribeCov: unknown object-id "${opts.monitoredObjectId}"`);
+  }
+  const instance = objectInstanceFromString(opts.monitoredObjectId);
+  const apduHeader: number[] = [
+    APDU_TYPE_CONFIRMED_REQUEST << 4,
+    0x05,                          // maxSegs=0, maxResp=5 (1476-byte cap)
+    opts.invokeId & 0xff,
+    CONFIRMED_SVC_SUBSCRIBE_COV,
+  ];
+  const body: number[] = [
+    ...ctxTagBytes(0, encodeUnsignedBytes(opts.subscriberProcessId)),
+    ...ctxTagBytes(1, objectIdRawBytes(typeCode, instance)),
+    ...ctxTagBytes(2, [opts.issueConfirmed ? 1 : 0]),
+    ...ctxTagBytes(3, encodeUnsignedBytes(opts.lifetimeSeconds)),
+  ];
+  const npdu = buildNpdu({ expectingReply: true });
+  return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
 }
 
 /** Convert a Uint8Array to a lowercase hex string for logging / display. */

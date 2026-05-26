@@ -144,6 +144,61 @@ export function findCorpusExemplar(uiService: string): CorpusExemplar | undefine
   return CORPUS_EXEMPLARS[uiService];
 }
 
+/** Token for a single byte in a side-by-side diff render. The packet
+ *  inspector consumes this to color-code each byte: green for bytes
+ *  where ours matches the corpus reference, red where they diverge,
+ *  grey for bytes only present on one side. */
+export type DiffByteKind = 'match' | 'diff' | 'only-ours' | 'only-theirs';
+
+export interface DiffByte {
+  readonly offset: number;
+  readonly kind: DiffByteKind;
+  /** Lowercase hex pair when present on the corresponding side. */
+  readonly ours?: string;
+  readonly theirs?: string;
+}
+
+/** Align two hex byte streams left-aligned. Each position emits a
+ *  DiffByte tagged by what's at that offset on both sides. Length
+ *  difference is tagged 'only-ours' or 'only-theirs' depending on
+ *  which side runs longer.
+ *
+ *  Returns a position-by-position diff PLUS an aggregate "match
+ *  ratio" — how much of the shorter stream agrees byte-exact. A
+ *  match ratio of 1.0 means everything that overlaps matches. */
+export function diffBytes(
+  ours: string,
+  theirs: string,
+): { tokens: DiffByte[]; matchRatio: number; sameLength: boolean } {
+  const a = ours.match(/.{2}/g) ?? [];
+  const b = theirs.match(/.{2}/g) ?? [];
+  const tokens: DiffByte[] = [];
+  let matches = 0;
+  const overlap = Math.min(a.length, b.length);
+  const total = Math.max(a.length, b.length);
+  for (let i = 0; i < total; i++) {
+    if (i < a.length && i < b.length) {
+      const eq = a[i].toLowerCase() === b[i].toLowerCase();
+      if (eq) matches++;
+      tokens.push({
+        offset: i,
+        kind: eq ? 'match' : 'diff',
+        ours: a[i],
+        theirs: b[i],
+      });
+    } else if (i < a.length) {
+      tokens.push({ offset: i, kind: 'only-ours', ours: a[i] });
+    } else {
+      tokens.push({ offset: i, kind: 'only-theirs', theirs: b[i] });
+    }
+  }
+  return {
+    tokens,
+    matchRatio: overlap > 0 ? matches / overlap : 0,
+    sameLength: a.length === b.length,
+  };
+}
+
 /** Render a hex string as a Wireshark-style aligned hexdump:
  *   "0000  81 0a 00 16  01 04 02 03  42 06 c4 02   ........B..."
  *  16 bytes per row. Used by the packet inspector. */

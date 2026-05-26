@@ -38,6 +38,8 @@ import {
   encodeWhoIs as wireEncodeWhoIs,
   encodeIAm as wireEncodeIAm,
   encodeReadProperty as wireEncodeReadProperty,
+  encodeReadPropertyAck as wireEncodeReadPropertyAck,
+  encodeSubscribeCov as wireEncodeSubscribeCov,
   bytesToHex,
 } from './wire.js';
 
@@ -283,6 +285,22 @@ export function emitReadPropertyAck(opts: {
   const summary =
     `${opts.srcLabel}${dstPart}: ReadProperty-ACK ${opts.objectId} ` +
     `${opts.propertyName}=${opts.value} · invokeId ${opts.invokeId}`;
+  // Real wire bytes when value is a Real (number). Boolean / Unsigned
+  // would need the corresponding application-tag encoders — covered as
+  // we add them. For now boolean falls through to undefined.
+  let wireBytes: string | undefined;
+  if (typeof opts.value === 'number') {
+    try {
+      wireBytes = bytesToHex(wireEncodeReadPropertyAck({
+        invokeId: opts.invokeId,
+        objectId: opts.objectId,
+        propertyId: 85, // present-value — the dominant case
+        value: opts.value,
+      }));
+    } catch {
+      wireBytes = undefined;
+    }
+  }
   return {
     simSec: opts.simSec,
     service: 'ReadProperty-ACK',
@@ -296,6 +314,7 @@ export function emitReadPropertyAck(opts: {
     propertyName: opts.propertyName,
     value: opts.value,
     layer: 'app',
+    bytes: wireBytes,
   };
 }
 
@@ -316,6 +335,23 @@ export function emitSubscribeCov(opts: {
   const summary =
     `${opts.srcLabel}${dstPart}: SubscribeCOV ${opts.objectId} ` +
     `(deadband ${opts.deadband}${unitsPart})`;
+  let wireBytes: string | undefined;
+  try {
+    wireBytes = bytesToHex(wireEncodeSubscribeCov({
+      // BuildCanvas doesn't track per-call invoke IDs for SubscribeCOV
+      // today; use 0 as a canonical placeholder. Future revision will
+      // thread the real invoke ID through here once it's lifted.
+      invokeId: 0,
+      subscriberProcessId: 1,
+      monitoredObjectId: opts.objectId,
+      issueConfirmed: true,
+      // ASHRAE 135 §13.1: lifetime=0 = indefinite. Most sandbox
+      // subscriptions ride for the whole sim session, so 0 fits.
+      lifetimeSeconds: 0,
+    }));
+  } catch {
+    wireBytes = undefined;
+  }
   return {
     simSec: opts.simSec,
     service: 'SubscribeCOV',
@@ -327,6 +363,7 @@ export function emitSubscribeCov(opts: {
     trunkId: opts.trunkId,
     objectId: opts.objectId,
     layer: 'app',
+    bytes: wireBytes,
   };
 }
 

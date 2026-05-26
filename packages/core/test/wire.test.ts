@@ -11,6 +11,8 @@ import {
   encodeWhoIs,
   encodeIAm,
   encodeReadProperty,
+  encodeReadPropertyAck,
+  encodeSubscribeCov,
   encodeSimpleAck,
   bytesToHex,
 } from '../src/bacnet/wire.js';
@@ -95,6 +97,61 @@ describe('wire encoder — byte-exact against bacpypes3 reference', () => {
     expect(bytesToHex(encodeWhoIs({ lowLimit: 0, highLimit: 100 }))).toBe(
       '810b00100120ffff00ff10080900' + '1964'
     );
+  });
+
+  it('encodes ReadProperty-ACK AI:1 = 73.4 °F (invokeId 42)', () => {
+    // bacpypes3 reference (ReadPropertyACK with AnyAtomic(Real(73.4))):
+    //   → 810a00170100302a0c0c0000000119553e444292cccd3f
+    //   ─── ──── ─── ───── ────── ── ──── ─ ─────────── ─
+    //   BVLC NPDU APDU-hdr ctx0(objId)  pid op real-val cl
+    // 73.4 as IEEE 754 single-precision big-endian = 0x4292CCCD.
+    expect(bytesToHex(encodeReadPropertyAck({
+      invokeId: 42,
+      objectId: 'AI:1',
+      propertyId: 85,
+      value: 73.4,
+    }))).toBe('810a00170100302a0c0c0000000119553e444292cccd3f');
+  });
+
+  it('encodes SubscribeCOV (process=1, AI:1, confirmed, 600s lifetime, invokeId 7)', () => {
+    // bacpypes3 reference (SubscribeCOVRequest):
+    //   → 810a001601040005070509011c0000000129013a0258
+    //   ─── ──── ──────── ── ── ───── ─────────── ───── ──────
+    //   BVLC NPDU APDU-hdr ctx0  ctx1(objId AI:1)  ctx2 ctx3(600s)
+    expect(bytesToHex(encodeSubscribeCov({
+      invokeId: 7,
+      subscriberProcessId: 1,
+      monitoredObjectId: 'AI:1',
+      issueConfirmed: true,
+      lifetimeSeconds: 600,
+    }))).toBe('810a001601040005070509011c0000000129013a0258');
+  });
+
+  it('encodes ReadProperty-ACK with negative + non-trivial Real values', () => {
+    // Cold-zone reading. -10.5 = 0xC1280000 in IEEE 754 single.
+    // AI:2 = type 0 (analog-input), instance 2 → objId raw 0x00000002.
+    // Frame: BVLC(4) + NPDU(2) + APDU-hdr(3) + ctx0(5) + ctx1(2) + open(1)
+    //        + real(5) + close(1) = 23 bytes (0x17).
+    expect(bytesToHex(encodeReadPropertyAck({
+      invokeId: 1,
+      objectId: 'AI:2',
+      propertyId: 85,
+      value: -10.5,
+    }))).toBe('810a0017010030010c0c000000021955 3e44c1280000 3f'.replace(/\s/g, ''));
+  });
+
+  it('encodes SubscribeCOV indefinite (lifetime=0) + unconfirmed notifications', () => {
+    // Lifetime=0 means "indefinite subscription" per §13.1. The
+    // lifetime tag encodes 0 as a 1-byte Unsigned.
+    // AV:5 = type 2 (analog-value), instance 5 → raw 0x00800005.
+    // invokeId 200 = 0xc8. Frame total 21 bytes (0x15).
+    expect(bytesToHex(encodeSubscribeCov({
+      invokeId: 200,
+      subscriberProcessId: 42,
+      monitoredObjectId: 'AV:5',
+      issueConfirmed: false,
+      lifetimeSeconds: 0,
+    }))).toBe('810a001501040005c805 092a 1c00800005 2900 3900'.replace(/\s/g, ''));
   });
 
   it('produces structurally valid BVLC framing — length matches actual byte count', () => {

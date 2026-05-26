@@ -11,7 +11,7 @@
   // Lives bottom-left so it doesn't fight the runtime log for space.
 
   import { onMount } from 'svelte';
-  import { findCorpusExemplar, hexDump } from '@bas/core';
+  import { findCorpusExemplar, hexDump, diffBytes } from '@bas/core';
   import {
     bacnetPacketLog,
     clearPackets,
@@ -57,8 +57,25 @@
     };
   }
 
+  let resizeObserver: ResizeObserver | null = null;
+
   onMount(() => {
     rehydratePanelPosition();
+    // ResizeObserver — re-clamp every time the panel itself changes
+    // size. The packet log grows from a thin collapsed header to a
+    // ~28rem inspector when the user hits Run + opens a packet. Without
+    // re-clamping on those size jumps, the panel's existing offsetY
+    // (computed against the OLD smaller height) lets it drift up
+    // behind the in-canvas top toolbar. Fires once per layout change.
+    if (panelEl && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        const { x, y } = clampPos(bacnetPacketLog.offsetX, bacnetPacketLog.offsetY);
+        if (x !== bacnetPacketLog.offsetX || y !== bacnetPacketLog.offsetY) {
+          setPanelPosition(x, y);
+        }
+      });
+      resizeObserver.observe(panelEl);
+    }
     queueMicrotask(() => {
       const { x, y } = clampPos(bacnetPacketLog.offsetX, bacnetPacketLog.offsetY);
       if (x !== bacnetPacketLog.offsetX || y !== bacnetPacketLog.offsetY) {
@@ -71,7 +88,10 @@
       setPanelPosition(x, y);
     };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      resizeObserver?.disconnect();
+    };
   });
 
   const visible = $derived.by(() => {
@@ -541,17 +561,37 @@
                   <pre class="hexdump ours">{hexDump(p.bytes)}</pre>
                   {#if findCorpusExemplar(String(p.service))}
                     {@const exemplar = findCorpusExemplar(String(p.service))!}
-                    {@const sameAsCorpus = p.bytes === exemplar.hex}
+                    {@const diff = diffBytes(p.bytes ?? '', exemplar.hex)}
+                    {@const pct = Math.round(diff.matchRatio * 100)}
                     <div class="row">
                       <span class="k">vs corpus</span>
                       <span class="v">
-                        {#if sameAsCorpus}
+                        {#if diff.tokens.every((t) => t.kind === 'match')}
                           <span class="match-ok">✓ byte-exact match to kargs:{exemplar.capture} frame {exemplar.frame}</span>
                         {:else}
-                          <span class="match-diff">differs from kargs:{exemplar.capture} frame {exemplar.frame}</span>
-                          <span class="v dim">(expected — the corpus exemplar is a different device's traffic with different invokeId / addressing / max-APDU)</span>
+                          <span class="match-diff">{pct}% byte match · kargs:{exemplar.capture} frame {exemplar.frame}</span>
                         {/if}
                       </span>
+                    </div>
+                    <div class="bytediff">
+                      <div class="bytediff-head">
+                        <span class="legend ours">▌ours</span>
+                        <span class="legend theirs">▌corpus</span>
+                        <span class="legend match">▌match</span>
+                        <span class="legend diff">▌differs</span>
+                        <span class="legend only">▌only one side</span>
+                      </div>
+                      <div class="bytediff-grid">
+                        {#each diff.tokens as t (t.offset)}
+                          <span
+                            class="bd bd-{t.kind}"
+                            title="offset 0x{t.offset.toString(16).padStart(4, '0')} · ours={t.ours ?? '—'} corpus={t.theirs ?? '—'}"
+                          >
+                            <span class="bd-our">{t.ours ?? '··'}</span>
+                            <span class="bd-thr">{t.theirs ?? '··'}</span>
+                          </span>
+                        {/each}
+                      </div>
                     </div>
                   {/if}
                   <div class="row">
@@ -1025,6 +1065,76 @@
   .match-diff {
     color: #f59e0b;
     font-weight: 600;
+  }
+
+  /* ── Side-by-side byte diff ──────────────────────────────────────
+     Each byte is a tiny two-row pill: our byte on top, corpus byte
+     below. Green when they match, red when they differ, neutral grey
+     for offsets only present on one side. Hover shows the offset +
+     both byte values. This is the "wow" view that proves at a glance
+     where our codec matches reality and where it diverges. */
+  .bytediff {
+    margin: 0.4rem 0 0.3rem 0.8rem;
+    background: color-mix(in srgb, CanvasText 4%, transparent);
+    padding: 0.55rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  }
+  .bytediff-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    font-size: 0.66rem;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    margin-bottom: 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .legend.ours { color: #4a9eff; }
+  .legend.theirs { color: #16a085; }
+  .legend.match { color: #2ecc71; }
+  .legend.diff { color: #e74c3c; }
+  .legend.only { color: color-mix(in srgb, CanvasText 50%, transparent); }
+  .bytediff-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+  .bd {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.05rem 0.18rem;
+    border-radius: 2px;
+    font-size: 0.65rem;
+    line-height: 1.15;
+    border: 1px solid transparent;
+    cursor: help;
+  }
+  .bd .bd-our { color: color-mix(in srgb, #4a9eff 90%, CanvasText); }
+  .bd .bd-thr { color: color-mix(in srgb, #16a085 88%, CanvasText); }
+  .bd-match {
+    background: color-mix(in srgb, #2ecc71 16%, transparent);
+    border-color: color-mix(in srgb, #2ecc71 35%, transparent);
+  }
+  .bd-diff {
+    background: color-mix(in srgb, #e74c3c 18%, transparent);
+    border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+  }
+  .bd-only-ours {
+    background: color-mix(in srgb, #4a9eff 18%, transparent);
+    border-color: color-mix(in srgb, #4a9eff 35%, transparent);
+  }
+  .bd-only-theirs {
+    background: color-mix(in srgb, #16a085 14%, transparent);
+    border-color: color-mix(in srgb, #16a085 30%, transparent);
+  }
+  .bd-only-ours .bd-thr,
+  .bd-only-theirs .bd-our {
+    opacity: 0.35;
   }
   .hexdump.ours {
     background: color-mix(in srgb, #4a9eff 8%, transparent);
