@@ -68,7 +68,28 @@
     return () => window.removeEventListener('resize', onResize);
   });
 
-  const visible = $derived(visiblePackets());
+  const visible = $derived.by(() => {
+    const arr = visiblePackets();
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return arr;
+    // Substring match across the fields a tech would actually want to
+    // filter on. Multi-term: each whitespace-separated token must match
+    // somewhere — Wireshark's display-filter does the same in basic mode.
+    const tokens = q.split(/\s+/);
+    return arr.filter((p) => {
+      const hay = [
+        p.service,
+        p.objectId ?? '',
+        p.propertyName ?? '',
+        p.summary,
+        p.srcLabel ?? '',
+        p.dstLabel ?? '',
+        p.srcMac !== undefined ? `mac ${p.srcMac}` : '',
+        p.dstMac !== undefined ? `mac ${p.dstMac}` : '',
+      ].join(' ').toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+  });
   const trunkOptions = $derived(trunkIdsInBuffer());
   const totals = $derived.by(() => {
     const c = { link: 0, app: 0 };
@@ -111,6 +132,107 @@
     if (Math.abs(p.value) < 10) return p.value.toFixed(2);
     if (Math.abs(p.value) < 100) return p.value.toFixed(1);
     return p.value.toFixed(0);
+  }
+
+  // ── Wireshark-style inspector state + helpers ──────────────────────
+  /** Which packet (by id) is currently expanded inline. -1 = none. */
+  let expandedId = $state<number>(-1);
+  /** Substring search across the summary field. Empty = no filter. */
+  let searchTerm = $state<string>('');
+
+  function toggleExpanded(id: number): void {
+    expandedId = expandedId === id ? -1 : id;
+  }
+
+  /** Extract structured details out of the summary string + packet fields.
+   *  We don't currently emit raw bytes (only human summaries), so the
+   *  detail tree pulls everything it can from the typed BacnetPacket
+   *  fields PLUS heuristic regex-pulls from the summary line. When the
+   *  Node bridge lands and emit.ts starts producing bytes, this is where
+   *  the hex-dump pane will render. */
+  function decodeDetails(p: BacnetPacket): {
+    transport: {
+      bvllFn?: string;        // e.g. "0x0a Original-Unicast-NPDU"
+      bvllName?: string;
+      isBroadcast?: boolean;
+      isForwarded?: boolean;
+    };
+    network: {
+      expectingReply?: boolean;
+    };
+    apdu: {
+      invokeId?: number;
+      attemptInfo?: string;   // e.g. "attempt 2/3"
+    };
+    service: {
+      name: string;
+      objectId?: string;
+      propertyName?: string;
+      propertyId?: number;
+      value?: string;
+      statusFlags?: string;   // e.g. "F,F,F,F"
+      deadband?: string;
+    };
+    raw: string;
+  } {
+    const s = p.summary;
+    const det = {
+      transport: {} as { bvllFn?: string; bvllName?: string; isBroadcast?: boolean; isForwarded?: boolean },
+      network: {} as { expectingReply?: boolean },
+      apdu: {} as { invokeId?: number; attemptInfo?: string },
+      service: {
+        name: String(p.service),
+        objectId: p.objectId,
+        propertyName: p.propertyName,
+        propertyId: p.propertyId,
+      } as {
+        name: string;
+        objectId?: string;
+        propertyName?: string;
+        propertyId?: number;
+        value?: string;
+        statusFlags?: string;
+        deadband?: string;
+      },
+      raw: s,
+    };
+    // BVLC function code — surfaced in any summary that mentions it.
+    const mBvlc = /BVLC fn (0x[0-9a-f]+)\s+([A-Za-z][-A-Za-z]*)/i.exec(s);
+    if (mBvlc) {
+      det.transport.bvllFn = mBvlc[1];
+      det.transport.bvllName = mBvlc[2];
+      det.transport.isBroadcast = mBvlc[2].toLowerCase().includes('broadcast');
+      det.transport.isForwarded = mBvlc[2].toLowerCase().includes('forwarded');
+    } else if (p.dstMac === undefined && p.dstLabel === undefined) {
+      // No explicit destination → almost certainly broadcast.
+      det.transport.isBroadcast = true;
+    }
+    if (/Expecting-Reply/i.test(s)) det.network.expectingReply = true;
+    const mInvoke = /invokeId\s+(\d+)/i.exec(s);
+    if (mInvoke) det.apdu.invokeId = parseInt(mInvoke[1], 10);
+    const mAttempt = /attempt\s+(\d+\/\d+)/i.exec(s);
+    if (mAttempt) det.apdu.attemptInfo = mAttempt[1];
+    // statusFlags from COV summaries — pattern like "(F,F,F,F)" or "(T,F,F,F)".
+    const mStatus = /statusFlags?[:\s]*\(?([TF],[TF],[TF],[TF])\)?/i.exec(s);
+    if (mStatus) det.service.statusFlags = mStatus[1];
+    // Deadband from SubscribeCOV.
+    const mDeadband = /deadband\s+([\d.]+)\s*([^\s)]+)?/i.exec(s);
+    if (mDeadband) det.service.deadband = mDeadband[2] ? `${mDeadband[1]} ${mDeadband[2]}` : mDeadband[1];
+    // ReadProperty-ACK value: prefer typed field; otherwise look for "= <num>".
+    if (p.value !== undefined) {
+      det.service.value = typeof p.value === 'boolean'
+        ? (p.value ? 'TRUE' : 'FALSE')
+        : String(p.value);
+    } else {
+      const mVal = /=\s*(-?\d+(?:\.\d+)?)/.exec(s);
+      if (mVal) det.service.value = mVal[1];
+    }
+    return det;
+  }
+
+  function copyToClipboard(text: string): void {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+    void navigator.clipboard.writeText(text);
   }
 
   function srcDst(p: BacnetPacket): string {
@@ -252,6 +374,13 @@
           {/each}
         </select>
       {/if}
+      <input
+        class="search-input"
+        type="search"
+        placeholder="Filter (e.g. VAV-101 invokeId 42)"
+        title="Substring match across service, addresses, object, property, summary. Whitespace-separated terms = AND."
+        bind:value={searchTerm}
+      />
       <div class="actions">
         <button type="button" class="action-btn" onclick={togglePaused} title={bacnetPacketLog.paused ? 'Resume capture' : 'Pause capture'}>
           {bacnetPacketLog.paused ? '▶' : '⏸'}
@@ -275,13 +404,138 @@
       {#each visible as p (p.id)}
         {@const fault = p.service === 'Timeout' || p.service === 'CommunicationLost'}
         {@const recover = p.service === 'CommunicationRestored'}
-        <div class="entry layer-{p.layer}" class:fault class:recover>
+        {@const isOpen = expandedId === p.id}
+        <button
+          type="button"
+          class="entry entry-row layer-{p.layer}"
+          class:fault
+          class:recover
+          class:open={isOpen}
+          onclick={() => toggleExpanded(p.id)}
+          title={p.summary}
+        >
+          <span class="chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
           <span class="time">{formatTime(p.simSec)}</span>
-          <span class="macs">{srcDst(p)}</span>
-          <span class="svc" title={p.summary}>{p.service}</span>
+          <span class="macs" title={srcDst(p)}>{srcDst(p)}</span>
+          <span class="svc">{p.service}</span>
           <span class="obj">{p.objectId ?? ''}</span>
           <span class="val">{formatValue(p)}</span>
-        </div>
+        </button>
+        {#if isOpen}
+          {@const det = decodeDetails(p)}
+          <div class="entry-detail" role="region" aria-label="Packet details">
+            <div class="tree">
+              <div class="branch">
+                <div class="branch-head">▼ Frame</div>
+                <div class="row"><span class="k">Sim time</span><span class="v">{formatTime(p.simSec)} ({p.simSec.toFixed(3)}s)</span></div>
+                {#if p.trunkLabel}
+                  <div class="row"><span class="k">Trunk</span><span class="v">{p.trunkLabel}</span></div>
+                {/if}
+                {#if p.trunkId}
+                  <div class="row"><span class="k">Trunk ID</span><span class="v"><code>{p.trunkId}</code></span></div>
+                {/if}
+                <div class="row"><span class="k">Layer</span><span class="v">{p.layer === 'app' ? 'application' : 'data-link'}</span></div>
+              </div>
+
+              <div class="branch">
+                <div class="branch-head">▼ Transport (BVLC + NPDU)</div>
+                {#if det.transport.bvllFn}
+                  <div class="row"><span class="k">BVLC function</span><span class="v"><code>{det.transport.bvllFn}</code> {det.transport.bvllName ?? ''}</span></div>
+                {:else}
+                  <div class="row dim"><span class="k">BVLC function</span><span class="v">— (not surfaced for this service)</span></div>
+                {/if}
+                {#if det.transport.isBroadcast}
+                  <div class="row"><span class="k">Cast</span><span class="v">broadcast</span></div>
+                {:else if det.transport.isForwarded}
+                  <div class="row"><span class="k">Cast</span><span class="v">BBMD-forwarded</span></div>
+                {:else}
+                  <div class="row"><span class="k">Cast</span><span class="v">unicast</span></div>
+                {/if}
+                {#if det.network.expectingReply}
+                  <div class="row"><span class="k">NPDU flag</span><span class="v">Expecting-Reply</span></div>
+                {/if}
+              </div>
+
+              <div class="branch">
+                <div class="branch-head">▼ Addressing</div>
+                <div class="row">
+                  <span class="k">Source</span>
+                  <span class="v">
+                    {p.srcLabel ?? (p.srcMac !== undefined ? `MAC ${p.srcMac}` : '?')}
+                    {#if p.srcLabel && p.srcMac !== undefined}<span class="dim">(MAC {p.srcMac})</span>{/if}
+                  </span>
+                </div>
+                <div class="row">
+                  <span class="k">Destination</span>
+                  <span class="v">
+                    {p.dstLabel ?? (p.dstMac !== undefined ? `MAC ${p.dstMac}` : 'broadcast')}
+                    {#if p.dstLabel && p.dstMac !== undefined}<span class="dim">(MAC {p.dstMac})</span>{/if}
+                  </span>
+                </div>
+              </div>
+
+              <div class="branch">
+                <div class="branch-head">▼ APDU</div>
+                <div class="row"><span class="k">Service</span><span class="v"><strong>{det.service.name}</strong></span></div>
+                {#if det.apdu.invokeId !== undefined}
+                  <div class="row"><span class="k">Invoke ID</span><span class="v">{det.apdu.invokeId}</span></div>
+                {/if}
+                {#if det.apdu.attemptInfo}
+                  <div class="row"><span class="k">Retry</span><span class="v">attempt {det.apdu.attemptInfo}</span></div>
+                {/if}
+                {#if det.service.objectId}
+                  <div class="row"><span class="k">Object</span><span class="v"><code>{det.service.objectId}</code></span></div>
+                {/if}
+                {#if det.service.propertyName !== undefined || det.service.propertyId !== undefined}
+                  <div class="row">
+                    <span class="k">Property</span>
+                    <span class="v">
+                      {det.service.propertyName ?? '?'}
+                      {#if det.service.propertyId !== undefined}<span class="dim">({det.service.propertyId})</span>{/if}
+                    </span>
+                  </div>
+                {/if}
+                {#if det.service.value !== undefined}
+                  <div class="row"><span class="k">Value</span><span class="v">{det.service.value}</span></div>
+                {/if}
+                {#if det.service.deadband}
+                  <div class="row"><span class="k">Deadband</span><span class="v">{det.service.deadband}</span></div>
+                {/if}
+                {#if det.service.statusFlags}
+                  <div class="row">
+                    <span class="k">Status flags</span>
+                    <span class="v">
+                      <code>{det.service.statusFlags}</code>
+                      <span class="dim">(in-alarm, fault, overridden, out-of-service)</span>
+                    </span>
+                  </div>
+                {/if}
+              </div>
+
+              <div class="branch raw">
+                <div class="branch-head">▼ Summary (raw)</div>
+                <div class="raw-text">{det.raw}</div>
+                <div class="row">
+                  <button
+                    type="button"
+                    class="copy-btn"
+                    onclick={(e) => { e.stopPropagation(); copyToClipboard(det.raw); }}
+                    title="Copy summary to clipboard"
+                  >📋 Copy</button>
+                </div>
+              </div>
+
+              <div class="branch hex-todo">
+                <div class="branch-head dim">▾ Raw bytes</div>
+                <div class="row dim">
+                  Hex dump not yet available — emit.ts currently produces
+                  human summaries, not wire bytes. The Node bridge
+                  milestone (planned) will populate this section.
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
       {/each}
     </div>
   {/if}
@@ -292,8 +546,11 @@
     position: absolute;
     left: 1rem;
     bottom: 0.75rem;
-    width: min(36rem, calc(100% - 2rem));
-    max-height: 20rem;
+    /* Widened from 36rem so labels like "JACE-MAIN → VAV-104" don't
+       collide with the service column. When the inspector is open the
+       max-height also grows to fit the expanded detail tree. */
+    width: min(48rem, calc(100% - 2rem));
+    max-height: 28rem;
     display: flex;
     flex-direction: column;
     border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
@@ -467,14 +724,37 @@
 
   .entry {
     display: grid;
-    /* time column widened to 5rem to accommodate MM:SS.mmm formatting
-       when sub-second packet latency is present. */
-    grid-template-columns: 5rem 5.2rem 9rem 4rem 1fr;
+    /* Columns: chevron · time · src/dst · service · object · value.
+       The src/dst column was 5.2rem; widened to 12rem to fit human
+       labels ("JACE-MAIN → VAV-104" is ~13 chars + arrow). Long labels
+       still ellipsize defensively via overflow rules below. */
+    grid-template-columns: 0.9rem 5rem 12rem 9rem 4rem 1fr;
     gap: 0.4rem;
     padding: 0.1rem 0.25rem;
     border-radius: 3px;
     line-height: 1.4;
     font-variant-numeric: tabular-nums;
+    /* Row-as-button base styles — reset native <button> chrome so the
+       row reads as a list item with a chevron, not a clickable button. */
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+  }
+  .entry-row:hover {
+    background: color-mix(in srgb, CanvasText 5%, transparent);
+  }
+  .entry-row.open {
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+  }
+  .chev {
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    font-size: 0.65rem;
+    line-height: 1.4;
   }
 
   .entry.layer-link {
@@ -512,6 +792,12 @@
     color: color-mix(in srgb, #4a9eff 90%, CanvasText);
     white-space: nowrap;
     font-size: 0.7rem;
+    /* Force containment — long labels truncate with ellipsis rather
+       than bleeding into the service column. The title tooltip keeps
+       the full label accessible on hover. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .svc {
@@ -519,6 +805,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 
   .obj {
@@ -531,5 +818,114 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* ── Search input in toolbar ───────────────────────────────────── */
+  .search-input {
+    flex: 1 1 7rem;
+    min-width: 6rem;
+    max-width: 14rem;
+    padding: 0.18rem 0.45rem;
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.7rem;
+    outline: none;
+  }
+  .search-input:focus {
+    border-color: color-mix(in srgb, #4a9eff 70%, transparent);
+  }
+  .search-input::placeholder {
+    color: color-mix(in srgb, CanvasText 45%, transparent);
+  }
+
+  /* ── Inspector tree (Wireshark-style detail pane) ──────────────── */
+  .entry-detail {
+    background: color-mix(in srgb, Canvas 92%, CanvasText 8%);
+    border-left: 2px solid color-mix(in srgb, #4a9eff 60%, transparent);
+    margin: 0.15rem 0 0.35rem 1.1rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 3px;
+    font-size: 0.72rem;
+    line-height: 1.5;
+  }
+  .tree {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .branch {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+  .branch-head {
+    color: color-mix(in srgb, #4a9eff 90%, CanvasText);
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+  }
+  .branch.raw .branch-head {
+    color: color-mix(in srgb, #16a085 85%, CanvasText);
+  }
+  .branch.hex-todo .branch-head {
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+  }
+  .branch .row {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 0.5rem;
+    padding-left: 0.8rem;
+  }
+  .branch .k {
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    text-transform: lowercase;
+    font-variant: small-caps;
+    font-size: 0.7rem;
+  }
+  .branch .v {
+    color: color-mix(in srgb, CanvasText 90%, transparent);
+    word-break: break-word;
+  }
+  .branch .v code {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    padding: 0.02rem 0.3rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+  }
+  .branch .v .dim,
+  .branch .row.dim {
+    color: color-mix(in srgb, CanvasText 45%, transparent);
+    font-style: italic;
+  }
+  .raw-text {
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+    padding: 0.35rem 0.5rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.7rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0 0 0.3rem 0.8rem;
+  }
+  .copy-btn {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    padding: 0.12rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.7rem;
+  }
+  .copy-btn:hover {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    color: CanvasText;
   }
 </style>

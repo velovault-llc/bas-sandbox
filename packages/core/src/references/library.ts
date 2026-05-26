@@ -535,7 +535,7 @@ export const LIBRARY: readonly LibraryEntry[] = [
   {
     id: 'kargs-bacnet-capture-corpus',
     title: "Steve Karg's BACnet packet capture corpus",
-    category: 'reference',
+    category: 'reference-impl',
     summary:
       'Public archive of real-world BACnet packet captures organized by behavior and edge case (atomic file read/write, segmented writes, malformed APDUs, multi-vendor plugfest traffic, BBMD routing). The ground-truth library our codec is validated against.',
     relevance:
