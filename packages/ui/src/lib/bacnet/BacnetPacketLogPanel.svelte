@@ -44,7 +44,12 @@
     const parentH = parent?.clientHeight ?? window.innerHeight;
     const parentW = parent?.clientWidth ?? window.innerWidth;
     const margin = 12;
-    const maxY = Math.max(0, parentH - panelH - margin);
+    // Reserve headroom for the in-canvas top toolbar (Save / Clear /
+    // Reset / corpus-badge cluster). Without it, dragging the panel
+    // all the way up tucks its drag-handle header behind the toolbar
+    // and the user can't grab it again.
+    const TOP_HEADROOM = 56;
+    const maxY = Math.max(0, parentH - panelH - margin - TOP_HEADROOM);
     const maxX = Math.max(0, parentW - panelW - margin);
     return {
       x: Math.min(maxX, Math.max(0, x)),

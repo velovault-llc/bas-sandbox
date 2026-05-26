@@ -29,8 +29,47 @@
 
   let pollHandle: ReturnType<typeof setInterval> | null = null;
 
+  /** Bound to the panel <aside> so the drag clamp can measure the
+   *  panel's actual rendered size — matches the runtime + packet log
+   *  pattern. Without it, the panel could be dragged off the top of
+   *  the canvas and the user couldn't grab the header to drag it back. */
+  let panelEl: HTMLElement | null = $state(null);
+
+  function clampPos(x: number, y: number): { x: number; y: number } {
+    if (typeof window === 'undefined') return { x: Math.max(0, x), y: Math.max(0, y) };
+    const panelH = panelEl?.offsetHeight ?? 80;
+    const panelW = panelEl?.offsetWidth ?? 320;
+    const parent = panelEl?.offsetParent as HTMLElement | null;
+    const parentH = parent?.clientHeight ?? window.innerHeight;
+    const parentW = parent?.clientWidth ?? window.innerWidth;
+    const margin = 12;
+    // Reserve headroom for the in-canvas top toolbar.
+    const TOP_HEADROOM = 56;
+    const maxY = Math.max(0, parentH - panelH - margin - TOP_HEADROOM);
+    const maxX = Math.max(0, parentW - panelW - margin);
+    return {
+      x: Math.min(maxX, Math.max(0, x)),
+      y: Math.min(maxY, Math.max(0, y)),
+    };
+  }
+
   onMount(() => {
     rehydratePanelPosition();
+    // Re-clamp once the DOM has measured the panel — the store-level
+    // clamp uses a static height estimate, but the real panel might
+    // be taller. Same pattern as RuntimeLogPanel.
+    queueMicrotask(() => {
+      const { x, y } = clampPos(llmStore.offsetX, llmStore.offsetY);
+      if (x !== llmStore.offsetX || y !== llmStore.offsetY) {
+        setPanelPosition(x, y);
+      }
+    });
+    const onResize = () => {
+      rehydratePanelPosition();
+      const { x, y } = clampPos(llmStore.offsetX, llmStore.offsetY);
+      setPanelPosition(x, y);
+    };
+    window.addEventListener('resize', onResize);
     refreshConnection();
     // Poll the endpoint every 8s when panel is open. Cheap (local HTTP)
     // and lets the status pill flip green automatically the moment the
@@ -38,8 +77,6 @@
     pollHandle = setInterval(() => {
       if (llmStore.panelOpen) refreshConnection();
     }, 8000);
-    const onResize = () => rehydratePanelPosition();
-    window.addEventListener('resize', onResize);
     return () => {
       if (pollHandle) clearInterval(pollHandle);
       window.removeEventListener('resize', onResize);
@@ -260,8 +297,11 @@
     const dy = dragStart.y - e.clientY;
     if (!didActuallyDrag && Math.hypot(dx, dy) >= DRAG_THRESHOLD) didActuallyDrag = true;
     if (!didActuallyDrag) return;
-    llmStore.offsetX = Math.max(0, dragStart.originX + dx);
-    llmStore.offsetY = Math.max(0, dragStart.originY + dy);
+    // Live-clamp via the parent-aware clamp so the header never drags
+    // off the top of the canvas or behind the in-canvas toolbar.
+    const { x, y } = clampPos(dragStart.originX + dx, dragStart.originY + dy);
+    llmStore.offsetX = x;
+    llmStore.offsetY = y;
   }
 
   function endDrag(): void {
@@ -283,6 +323,7 @@
 </script>
 
 <aside
+  bind:this={panelEl}
   class="llm-panel"
   class:open={llmStore.panelOpen}
   class:dragging
