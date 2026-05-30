@@ -33,6 +33,68 @@ export const BACNET_TYPE_PREFIX: Record<BacnetObjectType, string> = {
   'multistate-value': 'MSV',
 };
 
+/** ASHRAE 135 §12.2.18 Reliability property values. Subset relevant to
+ *  the sensor-fault path the sandbox models — the spec defines more
+ *  (process-error, multi-state-fault, configuration-error, etc.) we
+ *  don't surface yet because no sim path produces them. */
+export type BacnetReliability =
+  | 'no-fault-detected'  // 0 — sensor is healthy
+  | 'over-range'         // 2 — signal above the live range
+  | 'under-range'        // 3 — signal below the live range
+  | 'open-loop'          // 4 — open circuit (broken wire / unplugged)
+  | 'shorted-loop'       // 5 — short circuit (chafed wire / element short)
+  | 'no-output'          // 6 — sensor disconnected / no signal at all
+  | 'unreliable-other';  // 7 — generic catch-all
+
+/** BACnet Status_Flags bit positions (ASHRAE 135 §12.2.15). All four
+ *  bits are always emitted; the shorthand below is "in_alarm,fault,
+ *  overridden,oos" with "T" / "F" per bit. */
+export interface StatusFlags {
+  /** Bit 0 — IN_ALARM. Set when the object is in an alarm state per
+   *  its intrinsic alarming config (high/low threshold crossings etc). */
+  readonly inAlarm?: boolean;
+  /** Bit 1 — FAULT. Set whenever Reliability != 'no-fault-detected'. */
+  readonly fault?: boolean;
+  /** Bit 2 — OVERRIDDEN. Set when the value is being held by manual
+   *  override (out-of-service or write-to-priority-array-priority-1). */
+  readonly overridden?: boolean;
+  /** Bit 3 — OUT_OF_SERVICE. Set when the controller has decoupled the
+   *  object from its physical input/output for commissioning purposes. */
+  readonly outOfService?: boolean;
+}
+
+/** Normalize StatusFlags into the "T,F,T,F" wire-summary shorthand the
+ *  packet log + emitters use throughout the sandbox. */
+export function formatStatusFlags(s: StatusFlags | undefined): string {
+  const f = (b: boolean | undefined) => (b ? 'T' : 'F');
+  if (!s) return 'F,F,F,F';
+  return `${f(s.inAlarm)},${f(s.fault)},${f(s.overridden)},${f(s.outOfService)}`;
+}
+
+/** Map an ASHRAE-135 reliability code to a human-friendly label. The
+ *  packet inspector renders this directly. */
+export const RELIABILITY_LABELS: Record<BacnetReliability, string> = {
+  'no-fault-detected': 'No fault',
+  'over-range': 'Over range',
+  'under-range': 'Under range',
+  'open-loop': 'Open loop',
+  'shorted-loop': 'Shorted loop',
+  'no-output': 'No output',
+  'unreliable-other': 'Unreliable',
+};
+
+/** Numeric ASHRAE-135 code for each reliability state — exported so the
+ *  wire encoder can emit the enumerated property correctly. */
+export const RELIABILITY_CODES: Record<BacnetReliability, number> = {
+  'no-fault-detected': 0,
+  'over-range': 2,
+  'under-range': 3,
+  'open-loop': 4,
+  'shorted-loop': 5,
+  'no-output': 6,
+  'unreliable-other': 7,
+};
+
 export interface BacnetObject {
   /** Standard "AI:3" id. Stable across ticks. */
   readonly id: string;
@@ -53,6 +115,12 @@ export interface BacnetObject {
   /** Physical terminal this object is bound to, if any. Used by the
    *  panel to show "AO-1 ← Maxitrol M611" wire path. */
   readonly terminalId?: string;
+  /** ASHRAE 135 Reliability property. When omitted, defaults to
+   *  'no-fault-detected' in emitters. */
+  readonly reliability?: BacnetReliability;
+  /** ASHRAE 135 Status_Flags property. When omitted, defaults to
+   *  all-clear (F,F,F,F) in emitters. */
+  readonly statusFlags?: StatusFlags;
 }
 
 /**

@@ -13,11 +13,45 @@
 
 import { findControllerModel, type PointCount } from '../equipment/catalog.js';
 import { findTileTemplate, type ControllerBindings } from '../speclang/index.js';
+import type { SignalFault } from '../sim/signals.js';
 import {
   bacnetObjectId,
   bacnetUnitsForRole,
   type BacnetObject,
+  type BacnetReliability,
+  type StatusFlags,
 } from './objects.js';
+
+/** Translate a signal-layer fault into the matching BACnet reliability
+ *  enum. The two vocabularies line up almost 1:1 — the sandbox uses
+ *  'open-circuit' / 'short-circuit' on the signal side (closer to what
+ *  a tech says aloud) and ASHRAE-135 uses 'open-loop' / 'shorted-loop'
+ *  on the wire. */
+export function signalFaultToReliability(f: SignalFault | undefined): BacnetReliability {
+  if (!f) return 'no-fault-detected';
+  switch (f) {
+    case 'open-circuit': return 'open-loop';
+    case 'short-circuit': return 'shorted-loop';
+    case 'over-range': return 'over-range';
+    case 'under-range': return 'under-range';
+  }
+}
+
+/** Compose Status_Flags from a reliability state. FAULT bit (1) is set
+ *  whenever reliability != 'no-fault-detected', matching how real
+ *  controllers couple the two properties. Other bits get layered in by
+ *  the caller (override, out-of-service, intrinsic alarming etc). */
+export function statusFlagsForReliability(
+  r: BacnetReliability,
+  extra?: Partial<StatusFlags>,
+): StatusFlags {
+  return {
+    inAlarm: extra?.inAlarm ?? false,
+    fault: r !== 'no-fault-detected',
+    overridden: extra?.overridden ?? false,
+    outOfService: extra?.outOfService ?? false,
+  };
+}
 
 export interface SynthesizeInputs {
   /** Vendor model id from the controller's node data, if any. */
@@ -47,6 +81,17 @@ export interface SynthesizeInputs {
    *  wired sensor's subject). Helps the packet log read like a real
    *  device's name table instead of "AI-1 (unassigned)". */
   readonly defaultAi1Name?: string;
+  /** Per-terminal signal-layer fault state. When set, the AI / BI
+   *  object bound to that terminal exposes `reliability` (open-loop,
+   *  shorted-loop, over-range, under-range) and flips the FAULT bit
+   *  in `statusFlags`. This is the path that lets a supervisor's
+   *  ReadProperty-ACK reflect that the wire is broken, matching how
+   *  Metasys / Niagara / any real BACnet device behaves on a sensor
+   *  fault. Wiring-config mismatches (sensor type vs configured input
+   *  type) are intentionally absent here — the controller can't detect
+   *  those, which is exactly why they're silent commissioning failures
+   *  in real life. */
+  readonly terminalFaults?: ReadonlyMap<string, SignalFault>;
 }
 
 /**
@@ -89,6 +134,16 @@ export function synthesizeBacnetObjects(input: SynthesizeInputs): BacnetObject[]
         roleTpl?.envKey === 'occ' ||
         roleTpl?.envKey === 'heating_season' ||
         roleTpl?.envKey === 'cooling_season';
+      // Translate any signal-layer fault on this terminal into the
+      // BACnet pair (reliability, statusFlags-fault-bit). Omitting the
+      // fields entirely when there's no fault keeps the snapshot tidy
+      // and lets emitters short-circuit to the default "F,F,F,F".
+      const sigFault = input.terminalFaults?.get(terminalId);
+      const reliability = signalFaultToReliability(sigFault);
+      const faultProps =
+        reliability !== 'no-fault-detected'
+          ? { reliability, statusFlags: statusFlagsForReliability(reliability) }
+          : {};
       if (treatAsBinary) {
         objects.push({
           id: bacnetObjectId('binary-input', biInstance),
@@ -98,6 +153,7 @@ export function synthesizeBacnetObjects(input: SynthesizeInputs): BacnetObject[]
           description: roleTpl?.description,
           presentValue: typeof value === 'number' ? value > 0.5 : !!value,
           terminalId,
+          ...faultProps,
         });
       } else {
         const usingFallback =
@@ -118,6 +174,7 @@ export function synthesizeBacnetObjects(input: SynthesizeInputs): BacnetObject[]
                  (usingFallback ? input.defaultAiUnits : undefined),
           presentValue: typeof value === 'number' ? value : 0,
           terminalId,
+          ...faultProps,
         });
       }
     }

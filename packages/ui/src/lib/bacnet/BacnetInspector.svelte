@@ -42,11 +42,23 @@
     if (!node) return [];
     const data = node.data as { vendorModelId?: string };
     const prog = programStore.byId[ctrlId];
+    // Pull per-terminal signal-layer faults from the bridge so the panel
+    // surfaces reliability / FAULT bit exactly as a supervisor polling
+    // this device would see them.
+    const snaps = controllerBridge.terminalSignalsByCtrl.get(ctrlId);
+    const terminalFaults = new Map<string, import('@bas/core').SignalFault>();
+    if (snaps) {
+      for (const [terminalId, snap] of snaps) {
+        const f = snap.scaled.fault;
+        if (f) terminalFaults.set(terminalId, f);
+      }
+    }
     return synthesizeBacnetObjects({
       vendorModelId: data.vendorModelId,
       bindings: prog?.bindings,
       envInputs: controllerBridge.envInputsByCtrl.get(ctrlId),
       envOutputs: controllerBridge.envOutputsByCtrl.get(ctrlId),
+      terminalFaults: terminalFaults.size > 0 ? terminalFaults : undefined,
     });
   });
 
@@ -142,18 +154,30 @@
                   <th class="col-name">ObjectName</th>
                   <th class="col-value">PresentValue</th>
                   <th class="col-units">Units</th>
+                  <th class="col-reliability">Reliability</th>
                   <th class="col-term">Terminal</th>
                 </tr>
               </thead>
               <tbody>
                 {#each objs as o (o.id)}
-                  <tr title={o.description ?? ''}>
+                  {@const isFaulted = !!o.reliability && o.reliability !== 'no-fault-detected'}
+                  <tr title={o.description ?? ''} class:faulted={isFaulted}>
                     <td class="mono col-id"><span class="badge" style:--c={TYPE_COLOR[type]}>{o.id}</span></td>
                     <td class="col-name">{o.name}</td>
-                    <td class="mono col-value" class:bool-true={o.presentValue === true} class:bool-false={o.presentValue === false}>
+                    <td class="mono col-value" class:bool-true={o.presentValue === true} class:bool-false={o.presentValue === false} class:fault-value={isFaulted}>
                       {formatValue(o)}
+                      {#if isFaulted}
+                        <span class="fault-badge" title="Status_Flags FAULT bit is set. A supervisor polling this object would alarm.">FAULT</span>
+                      {/if}
                     </td>
                     <td class="muted col-units">{o.units ?? ''}</td>
+                    <td class="mono col-reliability">
+                      {#if o.reliability && o.reliability !== 'no-fault-detected'}
+                        <span class="reliability-tag" title="ASHRAE 135 Reliability property = {o.reliability}. The wire-level fault the controller's analog front-end detected.">{o.reliability}</span>
+                      {:else}
+                        <span class="muted">—</span>
+                      {/if}
+                    </td>
                     <td class="mono col-term muted">{o.terminalId ?? '—'}</td>
                   </tr>
                 {/each}
@@ -291,7 +315,45 @@
   .col-name { width: auto; }
   .col-value { width: 7rem; text-align: right; font-variant-numeric: tabular-nums; }
   .col-units { width: 3rem; }
+  .col-reliability { width: 7rem; text-align: left; }
   .col-term { width: 4.5rem; text-align: right; }
+
+  /* Fault row + value styling. When the AI's reliability is non-default
+     the controller would expose a FAULT bit on Status_Flags; we tint the
+     value column red, append a FAULT badge, and surface the reliability
+     enum as a pill in its own column. */
+  .bacnet-table tbody tr.faulted td {
+    background: color-mix(in srgb, #e74c3c 8%, transparent);
+  }
+
+  .fault-value {
+    color: color-mix(in srgb, #e74c3c 95%, CanvasText);
+  }
+
+  .fault-badge {
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 8px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    background: color-mix(in srgb, #e74c3c 22%, transparent);
+    color: color-mix(in srgb, #e74c3c 95%, CanvasText);
+    vertical-align: middle;
+  }
+
+  .reliability-tag {
+    display: inline-block;
+    padding: 0.05rem 0.4rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    background: color-mix(in srgb, #e74c3c 18%, transparent);
+    color: color-mix(in srgb, #e74c3c 95%, CanvasText);
+    font-weight: 600;
+  }
 
   .badge {
     display: inline-block;

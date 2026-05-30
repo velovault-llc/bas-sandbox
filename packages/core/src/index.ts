@@ -216,6 +216,9 @@ export {
   requiredProperties,
   jciExtensions,
   commonProperties,
+  RELIABILITY_LABELS,
+  RELIABILITY_CODES,
+  formatStatusFlags,
   emitWhoIs,
   emitIAm,
   emitReadProperty,
@@ -231,6 +234,8 @@ export {
 export type {
   BacnetObject,
   BacnetObjectType,
+  BacnetReliability,
+  StatusFlags,
   SynthesizeInputs as BacnetSynthesizeInputs,
   MstpDevice,
   MstpTrunkState,

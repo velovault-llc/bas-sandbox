@@ -82,3 +82,109 @@ describe('BACnet object synthesis', () => {
     expect(bacnetObjectId('analog-value', 1)).toBe('AV:1');
   });
 });
+
+describe('BACnet fault propagation', () => {
+  it('open-circuit on a terminal sets reliability=open-loop + FAULT bit', () => {
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [{ terminalId: 'UI-2', role: 'co2' }] },
+      envInputs: { co2: 0 },
+      envOutputs: {},
+      terminalFaults: new Map([['UI-2', 'open-circuit']]),
+    });
+    const ai2 = objs.find((o) => o.id === 'AI:2');
+    expect(ai2?.reliability).toBe('open-loop');
+    expect(ai2?.statusFlags?.fault).toBe(true);
+    expect(ai2?.statusFlags?.inAlarm).toBe(false);
+    expect(ai2?.statusFlags?.overridden).toBe(false);
+    expect(ai2?.statusFlags?.outOfService).toBe(false);
+  });
+
+  it('short-circuit maps to reliability=shorted-loop', () => {
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [] },
+      envInputs: {},
+      envOutputs: {},
+      terminalFaults: new Map([['UI-1', 'short-circuit']]),
+    });
+    const ai1 = objs.find((o) => o.id === 'AI:1');
+    expect(ai1?.reliability).toBe('shorted-loop');
+    expect(ai1?.statusFlags?.fault).toBe(true);
+  });
+
+  it('over-range and under-range propagate intact', () => {
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [] },
+      envInputs: {},
+      envOutputs: {},
+      terminalFaults: new Map([
+        ['UI-1', 'over-range'],
+        ['UI-2', 'under-range'],
+      ]),
+    });
+    expect(objs.find((o) => o.id === 'AI:1')?.reliability).toBe('over-range');
+    expect(objs.find((o) => o.id === 'AI:2')?.reliability).toBe('under-range');
+  });
+
+  it('healthy terminals omit reliability + statusFlags entirely (clean snapshot)', () => {
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [] },
+      envInputs: {},
+      envOutputs: {},
+      // no terminalFaults
+    });
+    const ai1 = objs.find((o) => o.id === 'AI:1');
+    expect(ai1?.reliability).toBeUndefined();
+    expect(ai1?.statusFlags).toBeUndefined();
+  });
+
+  it('only the faulted terminal is affected — siblings stay clean', () => {
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [] },
+      envInputs: {},
+      envOutputs: {},
+      terminalFaults: new Map([['UI-3', 'open-circuit']]),
+    });
+    expect(objs.find((o) => o.id === 'AI:1')?.reliability).toBeUndefined();
+    expect(objs.find((o) => o.id === 'AI:2')?.reliability).toBeUndefined();
+    expect(objs.find((o) => o.id === 'AI:3')?.reliability).toBe('open-loop');
+    expect(objs.find((o) => o.id === 'AI:4')?.reliability).toBeUndefined();
+  });
+
+  it('binary inputs (occupancy) propagate fault too', () => {
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [{ terminalId: 'UI-2', role: 'occupancy' }] },
+      envInputs: { occ: 1 },
+      envOutputs: {},
+      terminalFaults: new Map([['UI-2', 'open-circuit']]),
+    });
+    const occ = objs.find((o) => o.name === 'occupancy');
+    expect(occ?.type).toBe('binary-input');
+    expect(occ?.reliability).toBe('open-loop');
+    expect(occ?.statusFlags?.fault).toBe(true);
+  });
+
+  it('mismatch is NOT a BACnet fault — by design, the controller cannot detect it', () => {
+    // A real Metasys/Niagara doesn't know the wired sensor type is wrong.
+    // The scaling silently produces a "valid" number; reliability stays
+    // no-fault-detected; FAULT bit clear. This is the entire reason
+    // mismatched terminal config is the dangerous silent commissioning
+    // failure — supervisor + tech both see green and chase ghosts.
+    const objs = synthesizeBacnetObjects({
+      vendorModelId: 'distech-ecy-vav',
+      bindings: { bindings: [] },
+      envInputs: {},
+      envOutputs: {},
+      // intentionally no terminalFaults — mismatches don't get fed in
+    });
+    for (const o of objs) {
+      expect(o.reliability).toBeUndefined();
+      expect(o.statusFlags).toBeUndefined();
+    }
+  });
+});

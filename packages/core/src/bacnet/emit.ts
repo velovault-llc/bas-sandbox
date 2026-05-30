@@ -34,6 +34,8 @@
 // ConformancePacket. Callers cast/extend as needed.
 
 import type { ConformancePacket } from './conformance.js';
+import { formatStatusFlags } from './objects.js';
+import type { BacnetReliability, StatusFlags } from './objects.js';
 import {
   encodeWhoIs as wireEncodeWhoIs,
   encodeIAm as wireEncodeIAm,
@@ -282,7 +284,15 @@ export function emitReadProperty(opts: {
 }
 
 /** ReadProperty Complex-ACK. Carries the same invoke id as its
- *  matching request. */
+ *  matching request.
+ *
+ *  When the matching object has a non-default reliability / statusFlags
+ *  pair (sensor fault, override active, etc), pass them through so the
+ *  packet log mirrors what a real supervisor sees in YABE / Niagara
+ *  Spy. The summary surfaces them inline; the wire-bytes encoding stays
+ *  present-value-only for now because that's what the legacy ReadProperty
+ *  request asks for — full property-aware ACKs land when we tie in
+ *  ReadPropertyMultiple. */
 export function emitReadPropertyAck(opts: {
   simSec: number;
   trunkId?: string;
@@ -294,11 +304,28 @@ export function emitReadPropertyAck(opts: {
   propertyName: string;
   invokeId: number;
   value: number | boolean;
+  /** When the AI/BI object has a fault, label the ACK so the packet log
+   *  shows "reliability=open-loop". Real BACnet returns this as an
+   *  enumerated property in a ReadPropertyMultiple-ACK; we surface it
+   *  here for the packet-log narrative until RPM lands. */
+  reliability?: BacnetReliability;
+  /** Optional Status_Flags. Rendered in the summary as the standard
+   *  "T,F,T,F" shorthand. Fault bit defaults to false when omitted. */
+  statusFlags?: StatusFlags;
 }): BuiltPacket {
   const dstPart = opts.dstLabel ? ` → ${opts.dstLabel}` : '';
-  const summary =
+  let summary =
     `${opts.srcLabel}${dstPart}: ReadProperty-ACK ${opts.objectId} ` +
     `${opts.propertyName}=${opts.value} · invokeId ${opts.invokeId}`;
+  if (opts.reliability && opts.reliability !== 'no-fault-detected') {
+    summary += ` · reliability=${opts.reliability}`;
+  }
+  if (opts.statusFlags) {
+    const shorthand = formatStatusFlags(opts.statusFlags);
+    if (shorthand !== 'F,F,F,F') {
+      summary += ` · statusFlags ${shorthand}`;
+    }
+  }
   // Real wire bytes when value is a Real (number). Boolean / Unsigned
   // would need the corresponding application-tag encoders — covered as
   // we add them. For now boolean falls through to undefined.

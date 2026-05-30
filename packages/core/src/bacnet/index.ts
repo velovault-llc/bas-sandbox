@@ -2,8 +2,16 @@ export {
   bacnetObjectId,
   bacnetUnitsForRole,
   BACNET_TYPE_PREFIX,
+  RELIABILITY_LABELS,
+  RELIABILITY_CODES,
+  formatStatusFlags,
 } from './objects.js';
-export type { BacnetObject, BacnetObjectType } from './objects.js';
+export type {
+  BacnetObject,
+  BacnetObjectType,
+  BacnetReliability,
+  StatusFlags,
+} from './objects.js';
 
 export { synthesizeBacnetObjects } from './synthesize.js';
 export type { SynthesizeInputs } from './synthesize.js';

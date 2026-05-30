@@ -1149,6 +1149,10 @@
     /** Last reported value — the controller "remembers" this so it knows
      *  when to fire the next notification. Updated on every emit. */
     lastReportedValue: number | boolean | null;
+    /** Last reported reliability — when the AI's reliability changes
+     *  (sensor opens, recovers, transitions) a COV fires immediately
+     *  even if presentValue hasn't crossed the deadband. */
+    lastReportedReliability?: import('@bas/core').BacnetReliability;
   };
   let covSubscriptions = new Map<string, CovSubscription>();
   // Default deadband: 0.5°F is the industry-standard zone-temp deadband.
@@ -1835,6 +1839,24 @@
         };
       }
       return { values: [] };
+    }
+
+    /** Pull the per-terminal fault map for a given controller out of the
+     *  signal-fidelity bridge. The synthesize call uses this to flip the
+     *  matching AI / BI object's reliability + Status_Flags FAULT bit so
+     *  a supervisor's ReadProperty-ACK reflects the broken wire the way
+     *  a real Metasys/Niagara device would. */
+    function terminalFaultsFor(controllerId: string):
+      | ReadonlyMap<string, import('@bas/core').SignalFault>
+      | undefined {
+      const snapshots = controllerBridge.terminalSignalsByCtrl.get(controllerId);
+      if (!snapshots) return undefined;
+      const out = new Map<string, import('@bas/core').SignalFault>();
+      for (const [terminalId, snap] of snapshots) {
+        const f = snap.scaled.fault;
+        if (f) out.set(terminalId, f);
+      }
+      return out.size > 0 ? out : undefined;
     }
 
     // Build a node-id → physics-driven-value lookup so the runtime pass is direct.
@@ -2619,6 +2641,7 @@
               defaultAi1Name: aiSeed.name,
               envInputs: controllerBridge.envInputsByCtrl.get(d.nodeId),
               envOutputs: controllerBridge.envOutputsByCtrl.get(d.nodeId),
+              terminalFaults: terminalFaultsFor(d.nodeId),
             });
             const aiObj = childObjects.find((o) => o.type === 'analog-input');
             if (!aiObj) continue;
@@ -2738,6 +2761,7 @@
               defaultAi1Name: aiSeed.name,
               envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
               envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
+              terminalFaults: terminalFaultsFor(child.nodeId),
             });
             const targetObj = childObjects.find((o) => o.type === 'analog-input') ?? childObjects[0];
             const objectId = targetObj?.id ?? 'AI:1';
@@ -2964,6 +2988,7 @@
               defaultAi1Name: aiSeed.name,
               envInputs: controllerBridge.envInputsByCtrl.get(child.nodeId),
               envOutputs: controllerBridge.envOutputsByCtrl.get(child.nodeId),
+              terminalFaults: terminalFaultsFor(child.nodeId),
             });
           }
           const aiObj = childObjects.find((o) => o.type === 'analog-input');
@@ -3034,6 +3059,13 @@
               propertyName: 'present-value',
               invokeId,
               value,
+              // Fault propagation: when the wire is open / shorted /
+              // out-of-range, the controller answers ReadProperty with
+              // the matching reliability code + FAULT bit set. Real
+              // supervisors alarm on this; the packet log surfaces the
+              // teaching moment.
+              reliability: aiObj.reliability,
+              statusFlags: aiObj.statusFlags,
             });
             logBacnetPacket({ ...ack, trunkLabel: child.trunkLabel });
             sched.nextSimSec = simSecondsElapsed + APP_LAYER_POLL_CADENCE_S;
@@ -3089,12 +3121,22 @@
             defaultAi1Name: aiSeed.name,
             envInputs: controllerBridge.envInputsByCtrl.get(sub.childNodeId),
             envOutputs: controllerBridge.envOutputsByCtrl.get(sub.childNodeId),
+            terminalFaults: terminalFaultsFor(sub.childNodeId),
           });
         }
         const obj = childObjectsCov.find((o) => o.id === sub.objectId);
         if (!obj) continue;
         const cur = obj.presentValue;
         const last = sub.lastReportedValue;
+        // Fault-transition trigger — fire a COV whenever the AI object's
+        // reliability changes (sensor opens, recovers, transitions to a
+        // different fault). Supervisors subscribe expecting this so they
+        // can light an alarm immediately instead of waiting for the next
+        // periodic poll. Tracks per-subscription so the same fault only
+        // emits once per transition.
+        const curReliability = obj.reliability ?? 'no-fault-detected';
+        const lastReliability = sub.lastReportedReliability ?? 'no-fault-detected';
+        const reliabilityChanged = curReliability !== lastReliability;
         let crossedDeadband = false;
         if (typeof cur === 'boolean' || typeof last === 'boolean') {
           // Binary: any state change is a notification.
@@ -3106,24 +3148,16 @@
         } else {
           crossedDeadband = Math.abs(cur - last) >= sub.deadband;
         }
-        if (!crossedDeadband) continue;
+        // Either a deadband crossing OR a fault transition wins.
+        if (!crossedDeadband && !reliabilityChanged) continue;
         // ASHRAE 135 §13.10 requires statusFlags in the listOfValues
-        // of a COV notification. The four flags are: in-alarm, fault,
-        // overridden, out-of-service — each a boolean. For an
-        // unfaulted, in-range value we emit "(false,false,false,false)".
-        // When the source device is in a known fault state we surface
-        // it; otherwise default to clean.
-        const subSrcNode = nodes.find((n) => n.id === sub.childNodeId);
-        const subFault = (subSrcNode?.data as { fault?: string } | undefined)?.fault;
-        const inAlarm = subFault === 'open' || subFault === 'short' || subFault === 'rail';
-        const inFault = subFault !== undefined && subFault !== 'normal';
-        // statusFlags in T/F notation matches the bacpypes3 / Wireshark
-        // wire decode (positional booleans for in-alarm, fault,
-        // overridden, out-of-service). Single-letter T/F keeps the
-        // packet log readable at width.
+        // of a COV notification. Pull straight from the AI object —
+        // synthesizeBacnetObjects already merged the signal-layer fault
+        // state into both reliability and statusFlags.
+        const sf = obj.statusFlags;
         const statusFlags =
-          `${inAlarm ? 'T' : 'F'},` +
-          `${inFault ? 'T' : 'F'},F,F`;
+          `${sf?.inAlarm ? 'T' : 'F'},${sf?.fault ? 'T' : 'F'},` +
+          `${sf?.overridden ? 'T' : 'F'},${sf?.outOfService ? 'T' : 'F'}`;
         // IP pairs use trunkId "ip-edge:..." or "ip-host:..." — the
         // supervisor label is built from the trunkLabel which already
         // names both endpoints. For MS/TP, fall back to "MAC 0" so the
@@ -3148,14 +3182,19 @@
           value: typeof cur === 'boolean' ? (cur ? 1 : 0) : cur,
           statusFlags,
         });
-        // Append the sandbox-specific Δ — tech-facing readability add-on
-        // on top of the spec-faithful summary the emit module built.
+        // Append the sandbox-specific Δ + a fault-transition tag so the
+        // tech can tell at a glance whether this COV fired for a value
+        // crossing or for a reliability change.
+        const transitionTag = reliabilityChanged
+          ? ` · reliability ${lastReliability}→${curReliability}`
+          : '';
         logBacnetPacket({
           ...built,
-          summary: built.summary + delta,
+          summary: built.summary + delta + transitionTag,
           trunkLabel: sub.trunkLabel,
         });
         sub.lastReportedValue = cur;
+        sub.lastReportedReliability = curReliability;
         covEmitsThisTick += 1;
       }
       void covEmitsThisTick;
