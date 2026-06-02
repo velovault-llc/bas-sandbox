@@ -30,9 +30,26 @@ import type { Segmentation } from './emit.js';
 //
 // Reference: ASHRAE 135 Annex J §J.2.
 export const BVLC_TYPE_BACNET_IP = 0x81;
+export const BVLC_FN_RESULT = 0x00;
+export const BVLC_FN_FORWARDED_NPDU = 0x04;
+export const BVLC_FN_REGISTER_FOREIGN_DEVICE = 0x05;
+export const BVLC_FN_DISTRIBUTE_BROADCAST_TO_NETWORK = 0x09;
 export const BVLC_FN_ORIGINAL_UNICAST_NPDU = 0x0a;
 export const BVLC_FN_ORIGINAL_BROADCAST_NPDU = 0x0b;
-export const BVLC_FN_FORWARDED_NPDU = 0x04;
+
+/** The registered BACnet/IP UDP port (0xBAC0). Default for every B/IP
+ *  address on the wire unless a site re-homes the stack to a custom port. */
+export const BACNET_IP_PORT = 0xbac0; // 47808
+
+/** BVLC-Result result codes (Annex J §J.2.1.1). 0x0000 is the only
+ *  success value; the rest are per-function NAKs. */
+export const BVLC_RESULT_SUCCESS = 0x0000;
+export const BVLC_RESULT_WRITE_BDT_NAK = 0x0010;
+export const BVLC_RESULT_READ_BDT_NAK = 0x0020;
+export const BVLC_RESULT_REGISTER_FOREIGN_DEVICE_NAK = 0x0030;
+export const BVLC_RESULT_READ_FDT_NAK = 0x0040;
+export const BVLC_RESULT_DELETE_FDT_ENTRY_NAK = 0x0050;
+export const BVLC_RESULT_DISTRIBUTE_BROADCAST_NAK = 0x0060;
 
 // ── NPDU control bit positions (§6.2.2) ──────────────────────────────
 // The control octet's bits enable variable-shape NPDU headers:
@@ -517,6 +534,75 @@ export function encodeUnconfirmedCovNotification(opts: {
   ];
   const npdu = buildNpdu({});
   return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
+}
+
+// ── BACnet/IP broadcast-management encoders (Annex J) ────────────────
+// These are BVLC-layer control messages — the dance that lets BACnet
+// broadcasts (Who-Is, I-Am) cross IP subnets. Unlike the service
+// encoders above, several carry NO NPDU/APDU at all: the whole message
+// lives in the 4-byte BVLC header plus a tiny fixed body.
+
+/** Encode a 6-octet BACnet/IP address: 4 IPv4 octets + 2-byte UDP port,
+ *  big-endian (Annex J §J.1). This is the "B/IP address" embedded in
+ *  Forwarded-NPDU, BDT entries, and FDT entries. */
+function encodeBipAddress(ip: string, port: number): number[] {
+  const octets = ip.split('.').map((o) => parseInt(o, 10));
+  if (octets.length !== 4 || octets.some((o) => Number.isNaN(o) || o < 0 || o > 255)) {
+    throw new Error(`encodeBipAddress: bad IPv4 "${ip}"`);
+  }
+  return [...octets.map((o) => o & 0xff), (port >> 8) & 0xff, port & 0xff];
+}
+
+/** Strip the 4-byte BVLC header off a complete BACnet/IP frame, returning
+ *  just the NPDU+APDU. Lets Forwarded-NPDU / Distribute-Broadcast re-wrap
+ *  an already-encoded frame (e.g. `encodeWhoIs()`) without rebuilding it. */
+function npduApduOf(frame: Uint8Array): number[] {
+  return Array.from(frame.subarray(4));
+}
+
+/** Encode a BVLC-Result (Annex J §J.2.1) — the acknowledgement a BBMD
+ *  returns for Register-Foreign-Device, Write-BDT, etc. Header + a single
+ *  2-byte result code. `81 00 00 06 <rc-hi> <rc-lo>`. */
+export function encodeBvlcResult(opts: { resultCode: number }): Uint8Array {
+  const body = [(opts.resultCode >> 8) & 0xff, opts.resultCode & 0xff];
+  return buildBvlc(BVLC_FN_RESULT, body);
+}
+
+/** Encode a Register-Foreign-Device (Annex J §J.2.6). A device on a
+ *  remote subnet sends this to a BBMD to be added to its Foreign Device
+ *  Table for `ttlSeconds`; the BBMD then forwards broadcasts to it.
+ *  Header + a 2-byte time-to-live. `81 05 00 06 <ttl-hi> <ttl-lo>`. */
+export function encodeRegisterForeignDevice(opts: { ttlSeconds: number }): Uint8Array {
+  const ttl = opts.ttlSeconds & 0xffff;
+  const body = [(ttl >> 8) & 0xff, ttl & 0xff];
+  return buildBvlc(BVLC_FN_REGISTER_FOREIGN_DEVICE, body);
+}
+
+/** Encode a Forwarded-NPDU (Annex J §J.2.5) — how a BBMD relays a
+ *  broadcast it received to its BDT peers. Carries the 6-byte B/IP
+ *  address of the *original* sender, then the original NPDU+APDU.
+ *  Pass `inner` as a complete frame (e.g. `encodeWhoIs()`); its BVLC
+ *  header is stripped and replaced with the Forwarded wrapper. */
+export function encodeForwardedNpdu(opts: {
+  readonly originatorIp: string;
+  readonly originatorPort?: number;
+  readonly inner: Uint8Array;
+}): Uint8Array {
+  const body = [
+    ...encodeBipAddress(opts.originatorIp, opts.originatorPort ?? BACNET_IP_PORT),
+    ...npduApduOf(opts.inner),
+  ];
+  return buildBvlc(BVLC_FN_FORWARDED_NPDU, body);
+}
+
+/** Encode a Distribute-Broadcast-To-Network (Annex J §J.2.10) — a
+ *  registered foreign device sends this to its BBMD asking it to
+ *  broadcast the enclosed NPDU on the BBMD's subnet and to every BDT
+ *  peer. Body is just the original NPDU+APDU (no address). */
+export function encodeDistributeBroadcastToNetwork(opts: {
+  readonly inner: Uint8Array;
+}): Uint8Array {
+  return buildBvlc(BVLC_FN_DISTRIBUTE_BROADCAST_TO_NETWORK, npduApduOf(opts.inner));
 }
 
 /** Convert a Uint8Array to a lowercase hex string for logging / display. */

@@ -10,6 +10,10 @@ import {
   emitTokenPass,
   emitPollForMaster,
   emitTimeout,
+  emitRegisterForeignDevice,
+  emitBvlcResult,
+  emitForwardedWhoIs,
+  emitDistributeBroadcast,
   toConformancePacket,
   checkBacnetConformance,
 } from '../src/index.js';
@@ -227,6 +231,76 @@ describe('emit module — wire-format builders', () => {
       expect(cp.srcMac).toBe(0);
       expect(cp.dstMac).toBe(3);
       expect(cp.summary).toBe(built.summary);
+    });
+  });
+
+  describe('BACnet/IP broadcast-management emitters carry real Annex-J bytes', () => {
+    it('emitRegisterForeignDevice: service, labels, and TTL-encoded bytes', () => {
+      const p = emitRegisterForeignDevice({
+        simSec: 0,
+        srcLabel: 'YABE-Laptop',
+        srcIp: '192.168.3.50',
+        dstLabel: 'NAE-A',
+        dstIp: '192.168.1.10',
+        ttlSeconds: 600,
+      });
+      expect(p.service).toBe('Register-Foreign-Device');
+      expect(p.summary).toContain('YABE-Laptop');
+      expect(p.summary).toContain('NAE-A');
+      expect(p.summary).toContain('BVLC fn 0x05');
+      // TTL 600 = 0x0258 → 81 05 00 06 02 58
+      expect(p.bytes).toBe('810500060258');
+    });
+
+    it('emitBvlcResult: success ACK encodes 0x0000', () => {
+      const p = emitBvlcResult({
+        simSec: 0,
+        srcLabel: 'NAE-A',
+        dstLabel: 'YABE-Laptop',
+      });
+      expect(p.service).toBe('BVLC-Result');
+      expect(p.summary).toContain('ACK (success)');
+      expect(p.bytes).toBe('810000060000');
+    });
+
+    it('emitBvlcResult: non-zero code renders a NAK', () => {
+      const p = emitBvlcResult({
+        simSec: 0,
+        srcLabel: 'NAE-A',
+        dstLabel: 'YABE-Laptop',
+        resultCode: 0x0030,
+      });
+      expect(p.summary).toContain('NAK (0x0030)');
+      expect(p.bytes).toBe('810000060030');
+    });
+
+    it('emitForwardedWhoIs: Who-Is service, forwarded BVLC, originator-preserving bytes', () => {
+      const p = emitForwardedWhoIs({
+        simSec: 0,
+        bbmdLabel: 'NAE-A',
+        bbmdIp: '192.168.1.10',
+        originatorLabel: 'YABE-Laptop',
+        originatorIp: '192.168.3.50',
+        dstLabel: 'NAE-B',
+        dstIp: '192.168.2.10',
+      });
+      expect(p.service).toBe('Who-Is');
+      expect(p.summary).toContain('BVLC fn 0x04 Forwarded-NPDU');
+      // origin 192.168.3.50:47808 = c0 a8 03 32 ba c0, wrapping a Who-Is.
+      expect(p.bytes).toBe('81040012c0a80332bac00120ffff00ff1008');
+    });
+
+    it('emitDistributeBroadcast: service + 0x09 BVLC bytes', () => {
+      const p = emitDistributeBroadcast({
+        simSec: 0,
+        srcLabel: 'YABE-Laptop',
+        srcIp: '192.168.3.50',
+        dstLabel: 'NAE-A',
+        dstIp: '192.168.1.10',
+      });
+      expect(p.service).toBe('Distribute-Broadcast');
+      expect(p.summary).toContain('BVLC fn 0x09 Distribute-Broadcast-To-Network');
+      expect(p.bytes).toBe('8109000c0120ffff00ff1008');
     });
   });
 });

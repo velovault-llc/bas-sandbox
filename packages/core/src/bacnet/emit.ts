@@ -43,6 +43,11 @@ import {
   encodeReadPropertyAck as wireEncodeReadPropertyAck,
   encodeSubscribeCov as wireEncodeSubscribeCov,
   encodeConfirmedCovNotification as wireEncodeConfirmedCovNotification,
+  encodeRegisterForeignDevice as wireEncodeRegisterForeignDevice,
+  encodeBvlcResult as wireEncodeBvlcResult,
+  encodeForwardedNpdu as wireEncodeForwardedNpdu,
+  encodeDistributeBroadcastToNetwork as wireEncodeDistributeBroadcast,
+  BVLC_RESULT_SUCCESS,
   bytesToHex,
   type StatusFlagsBits,
 } from './wire.js';
@@ -70,6 +75,10 @@ export type Transport =
   | 'forwarded-ip'
   /** Foreign-device registration — BVLC fn 0x05. */
   | 'register-foreign'
+  /** BBMD broadcast-management result — BVLC fn 0x00 BVLC-Result. */
+  | 'bvlc-result'
+  /** Foreign device asking its BBMD to redistribute — BVLC fn 0x09. */
+  | 'distribute-broadcast'
   /** MS/TP frame — no BVLC layer. */
   | 'mstp';
 
@@ -146,6 +155,10 @@ function bvlcTag(t: Transport): string {
       return 'BVLC fn 0x04 Forwarded-NPDU';
     case 'register-foreign':
       return 'BVLC fn 0x05 Register-Foreign-Device';
+    case 'bvlc-result':
+      return 'BVLC fn 0x00 BVLC-Result';
+    case 'distribute-broadcast':
+      return 'BVLC fn 0x09 Distribute-Broadcast-To-Network';
     case 'mstp':
       return ''; // No BVLC layer on MS/TP.
   }
@@ -564,5 +577,141 @@ export function emitTimeout(opts: {
     dstMac: opts.dstMac,
     trunkId: opts.trunkId,
     layer: 'app',
+  };
+}
+
+// ── BACnet/IP broadcast management (Annex J) ─────────────────────────
+// The control flow that lets BACnet broadcasts cross IP subnets. A
+// foreign device registers with a BBMD; the BBMD ACKs with a BVLC-Result;
+// when any device broadcasts a Who-Is, the BBMD forwards it to each BDT
+// peer (Forwarded-NPDU) and a registered FD can ask the BBMD to
+// redistribute on its behalf (Distribute-Broadcast-To-Network). Every
+// emitter carries real Annex-J wire bytes.
+
+/** Register-Foreign-Device (§J.2.6) — a device on a remote subnet asks a
+ *  BBMD to add it to the Foreign Device Table for `ttlSeconds`. */
+export function emitRegisterForeignDevice(opts: {
+  simSec: number;
+  trunkId?: string;
+  srcLabel: string;
+  srcIp?: string;
+  dstLabel: string;
+  dstIp?: string;
+  ttlSeconds: number;
+  context?: string;
+}): BuiltPacket {
+  const ipPart = opts.srcIp ? ` (${opts.srcIp})` : '';
+  const dstPart = opts.dstIp ? ` (${opts.dstIp})` : '';
+  const ctx = opts.context ? ` ${opts.context}` : '';
+  return {
+    simSec: opts.simSec,
+    service: 'Register-Foreign-Device',
+    summary:
+      `${opts.srcLabel}${ipPart} → ${opts.dstLabel}${dstPart}: ` +
+      `Register-Foreign-Device (TTL ${opts.ttlSeconds}s)${ctx} · ${bvlcTag('register-foreign')}`,
+    srcLabel: opts.srcLabel,
+    dstLabel: opts.dstLabel,
+    trunkId: opts.trunkId,
+    layer: 'app',
+    bytes: bytesToHex(wireEncodeRegisterForeignDevice({ ttlSeconds: opts.ttlSeconds })),
+  };
+}
+
+/** BVLC-Result (§J.2.1) — a BBMD's acknowledgement of a broadcast-
+ *  management request (Register-Foreign-Device, Write-BDT, …). A zero
+ *  result code is success; anything else is a per-function NAK. */
+export function emitBvlcResult(opts: {
+  simSec: number;
+  trunkId?: string;
+  srcLabel: string;
+  srcIp?: string;
+  dstLabel: string;
+  dstIp?: string;
+  /** Defaults to BVLC_RESULT_SUCCESS (0). */
+  resultCode?: number;
+  context?: string;
+}): BuiltPacket {
+  const code = opts.resultCode ?? BVLC_RESULT_SUCCESS;
+  const ipPart = opts.srcIp ? ` (${opts.srcIp})` : '';
+  const dstPart = opts.dstIp ? ` (${opts.dstIp})` : '';
+  const verdict = code === BVLC_RESULT_SUCCESS ? 'ACK (success)' : `NAK (0x${code.toString(16).padStart(4, '0')})`;
+  const ctx = opts.context ? ` ${opts.context}` : '';
+  return {
+    simSec: opts.simSec,
+    service: 'BVLC-Result',
+    summary:
+      `${opts.srcLabel}${ipPart} → ${opts.dstLabel}${dstPart}: ` +
+      `BVLC-Result ${verdict}${ctx} · ${bvlcTag('bvlc-result')}`,
+    srcLabel: opts.srcLabel,
+    dstLabel: opts.dstLabel,
+    trunkId: opts.trunkId,
+    layer: 'app',
+    bytes: bytesToHex(wireEncodeBvlcResult({ resultCode: code })),
+  };
+}
+
+/** Forwarded-NPDU (§J.2.5) — a BBMD relays a Who-Is it heard on its own
+ *  subnet to one of its BDT peers, preserving the *original* sender's
+ *  B/IP address so the far side can reply directly. */
+export function emitForwardedWhoIs(opts: {
+  simSec: number;
+  trunkId?: string;
+  /** The forwarding BBMD (the source on this hop's wire). */
+  bbmdLabel: string;
+  bbmdIp?: string;
+  /** The device whose Who-Is is being relayed. */
+  originatorLabel: string;
+  originatorIp: string;
+  /** The peer BBMD receiving the forward. */
+  dstLabel: string;
+  dstIp?: string;
+  context?: string;
+}): BuiltPacket {
+  const bbmdPart = opts.bbmdIp ? ` (${opts.bbmdIp})` : '';
+  const dstPart = opts.dstIp ? ` (${opts.dstIp})` : '';
+  const ctx = opts.context ? ` ${opts.context}` : '';
+  return {
+    simSec: opts.simSec,
+    service: 'Who-Is',
+    summary:
+      `${opts.bbmdLabel}${bbmdPart} → ${opts.dstLabel}${dstPart}: ` +
+      `forwards ${opts.originatorLabel}'s Who-Is (orig ${opts.originatorIp})${ctx} · ${bvlcTag('forwarded-ip')}`,
+    srcLabel: opts.bbmdLabel,
+    dstLabel: opts.dstLabel,
+    trunkId: opts.trunkId,
+    layer: 'app',
+    bytes: bytesToHex(
+      wireEncodeForwardedNpdu({ originatorIp: opts.originatorIp, inner: wireEncodeWhoIs() }),
+    ),
+  };
+}
+
+/** Distribute-Broadcast-To-Network (§J.2.10) — a registered foreign
+ *  device asks its BBMD to broadcast the enclosed Who-Is on the BBMD's
+ *  subnet and to every BDT peer (the FD can't broadcast across subnets
+ *  itself). */
+export function emitDistributeBroadcast(opts: {
+  simSec: number;
+  trunkId?: string;
+  srcLabel: string;
+  srcIp?: string;
+  dstLabel: string;
+  dstIp?: string;
+  context?: string;
+}): BuiltPacket {
+  const ipPart = opts.srcIp ? ` (${opts.srcIp})` : '';
+  const dstPart = opts.dstIp ? ` (${opts.dstIp})` : '';
+  const ctx = opts.context ? ` ${opts.context}` : '';
+  return {
+    simSec: opts.simSec,
+    service: 'Distribute-Broadcast',
+    summary:
+      `${opts.srcLabel}${ipPart} → ${opts.dstLabel}${dstPart}: ` +
+      `Distribute-Broadcast (Who-Is)${ctx} · ${bvlcTag('distribute-broadcast')}`,
+    srcLabel: opts.srcLabel,
+    dstLabel: opts.dstLabel,
+    trunkId: opts.trunkId,
+    layer: 'app',
+    bytes: bytesToHex(wireEncodeDistributeBroadcast({ inner: wireEncodeWhoIs() })),
   };
 }

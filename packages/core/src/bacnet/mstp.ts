@@ -123,3 +123,152 @@ export function initMstpTrunkState(devices: readonly MstpDevice[], baud: number 
 export function formatMstpDevice(d: MstpDevice): string {
   return `${d.label} (MAC ${d.mac})`;
 }
+
+// ── Deterministic MAC assignment ────────────────────────────────────────
+// Grouping MS/TP edges into trunks and assigning each device a MAC is
+// pure topology math — no sim state. Factored out here so the UI tick,
+// any GUI-facing derived (the canvas node badge), and the inspector all
+// read ONE address map and can never drift from the packet log.
+
+/** Minimal node shape the addressing algorithm needs. Decoupled from the
+ *  UI node type so this stays a pure, testable core function. */
+export interface MstpAddressingNode {
+  readonly id: string;
+  readonly label: string;
+  /** Node kind — only `'supervisor'` is special-cased (MAC-0 candidate). */
+  readonly kind: string;
+  /** Explicit MAC override (dip-switch). Always wins when set. */
+  readonly forcedMac?: number;
+  /** Explicit device-instance override. Falls back to `1000 + mac`. */
+  readonly deviceInstance?: number;
+}
+
+/** Minimal edge shape: `wireKind` distinguishes MS/TP segments (`'mstp'`)
+ *  from BACnet/IP uplinks (`'bacnet-ip'`); `baud` is the segment speed. */
+export interface MstpAddressingEdge {
+  readonly id: string;
+  readonly source: string;
+  readonly target: string;
+  readonly wireKind?: string;
+  readonly baud?: number;
+}
+
+/** One MS/TP trunk (a connected component of `'mstp'` edges) with its
+ *  devices MAC-assigned and sorted into token-ring (MAC) order. */
+export interface MstpTrunkAddressing {
+  /** Representative edge id — the trunk's stable key (used as `trunkId`
+   *  on every packet emitted for this segment). */
+  readonly trunkKey: string;
+  readonly baud: number;
+  readonly devices: readonly MstpDevice[];
+}
+
+export interface MstpAddressingResult {
+  readonly trunks: readonly MstpTrunkAddressing[];
+  /** Flat nodeId → device lookup (with owning trunk key) for callers that
+   *  need a single node's address, e.g. a canvas badge. */
+  readonly byNode: ReadonlyMap<string, MstpDevice & { readonly trunkKey: string }>;
+}
+
+const DEFAULT_MSTP_BAUD = 38400;
+
+/**
+ * Group MS/TP edges into trunks and assign each device a MAC address +
+ * device instance, deterministically, from topology alone.
+ *
+ * Mirrors what a commissioning tech sees on the bus:
+ *   - Trunks are connected components over `wireKind: 'mstp'` edges.
+ *   - Within a trunk MAC 0 (the master / token originator) is the first
+ *     of: a node with `forcedMac === 0`, a `supervisor`, a node with a
+ *     BACnet/IP uplink (the edge router bridging IP → MS/TP), else the
+ *     lowest-label node.
+ *   - `forcedMac` always wins (a real dip-switch). Everyone else takes
+ *     the next free child MAC in label order.
+ *   - Device instance honors an explicit override, else `1000 + mac`.
+ */
+export function assignMstpAddressing(
+  nodes: readonly MstpAddressingNode[],
+  edges: readonly MstpAddressingEdge[],
+): MstpAddressingResult {
+  const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+  const mstpEdges = edges.filter((e) => e.wireKind === 'mstp');
+
+  // Adjacency over MS/TP wires → connected components (trunks).
+  const adj = new Map<string, Set<string>>();
+  for (const e of mstpEdges) {
+    if (!e.source || !e.target) continue;
+    if (!adj.has(e.source)) adj.set(e.source, new Set());
+    if (!adj.has(e.target)) adj.set(e.target, new Set());
+    adj.get(e.source)!.add(e.target);
+    adj.get(e.target)!.add(e.source);
+  }
+  const visited = new Set<string>();
+  const components: string[][] = [];
+  for (const start of adj.keys()) {
+    if (visited.has(start)) continue;
+    const stack = [start];
+    const group: string[] = [];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      group.push(cur);
+      for (const nb of adj.get(cur) ?? []) if (!visited.has(nb)) stack.push(nb);
+    }
+    components.push(group);
+  }
+
+  const hasBacnetIpUplink = (nodeId: string): boolean =>
+    edges.some(
+      (e) => e.wireKind === 'bacnet-ip' && (e.source === nodeId || e.target === nodeId),
+    );
+
+  const trunks: MstpTrunkAddressing[] = [];
+  const byNode = new Map<string, MstpDevice & { trunkKey: string }>();
+
+  for (const comp of components) {
+    // Representative edge: lowest-listed MS/TP edge whose endpoints are
+    // both in this component. Its id is the trunk's stable key.
+    const trunkEdge = mstpEdges.find(
+      (e) => comp.includes(e.source) && comp.includes(e.target),
+    );
+    if (!trunkEdge) continue;
+    const baud = trunkEdge.baud ?? DEFAULT_MSTP_BAUD;
+
+    // Sort by label so MAC assignment is deterministic across renders.
+    const trunkNodes = comp
+      .map((id) => nodeById.get(id))
+      .filter((n): n is MstpAddressingNode => !!n)
+      .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+
+    const forcedZero = trunkNodes.find((n) => n.forcedMac === 0);
+    const supervisorOnTrunk = trunkNodes.find((n) => n.kind === 'supervisor');
+    const routerOnTrunk = trunkNodes.find((n) => hasBacnetIpUplink(n.id));
+    const masterNode = forcedZero ?? supervisorOnTrunk ?? routerOnTrunk ?? null;
+
+    let nextChildMac = 1;
+    const devices: MstpDevice[] = trunkNodes.map((n) => {
+      let mac: number;
+      if (typeof n.forcedMac === 'number') mac = n.forcedMac;
+      else if (masterNode && n.id === masterNode.id) mac = 0;
+      else mac = nextChildMac++;
+      const instanceOverride = n.deviceInstance;
+      return {
+        nodeId: n.id,
+        mac,
+        label: n.label || n.id,
+        deviceInstance:
+          typeof instanceOverride === 'number' && Number.isFinite(instanceOverride)
+            ? instanceOverride
+            : defaultDeviceInstance(mac),
+      };
+    });
+    // Token ring is MAC-ordered.
+    devices.sort((a, b) => a.mac - b.mac);
+
+    trunks.push({ trunkKey: trunkEdge.id, baud, devices });
+    for (const d of devices) byNode.set(d.nodeId, { ...d, trunkKey: trunkEdge.id });
+  }
+
+  return { trunks, byNode };
+}

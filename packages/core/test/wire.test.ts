@@ -16,6 +16,12 @@ import {
   encodeConfirmedCovNotification,
   encodeUnconfirmedCovNotification,
   encodeSimpleAck,
+  encodeBvlcResult,
+  encodeRegisterForeignDevice,
+  encodeForwardedNpdu,
+  encodeDistributeBroadcastToNetwork,
+  BVLC_RESULT_SUCCESS,
+  BVLC_RESULT_REGISTER_FOREIGN_DEVICE_NAK,
   bytesToHex,
 } from '../src/bacnet/wire.js';
 
@@ -224,11 +230,72 @@ describe('wire encoder — byte-exact against bacpypes3 reference', () => {
       encodeIAm({ deviceInstance: 7, maxApdu: 480, segmentation: 'no-segmentation', vendorId: 37 }),
       encodeReadProperty({ invokeId: 0, objectId: 'AI:1', propertyId: 85 }),
       encodeSimpleAck({ invokeId: 0, serviceChoice: 14 }),
+      encodeBvlcResult({ resultCode: BVLC_RESULT_SUCCESS }),
+      encodeRegisterForeignDevice({ ttlSeconds: 60 }),
+      encodeForwardedNpdu({ originatorIp: '192.168.1.10', inner: encodeWhoIs() }),
+      encodeDistributeBroadcastToNetwork({ inner: encodeWhoIs() }),
     ];
     for (const f of frames) {
       expect(f[0]).toBe(0x81);
       const declaredLen = (f[2] << 8) | f[3];
       expect(declaredLen).toBe(f.length);
     }
+  });
+});
+
+describe('wire encoder — BACnet/IP broadcast management (Annex J)', () => {
+  it('encodes BVLC-Result success (0x0000)', () => {
+    // §J.2.1: 81 00 <len=0006> <result-code>. Success is the only
+    // non-NAK code.
+    expect(bytesToHex(encodeBvlcResult({ resultCode: BVLC_RESULT_SUCCESS }))).toBe('810000060000');
+  });
+
+  it('encodes BVLC-Result Register-Foreign-Device NAK (0x0030)', () => {
+    expect(
+      bytesToHex(encodeBvlcResult({ resultCode: BVLC_RESULT_REGISTER_FOREIGN_DEVICE_NAK })),
+    ).toBe('810000060030');
+  });
+
+  it('encodes Register-Foreign-Device with a 2-byte TTL', () => {
+    // §J.2.6: 81 05 <len=0006> <ttl-hi> <ttl-lo>. TTL 60s = 0x003c.
+    expect(bytesToHex(encodeRegisterForeignDevice({ ttlSeconds: 60 }))).toBe('81050006003c');
+    // 600s = 0x0258 — exercises the high byte.
+    expect(bytesToHex(encodeRegisterForeignDevice({ ttlSeconds: 600 }))).toBe('810500060258');
+  });
+
+  it('encodes Forwarded-NPDU wrapping a Who-Is, preserving the originator B/IP', () => {
+    // §J.2.5: 81 04 <len> <6-byte origin B/IP> <original NPDU+APDU>.
+    //   origin 192.168.1.10:47808 = c0 a8 01 0a ba c0
+    //   inner Who-Is NPDU+APDU (BVLC stripped) = 01 20 ff ff 00 ff 10 08
+    //   len = 4 + 6 + 8 = 18 = 0x12
+    expect(
+      bytesToHex(encodeForwardedNpdu({ originatorIp: '192.168.1.10', inner: encodeWhoIs() })),
+    ).toBe('81040012c0a8010abac00120ffff00ff1008');
+  });
+
+  it('encodes Forwarded-NPDU with a non-default port', () => {
+    // 10.0.2.10:47809 = 0a 00 02 0a ba c1
+    expect(
+      bytesToHex(
+        encodeForwardedNpdu({
+          originatorIp: '10.0.2.10',
+          originatorPort: 0xbac1,
+          inner: encodeWhoIs(),
+        }),
+      ),
+    ).toBe('810400120a00020abac10120ffff00ff1008');
+  });
+
+  it('rejects a malformed originator IP', () => {
+    expect(() => encodeForwardedNpdu({ originatorIp: '999.1.1.1', inner: encodeWhoIs() })).toThrow();
+    expect(() => encodeForwardedNpdu({ originatorIp: '10.0.0', inner: encodeWhoIs() })).toThrow();
+  });
+
+  it('encodes Distribute-Broadcast-To-Network wrapping a Who-Is', () => {
+    // §J.2.10: 81 09 <len> <original NPDU+APDU>. No address field.
+    //   inner = 01 20 ff ff 00 ff 10 08 → len = 4 + 8 = 12 = 0x0c
+    expect(
+      bytesToHex(encodeDistributeBroadcastToNetwork({ inner: encodeWhoIs() })),
+    ).toBe('8109000c0120ffff00ff1008');
   });
 });

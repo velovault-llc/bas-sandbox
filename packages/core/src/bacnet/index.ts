@@ -24,8 +24,16 @@ export {
   defaultDeviceInstance,
   mstpServiceLatencySeconds,
   BACNET_IP_RTT_SECONDS,
+  assignMstpAddressing,
 } from './mstp.js';
-export type { MstpDevice, MstpTrunkState } from './mstp.js';
+export type {
+  MstpDevice,
+  MstpTrunkState,
+  MstpAddressingNode,
+  MstpAddressingEdge,
+  MstpTrunkAddressing,
+  MstpAddressingResult,
+} from './mstp.js';
 
 export {
   validateMstpTrunks,
@@ -88,6 +96,10 @@ export {
   emitTokenPass,
   emitPollForMaster,
   emitTimeout,
+  emitRegisterForeignDevice,
+  emitBvlcResult,
+  emitForwardedWhoIs,
+  emitDistributeBroadcast,
   toConformancePacket,
 } from './emit.js';
 export type { BuiltPacket, Transport, Segmentation } from './emit.js';
