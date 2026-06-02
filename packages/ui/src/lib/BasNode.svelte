@@ -141,6 +141,14 @@
   const getOfflineIds = getContext<() => Set<string>>('basOfflineIds');
   const isOffline = $derived(getOfflineIds ? getOfflineIds().has(id) : false);
 
+  // MS/TP address (MAC + device instance) for this node, resolved by
+  // BuildCanvas from topology via the shared addressing helper — the same
+  // map the packet log reads, so the badge can't disagree with the wire.
+  // Undefined for nodes not on an MS/TP trunk (pure BACnet/IP, unwired).
+  const getAddressing =
+    getContext<() => Map<string, { mac: number; deviceInstance?: number }>>('basNodeAddressing');
+  const address = $derived(getAddressing ? getAddressing().get(id) : undefined);
+
   // Inline-rename plumbing. BuildCanvas tracks which node id is being renamed
   // and provides commit/cancel handlers via context.
   const getRenamingId = getContext<() => string | null>('basRenamingNodeId');
@@ -315,6 +323,15 @@
         title={data.subtitle ? 'From the parsed .dbexport' : 'Sensor signal template'}
       >
         {effectiveSubtitle}
+      </div>
+    {/if}
+    {#if address}
+      <div
+        class="mac-badge"
+        title="MS/TP MAC {address.mac} · BACnet Device Instance {address.deviceInstance ??
+          1000 + address.mac} — this is the address you'll see for this device in the packet log."
+      >
+        MAC {address.mac}{#if address.deviceInstance}<span class="di">· DI {address.deviceInstance}</span>{/if}
       </div>
     {/if}
   {/if}
@@ -757,6 +774,30 @@
     font-size: 0.7rem;
     color: color-mix(in srgb, var(--accent) 80%, CanvasText);
     opacity: 0.85;
+  }
+
+  /* MS/TP link address — the MAC (+ device instance) this device answers
+     to on its trunk. Mono + faint so it reads as wire metadata, not a
+     name. Matches what the packet log shows for the same device. */
+  .mac-badge {
+    margin-top: 0.2rem;
+    display: inline-block;
+    padding: 0.02rem 0.32rem;
+    border-radius: 3px;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.64rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: color-mix(in srgb, CanvasText 62%, transparent);
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+    font-variant-numeric: tabular-nums;
+  }
+  .mac-badge .di {
+    margin-left: 0.3rem;
+    opacity: 0.8;
   }
 
   .label-edit {

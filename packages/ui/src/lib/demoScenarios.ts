@@ -618,6 +618,67 @@ export const DEMOS: readonly Demo[] = [
   },
 
   {
+    id: 'bbmd-foreign-device',
+    name: 'BACnet/IP: BBMD bridge + foreign device',
+    blurb:
+      'Two NAEs run BBMD on different /24s and bridge broadcasts to each other. A laptop tool on a THIRD subnet registers as a foreign device with NAE-A. Hit Run and open the BACnet packet log to watch the full Annex-J dance: Register-Foreign-Device → BVLC-Result → Distribute-Broadcast → Forwarded-NPDU across the BDT. Every packet carries real wire bytes (click one to inspect).',
+    scenario: buildScenario({
+      nodes: [
+        {
+          id: 'nae-a',
+          kind: 'supervisor',
+          label: 'NAE-A',
+          x: 200,
+          y: 140,
+          data: {
+            ipAddress: '192.168.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.1.1',
+            isBBMD: true,
+            bdtPeers: ['192.168.2.10'],
+            subtitle: 'BBMD · subnet 192.168.1.0/24',
+          },
+        },
+        {
+          id: 'nae-b',
+          kind: 'supervisor',
+          label: 'NAE-B',
+          x: 640,
+          y: 140,
+          data: {
+            ipAddress: '192.168.2.10',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.2.1',
+            isBBMD: true,
+            bdtPeers: ['192.168.1.10'],
+            subtitle: 'BBMD · subnet 192.168.2.0/24',
+          },
+        },
+        {
+          id: 'laptop',
+          kind: 'controller',
+          label: 'YABE-Laptop',
+          x: 200,
+          y: 360,
+          data: {
+            ipAddress: '192.168.3.50',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.3.1',
+            subtitle: 'Foreign device · subnet 192.168.3.0/24',
+          },
+        },
+      ],
+      edges: [
+        // The two BBMDs bridge across subnets via their BDTs.
+        { source: 'nae-a', target: 'nae-b', wireKind: 'bacnet-ip' },
+        // The laptop is on a remote subnet — it can't broadcast across the
+        // routers, so it registers as a foreign device with NAE-A.
+        { source: 'laptop', target: 'nae-a', wireKind: 'bacnet-ip' },
+      ],
+    }),
+  },
+
+  {
     id: 'soft-controllers',
     name: 'JACE hosts 5 virtual VAVs',
     blurb:

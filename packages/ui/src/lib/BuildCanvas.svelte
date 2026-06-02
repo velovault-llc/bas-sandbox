@@ -42,7 +42,10 @@
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
   import { registerBridge, controllerBridge, bumpTick as bumpBridgeTick, type ControllerSnapshot } from './cli/controllerBridge.svelte';
-  import { logPacket as logBacnetPacket } from './bacnet/bacnetPacketLog.svelte';
+  import {
+    logPacket as logBacnetPacket,
+    clearPackets as clearBacnetPackets,
+  } from './bacnet/bacnetPacketLog.svelte';
   import { openTrunkInspector, publishTrunkStates, publishMstpFindings, publishIpv4Findings } from './bacnet/trunkInspectorStore.svelte';
   import {
     runProgram,
@@ -74,6 +77,7 @@
     initMstpTrunkState,
     defaultDeviceInstance,
     mstpServiceLatencySeconds,
+    assignMstpAddressing,
     validateMstpTrunks,
     validateBacnetIpNetwork,
     validateIpZones,
@@ -86,6 +90,10 @@
     emitReadProperty,
     emitReadPropertyAck,
     emitCovNotification,
+    emitRegisterForeignDevice,
+    emitBvlcResult,
+    emitForwardedWhoIs,
+    emitDistributeBroadcast,
     BACNET_IP_RTT_SECONDS,
     stepVAhu,
     initVAhuState,
@@ -100,7 +108,6 @@
     type SubnetZone as SubnetZoneSpec,
     type LoopState,
     type ZoneState,
-    type MstpDevice,
     type MstpTrunkState,
     type VAhuState,
     type VAhuConfig,
@@ -980,6 +987,42 @@
   });
   setContext('basWiredIds', () => wiredIds);
 
+  // ── MS/TP addressing (shared source of truth) ───────────────────────
+  // One helper computes the trunk grouping + MAC / device-instance
+  // assignment from topology. Both the sim tick (token-passing + packet
+  // emission) and the `nodeAddressing` derived (canvas badge) call it, so
+  // the address a tech reads on a node card is exactly the MAC that shows
+  // up in the packet log for that device.
+  function computeMstpAddressing() {
+    return assignMstpAddressing(
+      nodes.map((n) => ({
+        id: n.id,
+        label: nodeLabel(n) || n.id,
+        kind: nodeKind(n) ?? '',
+        forcedMac: (n.data as { forcedMac?: number } | undefined)?.forcedMac,
+        deviceInstance: (n.data as { deviceInstance?: number } | undefined)?.deviceInstance,
+      })),
+      edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        wireKind: (e.data as { wireKind?: string } | undefined)?.wireKind,
+        baud: (e.data as { baud?: number } | undefined)?.baud,
+      })),
+    );
+  }
+
+  // nodeId → { mac, deviceInstance } for every MS/TP device, derived from
+  // topology so the badge is live whether or not the sim is running.
+  const nodeAddressing = $derived.by((): Map<string, { mac: number; deviceInstance?: number }> => {
+    const out = new Map<string, { mac: number; deviceInstance?: number }>();
+    for (const [nid, d] of computeMstpAddressing().byNode) {
+      out.set(nid, { mac: d.mac, deviceInstance: d.deviceInstance });
+    }
+    return out;
+  });
+  setContext('basNodeAddressing', () => nodeAddressing);
+
   // ============ Inline rename ============
 
   let renamingNodeId = $state<string | null>(null);
@@ -1090,6 +1133,10 @@
   /** Pairs we've already announced (Who-Is + I-Am + SubscribeCOV) so
    *  re-render doesn't spam the bus with re-discoveries every tick. */
   let announcedIpPairs = new Set<string>();
+  /** BBMD bridge + foreign-device registration flows already emitted, so
+   *  the Annex-J broadcast-management dance fires once per network bootup
+   *  rather than every tick. Keyed by flow + endpoints. */
+  let announcedBbmdFlows = new Set<string>();
 
   // ── vAHU per-node state ────────────────────────────────────────────
   // Each canvas node of kind 'vahu' runs a full G36 §5.18 sequence.
@@ -1123,6 +1170,16 @@
   // findings list lives in `trunkInspectorStore.ipv4Findings`; we
   // publish there and don't keep a second local copy.
   const announcedIpv4Findings = new Set<string>();
+  // Broadcast-trace announce-once dedup. Keyed by "sourceNodeId|destNet"
+  // (or "|local"), valued by the routing-outcome descriptor. We only
+  // re-emit a Who-Is trace packet when the OUTCOME changes (a BBMD bridge
+  // appears/disappears, a peer subnet comes/goes) — not every
+  // BROADCAST_TRACE_PERIOD. Without this, at 30×–300× sim-speed the same
+  // unchanged routing lines flood the 500-entry ring buffer in seconds
+  // and bury the announce-once Annex-J bootup dance (Register-Foreign-
+  // Device, BVLC-Result, Distribute-Broadcast, Forwarded-NPDU). Stale
+  // keys are pruned each pass so topology edits re-fire the trace.
+  const announcedBroadcastTrace = new Map<string, string>();
   // Hard cap on Token-Pass packets emitted per trunk per tick. At 300×
   // sim-speed a 32-device trunk would emit hundreds of hops per tick;
   // capping keeps the log readable and the buffer from churning.
@@ -2423,115 +2480,17 @@
     // the token-holder index by dtSeconds. The result drives node-level
     // "I'm holding the token" highlights and per-trunk inspector panels.
     {
-      const mstpEdges = edges.filter((e) => (e.data?.wireKind as string) === 'mstp');
-      // Build adjacency: device -> set of neighbor devices on MS/TP wires.
-      const adj = new Map<string, Set<string>>();
-      for (const e of mstpEdges) {
-        const a = e.source, b = e.target;
-        if (!a || !b) continue;
-        if (!adj.has(a)) adj.set(a, new Set());
-        if (!adj.has(b)) adj.set(b, new Set());
-        adj.get(a)!.add(b);
-        adj.get(b)!.add(a);
-      }
-      // BFS into connected components.
-      const visited = new Set<string>();
-      const trunks: string[][] = [];
-      for (const start of adj.keys()) {
-        if (visited.has(start)) continue;
-        const stack = [start];
-        const group: string[] = [];
-        while (stack.length > 0) {
-          const cur = stack.pop()!;
-          if (visited.has(cur)) continue;
-          visited.add(cur);
-          group.push(cur);
-          for (const nb of adj.get(cur) ?? []) {
-            if (!visited.has(nb)) stack.push(nb);
-          }
-        }
-        trunks.push(group);
-      }
-      // For each trunk, build MstpDevice[] (sorted by node label so MAC
-      // assignment is deterministic across renders), then step the token.
+      // Group MS/TP edges into trunks + assign MACs deterministically via
+      // the shared core helper. The same call backs the `nodeAddressing`
+      // derived below, so the canvas node badge, inspector, and packet log
+      // all read ONE address map and can never drift.
+      const mstpAddressing = computeMstpAddressing();
       const nextStates = new Map<string, MstpTrunkState>();
       const nextPollSchedule = new Map<string, { nextSimSec: number; nextChildIdx: number }>();
-      for (const trunk of trunks) {
-        // Pick a representative edge id (the lowest-id MS/TP edge whose
-        // endpoints are both in this trunk) — used as the trunk's key.
-        const trunkEdge = mstpEdges.find((e) =>
-          trunk.includes(e.source) && trunk.includes(e.target),
-        );
-        if (!trunkEdge) continue;
-        const baud = ((trunkEdge.data as { baud?: number } | undefined)?.baud) ?? 38400;
-        // Sort trunk members by label so MAC assignment is deterministic.
-        const trunkNodes = trunk
-          .map((nid) => nodes.find((n) => n.id === nid))
-          .filter((n): n is NonNullable<typeof n> => !!n)
-          .sort((a, b) => (nodeLabel(a) || a.id).localeCompare(nodeLabel(b) || b.id));
-
-        // ── Pick the MAC 0 holder for this trunk ─────────────────────
-        // Real-world rule: MAC 0 is the device that originates the token
-        // and acts as the master on this segment. In topology order:
-        //   1. A node explicitly marked `kind: supervisor` on the trunk
-        //      (NAE / JACE / NX directly wired into MS/TP).
-        //   2. A node that bridges from BACnet/IP downstream into MS/TP
-        //      — that's the FEC / edge router. It's the master on the
-        //      MS/TP side of itself, even though it's a peer/child on
-        //      the BACnet/IP side. Without this rule, every JACE-as-MSTP-
-        //      router topology would falsely flag "no supervisor".
-        //   3. Lowest-label-sorted node as a fallback so trunks-without-
-        //      a-master still get a deterministic MAC ring (the validator
-        //      will still warn — that warning is now informational, not
-        //      caused by misclassification).
-        const hasBacnetIpUplink = (nodeId: string): boolean =>
-          edges.some(
-            (e) =>
-              (e.data?.wireKind as string) === 'bacnet-ip' &&
-              (e.source === nodeId || e.target === nodeId),
-          );
-        // forcedMac always wins — scenarios use it to bake in dip-switch
-        // states. If any node has a forced MAC 0, that's the master.
-        const forcedZero = trunkNodes.find(
-          (n) => (n.data as { forcedMac?: number } | undefined)?.forcedMac === 0,
-        );
-        const supervisorOnTrunk = trunkNodes.find((n) => nodeKind(n) === 'supervisor');
-        const routerOnTrunk = trunkNodes.find((n) => hasBacnetIpUplink(n.id));
-        const masterNode = forcedZero ?? supervisorOnTrunk ?? routerOnTrunk ?? null;
-
-        // Walk in label order. The master gets MAC 0; everyone else
-        // increments a separate counter so we don't leave MAC 1 vacant
-        // when the master happens to sort first.
-        let nextChildMac = 1;
-        const devices: MstpDevice[] = trunkNodes.map((n) => {
-          const nd = n.data as { forcedMac?: number; deviceInstance?: number } | undefined;
-          const forcedMac = nd?.forcedMac;
-          let mac: number;
-          if (typeof forcedMac === 'number') {
-            mac = forcedMac;
-          } else if (masterNode && n.id === masterNode.id) {
-            mac = 0;
-          } else {
-            mac = nextChildMac;
-            nextChildMac += 1;
-          }
-          // Honor explicit device-instance override if the user set
-          // one via the inspector; otherwise the default 1000 + mac
-          // scheme (deterministic across renders).
-          const instanceOverride = nd?.deviceInstance;
-          return {
-            nodeId: n.id,
-            mac,
-            label: nodeLabel(n) || n.id,
-            deviceInstance:
-              typeof instanceOverride === 'number' && Number.isFinite(instanceOverride)
-                ? instanceOverride
-                : defaultDeviceInstance(mac),
-          };
-        });
-        // Re-sort by MAC so the token ring matches the convention.
-        devices.sort((a, b) => a.mac - b.mac);
-        const prev = mstpTrunkStates.get(trunkEdge.id);
+      // Each trunk's devices are already MAC-sorted (token-ring order);
+      // `trunkEdgeId` is the representative edge id we tag packets with.
+      for (const { trunkKey: trunkEdgeId, baud, devices } of mstpAddressing.trunks) {
+        const prev = mstpTrunkStates.get(trunkEdgeId);
         const seed = prev && prev.devices.length === devices.length
           ? prev
           : initMstpTrunkState(devices, baud);
@@ -2539,7 +2498,7 @@
         const sameMembers = prev && prev.devices.every((d, i) => d.nodeId === devices[i]?.nodeId);
         const start = sameMembers ? seed : initMstpTrunkState(devices, baud);
         const stepped = stepMstpToken(start, dtSeconds);
-        nextStates.set(trunkEdge.id, stepped);
+        nextStates.set(trunkEdgeId, stepped);
 
         const trunkLabelStr = devices.length > 0
           ? `${devices[0].label} → ${devices[devices.length - 1].label} @ ${baud}`
@@ -2563,7 +2522,7 @@
           const initiator = devices.find((d) => d.mac === 0) ?? devices[0];
           logBacnetPacket({
             simSec: simSecondsElapsed,
-            trunkId: trunkEdge.id,
+            trunkId: trunkEdgeId,
             trunkLabel: trunkLabelStr,
             srcMac: initiator.mac,
             // Broadcast — no specific dst.
@@ -2611,7 +2570,7 @@
             // string format — no drift.
             const iAmPacket = emitIAm({
               simSec: simSecondsElapsed + iAmOffsetS,
-              trunkId: trunkEdge.id,
+              trunkId: trunkEdgeId,
               srcMac: d.mac,
               srcLabel: d.label,
               dstMac: initiator.mac,
@@ -2648,7 +2607,7 @@
             // Subscribe-COV request.
             logBacnetPacket({
               simSec: simSecondsElapsed,
-              trunkId: trunkEdge.id,
+              trunkId: trunkEdgeId,
               trunkLabel: trunkLabelStr,
               srcMac: initiator.mac,
               dstMac: d.mac,
@@ -2661,7 +2620,7 @@
             // Delayed by one round-trip from the matching request.
             logBacnetPacket({
               simSec: simSecondsElapsed + trunkLatencyS,
-              trunkId: trunkEdge.id,
+              trunkId: trunkEdgeId,
               trunkLabel: trunkLabelStr,
               srcMac: d.mac,
               dstMac: initiator.mac,
@@ -2675,8 +2634,8 @@
             const seedValue = typeof aiObj.presentValue === 'boolean'
               ? aiObj.presentValue
               : aiObj.presentValue;
-            covSubscriptions.set(`${trunkEdge.id}|${d.nodeId}|${aiObj.id}`, {
-              trunkId: trunkEdge.id,
+            covSubscriptions.set(`${trunkEdgeId}|${d.nodeId}|${aiObj.id}`, {
+              trunkId: trunkEdgeId,
               trunkLabel: trunkLabelStr,
               childNodeId: d.nodeId,
               childLabel: d.label,
@@ -2706,7 +2665,7 @@
             const dst = devices[dstIdx];
             logBacnetPacket({
               simSec: simSecondsElapsed,
-              trunkId: trunkEdge.id,
+              trunkId: trunkEdgeId,
               trunkLabel,
               srcMac: src.mac,
               dstMac: dst.mac,
@@ -2718,7 +2677,7 @@
           if (hopCount > emit) {
             logBacnetPacket({
               simSec: simSecondsElapsed,
-              trunkId: trunkEdge.id,
+              trunkId: trunkEdgeId,
               trunkLabel,
               srcMac: 0,
               service: 'Token-Pass',
@@ -2734,7 +2693,7 @@
         const supervisor = devices.find((d) => d.mac === 0);
         const children = devices.filter((d) => d.mac !== 0);
         if (supervisor && children.length > 0) {
-          const prevSched = bacnetPollSchedule.get(trunkEdge.id) ?? {
+          const prevSched = bacnetPollSchedule.get(trunkEdgeId) ?? {
             nextSimSec: simSecondsElapsed + APP_LAYER_POLL_CADENCE_S,
             nextChildIdx: 0,
           };
@@ -2782,7 +2741,7 @@
             const invokeId = bumpInvokeId();
             logBacnetPacket({
               simSec: simSecondsElapsed,
-              trunkId: trunkEdge.id,
+              trunkId: trunkEdgeId,
               trunkLabel,
               srcMac: 0,
               dstMac: child.mac,
@@ -2791,12 +2750,12 @@
               summary: `MAC 0 → ${child.label}: ReadProperty ${objectId} present-value (85) · invokeId ${invokeId} · NPDU Expecting-Reply`,
               layer: 'app',
             });
-            const failKey = `${trunkEdge.id}|${child.nodeId}`;
+            const failKey = `${trunkEdgeId}|${child.nodeId}`;
             if (offline.has(child.nodeId)) {
               // No ACK comes back. After APDU_TIMEOUT_S, supervisor
               // emits a Timeout marker. Track consecutive fails.
               const fail = failingChildren.get(failKey) ?? {
-                trunkId: trunkEdge.id,
+                trunkId: trunkEdgeId,
                 childNodeId: child.nodeId,
                 childLabel: child.label,
                 childMac: child.mac,
@@ -2807,7 +2766,7 @@
               const attempt = fail.consecutiveFails;
               logBacnetPacket({
                 simSec: simSecondsElapsed + APDU_TIMEOUT_S,
-                trunkId: trunkEdge.id,
+                trunkId: trunkEdgeId,
                 trunkLabel,
                 srcMac: 0,
                 dstMac: child.mac,
@@ -2820,7 +2779,7 @@
                 fail.reportedLost = true;
                 logBacnetPacket({
                   simSec: simSecondsElapsed + APDU_TIMEOUT_S + 0.001,
-                  trunkId: trunkEdge.id,
+                  trunkId: trunkEdgeId,
                   trunkLabel,
                   srcMac: 0,
                   dstMac: child.mac,
@@ -2836,7 +2795,7 @@
               // failure state.
               logBacnetPacket({
                 simSec: simSecondsElapsed + trunkLatencyS,
-                trunkId: trunkEdge.id,
+                trunkId: trunkEdgeId,
                 trunkLabel,
                 srcMac: child.mac,
                 dstMac: 0,
@@ -2855,7 +2814,7 @@
                 // Child came back. Announce + clear.
                 logBacnetPacket({
                   simSec: simSecondsElapsed + trunkLatencyS + 0.001,
-                  trunkId: trunkEdge.id,
+                  trunkId: trunkEdgeId,
                   trunkLabel,
                   srcMac: child.mac,
                   dstMac: 0,
@@ -2876,7 +2835,7 @@
           if (simSecondsElapsed >= nextSimSec) {
             nextSimSec = simSecondsElapsed + APP_LAYER_POLL_CADENCE_S;
           }
-          nextPollSchedule.set(trunkEdge.id, { nextSimSec, nextChildIdx });
+          nextPollSchedule.set(trunkEdgeId, { nextSimSec, nextChildIdx });
         }
       }
       mstpTrunkStates = nextStates;
@@ -3071,6 +3030,136 @@
             sched.nextSimSec = simSecondsElapsed + APP_LAYER_POLL_CADENCE_S;
           }
           ipPollSchedule.set(pairKey, sched);
+        }
+      }
+
+      // ── BACnet/IP broadcast management: BBMD bridge + foreign device ──
+      // The Annex-J dance that lets broadcasts cross IP subnets. Fires
+      // once per network bootup (announcedBbmdFlows dedup):
+      //   1. A foreign device (non-BBMD wired to a BBMD on a *different*
+      //      /24) registers with that BBMD → Register-Foreign-Device,
+      //      answered by a BVLC-Result.
+      //   2. The FD asks the BBMD to redistribute its Who-Is →
+      //      Distribute-Broadcast-To-Network.
+      //   3. Each BBMD relays Who-Is to every BDT peer → Forwarded-NPDU.
+      // Every packet carries real Annex-J wire bytes (see emit.ts).
+      {
+        const FD_TTL_SECONDS = 600;
+        const ipRtt = BACNET_IP_RTT_SECONDS;
+        const subnet24 = (ip: string): string => ip.split('.').slice(0, 3).join('.');
+        type IpNode = { id: string; label: string; ip: string; isBBMD: boolean; bdtPeers: string[] };
+        const ipNodes: IpNode[] = nodes
+          .filter((n) => !offline.has(n.id))
+          .map((n) => {
+            const d = n.data as
+              | { label?: string; ipAddress?: string; isBBMD?: boolean; bdtPeers?: string[] }
+              | undefined;
+            return d?.ipAddress
+              ? {
+                  id: n.id,
+                  label: d.label ?? n.id,
+                  ip: d.ipAddress,
+                  isBBMD: !!d.isBBMD,
+                  bdtPeers: d.bdtPeers ?? [],
+                }
+              : null;
+          })
+          .filter((n): n is IpNode => n !== null);
+        const bbmds = ipNodes.filter((n) => n.isBBMD);
+        const bbmdByIp = new Map(bbmds.map((b) => [b.ip, b] as const));
+        const ipNodeByIp = new Map(ipNodes.map((n) => [n.ip, n] as const));
+        const hasIpEdge = (a: string, b: string): boolean =>
+          edges.some(
+            (e) =>
+              (e.data as { wireKind?: string } | undefined)?.wireKind === 'bacnet-ip' &&
+              ((e.source === a && e.target === b) || (e.source === b && e.target === a)),
+          );
+
+        // (3) BBMD → BDT peers: relay a local Who-Is across the bridge.
+        for (const bbmd of bbmds) {
+          for (const peerIp of bbmd.bdtPeers) {
+            const key = `fwd|${bbmd.id}|${peerIp}`;
+            if (announcedBbmdFlows.has(key)) continue;
+            announcedBbmdFlows.add(key);
+            const peer = bbmdByIp.get(peerIp) ?? ipNodeByIp.get(peerIp);
+            logBacnetPacket(
+              emitForwardedWhoIs({
+                simSec: simSecondsElapsed,
+                trunkId: `ip-bbmd:${bbmd.id}`,
+                bbmdLabel: bbmd.label,
+                bbmdIp: bbmd.ip,
+                originatorLabel: bbmd.label,
+                originatorIp: bbmd.ip,
+                dstLabel: peer?.label ?? peerIp,
+                dstIp: peerIp,
+                context: '(BDT bridge — local Who-Is to peer subnet)',
+              }),
+            );
+          }
+        }
+
+        // (1)+(2) Foreign-device registration + redistribute.
+        for (const fd of ipNodes) {
+          if (fd.isBBMD) continue;
+          const bbmd = bbmds.find((b) => hasIpEdge(fd.id, b.id) && subnet24(fd.ip) !== subnet24(b.ip));
+          if (!bbmd) continue;
+          const key = `fdreg|${fd.id}|${bbmd.id}`;
+          if (announcedBbmdFlows.has(key)) continue;
+          announcedBbmdFlows.add(key);
+          const trunkId = `ip-bbmd:${bbmd.id}`;
+          logBacnetPacket(
+            emitRegisterForeignDevice({
+              simSec: simSecondsElapsed,
+              trunkId,
+              srcLabel: fd.label,
+              srcIp: fd.ip,
+              dstLabel: bbmd.label,
+              dstIp: bbmd.ip,
+              ttlSeconds: FD_TTL_SECONDS,
+              context: '(remote subnet — joining BBMD’s FDT)',
+            }),
+          );
+          logBacnetPacket(
+            emitBvlcResult({
+              simSec: simSecondsElapsed + ipRtt,
+              trunkId,
+              srcLabel: bbmd.label,
+              srcIp: bbmd.ip,
+              dstLabel: fd.label,
+              dstIp: fd.ip,
+              context: '(added to Foreign Device Table)',
+            }),
+          );
+          logBacnetPacket(
+            emitDistributeBroadcast({
+              simSec: simSecondsElapsed + 2 * ipRtt,
+              trunkId,
+              srcLabel: fd.label,
+              srcIp: fd.ip,
+              dstLabel: bbmd.label,
+              dstIp: bbmd.ip,
+              context: '(reach devices on every subnet)',
+            }),
+          );
+          // The BBMD then forwards the FD's Who-Is to each BDT peer.
+          let fwdOffset = 3 * ipRtt;
+          for (const peerIp of bbmd.bdtPeers) {
+            const peer = bbmdByIp.get(peerIp) ?? ipNodeByIp.get(peerIp);
+            logBacnetPacket(
+              emitForwardedWhoIs({
+                simSec: simSecondsElapsed + fwdOffset,
+                trunkId,
+                bbmdLabel: bbmd.label,
+                bbmdIp: bbmd.ip,
+                originatorLabel: fd.label,
+                originatorIp: fd.ip,
+                dstLabel: peer?.label ?? peerIp,
+                dstIp: peerIp,
+                context: '(on behalf of foreign device)',
+              }),
+            );
+            fwdOffset += ipRtt;
+          }
         }
       }
 
@@ -3395,6 +3484,26 @@
           }
           return null;
         }
+        // Announce-once gate: only emit a trace line when the routing
+        // outcome for a (source, dest) pair changes. `liveTraceKeys`
+        // collects every pair we evaluate this pass so we can prune
+        // outcomes for pairs that no longer exist (device/subnet removed).
+        const liveTraceKeys = new Set<string>();
+        function emitTraceOnce(key: string, outcome: string, summary: string, trunkId: string, trunkLabel: string) {
+          liveTraceKeys.add(key);
+          if (announcedBroadcastTrace.get(key) === outcome) return; // unchanged — stay quiet
+          announcedBroadcastTrace.set(key, outcome);
+          logBacnetPacket({
+            simSec: simSecondsElapsed,
+            trunkId,
+            trunkLabel,
+            srcMac: 0,
+            dstMac: undefined,
+            service: 'Who-Is',
+            summary,
+            layer: 'app',
+          });
+        }
         // Emit one trace per source supervisor/bbmd (skip controllers; in
         // the field, Who-Is is the supervisor's job not a leaf VAV's).
         // We use the underlying canvas node to find the wire that anchors
@@ -3416,47 +3525,45 @@
             if (otherNet === p.net) continue;
             const peerLabel = `${formatIpv4FromUiCanvas(otherNet)}/${p.maskBits}`;
             const bridge = subnetsAreBridged(p.net, otherNet);
+            const pairKey = `${p.dev.nodeId}|${otherNet}`;
             if (bridge) {
               // Cross-subnet bridged path = BVLC function 0x04
               // (Forwarded-NPDU) — that's the BACnet annex-J way a
               // BBMD relays a broadcast onto its peer's subnet. Real
               // wire trace shows 0x04 on the receiving side.
-              logBacnetPacket({
-                simSec: simSecondsElapsed,
+              emitTraceOnce(
+                pairKey,
+                `reaches:${bridge.via.join('>')}`,
+                `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → reaches ${peerLabel} via ${bridge.via.join(' → ')} · BVLC fn 0x04 Forwarded-NPDU`,
                 trunkId,
                 trunkLabel,
-                srcMac: 0,
-                dstMac: undefined,
-                service: 'Who-Is',
-                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → reaches ${peerLabel} via ${bridge.via.join(' → ')} · BVLC fn 0x04 Forwarded-NPDU`,
-                layer: 'app',
-              });
+              );
             } else {
-              logBacnetPacket({
-                simSec: simSecondsElapsed,
+              emitTraceOnce(
+                pairKey,
+                'dropped',
+                `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → DROPPED at ${peerLabel} boundary (no BBMD bridge) · no BVLC fn 0x04 forwarder available`,
                 trunkId,
                 trunkLabel,
-                srcMac: 0,
-                dstMac: undefined,
-                service: 'Who-Is',
-                summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → DROPPED at ${peerLabel} boundary (no BBMD bridge) · no BVLC fn 0x04 forwarder available`,
-                layer: 'app',
-              });
+              );
             }
           }
           // One "local broadcast" line so the user sees the source side
           // too. BVLC fn 0x0b = Original-Broadcast-NPDU — what an
           // unbridged broadcast looks like on its own subnet.
-          logBacnetPacket({
-            simSec: simSecondsElapsed,
+          emitTraceOnce(
+            `${p.dev.nodeId}|local`,
+            `local:${p.net}/${p.maskBits}`,
+            `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → local on ${formatIpv4FromUiCanvas(p.net)}/${p.maskBits} · BVLC fn 0x0b Original-Broadcast-NPDU`,
             trunkId,
             trunkLabel,
-            srcMac: 0,
-            dstMac: undefined,
-            service: 'Who-Is',
-            summary: `${p.dev.label} (${p.dev.ipAddress}) Who-Is broadcast → local on ${formatIpv4FromUiCanvas(p.net)}/${p.maskBits} · BVLC fn 0x0b Original-Broadcast-NPDU`,
-            layer: 'app',
-          });
+          );
+        }
+        // Prune outcomes for pairs that no longer exist so a later
+        // topology change (device removed then re-added, subnet renumbered)
+        // re-fires the trace instead of staying silent on a stale key.
+        for (const k of [...announcedBroadcastTrace.keys()]) {
+          if (!liveTraceKeys.has(k)) announcedBroadcastTrace.delete(k);
         }
       }
     }
@@ -3731,8 +3838,11 @@
     // right hour-of-day from tick 0.
     simSecondsElapsed = 0;
     // Reset broadcast trace clock so a fresh run fires the first trace
-    // immediately rather than waiting for BROADCAST_TRACE_PERIOD.
+    // immediately rather than waiting for BROADCAST_TRACE_PERIOD. Also
+    // clear the announce-once dedup so the full routing snapshot re-emits
+    // on a fresh run rather than being suppressed by last run's outcomes.
     lastBroadcastTraceSec = -BROADCAST_TRACE_PERIOD;
+    announcedBroadcastTrace.clear();
     // Reset BACnet invoke-ID counter so each run starts from 0 — makes
     // the packet log deterministic and matches what a freshly-booted
     // supervisor would emit on the wire.
@@ -3875,6 +3985,7 @@
     vahuObjectsCache = new Map();
     vahuPrevInputs = new Map();
     announcedIpPairs = new Set();
+    announcedBbmdFlows = new Set();
     if (intervalId) clearInterval(intervalId);
     intervalId = null;
     edges = edges.map((e) => withStyle({ ...e, animated: false }));
@@ -4111,6 +4222,10 @@
 
   function applyScenario(parsed: BasScenarioV1) {
     stop();
+    // Each demo/scenario starts with a clean BACnet capture — the packet
+    // log is a live sniffer view, so carrying packets across a topology
+    // swap would mix two unrelated networks. Fresh instance per demo.
+    clearBacnetPackets();
     tick = 0;
     runningSamples = new Map();
     nodes = parsed.topology.nodes;
