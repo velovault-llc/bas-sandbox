@@ -24,7 +24,7 @@ You don't NEED Wireshark for everyday work — `deep_capture.py` shows the APDU 
 You should see nothing initially. Now generate some traffic:
 
 ```
-cd D:\bas-sandbox\tools\bacnet-reference
+cd C:\dev\bas-sandbox\tools\bacnet-reference
 python bacserv.py        # in one terminal
 python whois_client.py --target 192.168.1.150   # in another
 ```
