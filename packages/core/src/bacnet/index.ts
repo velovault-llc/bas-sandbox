@@ -28,6 +28,27 @@ export {
 export type { MstpDevice, MstpTrunkState } from './mstp.js';
 
 export {
+  initMstpBus,
+  defaultMstpBusConfig,
+  makeFrame,
+  enqueueFrame,
+  stepBus,
+  frameTimeSec,
+  octetTimeSec,
+  MSTP_HEADER_OCTETS,
+  MSTP_DATA_CRC_OCTETS,
+  FRAME_DATA_OCTETS,
+} from './mstpBus.js';
+export type {
+  MstpBusConfig,
+  MstpBusState,
+  BusFrame,
+  BusStepResult,
+  CompletedFrame,
+  FrameKind,
+} from './mstpBus.js';
+
+export {
   validateMstpTrunks,
   MSTP_TRUNK_RECOMMENDED_MAX_DEVICES,
   MSTP_MAC_MIN,
