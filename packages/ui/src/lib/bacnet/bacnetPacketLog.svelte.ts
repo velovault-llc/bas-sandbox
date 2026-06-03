@@ -177,10 +177,15 @@ export function setTrunkFilter(id: string): void {
   bacnetPacketLog.trunkFilter = id;
 }
 
-// See runtimeLogStore for the rationale — must be large enough that the
-// panel's drag handle can't end up under the app header + BuildCanvas's
-// own top toolbar (sim controls, network pill, clock). 360px is safe.
-const PANEL_MIN_HEADER_VISIBLE = 360;
+// Backstop reserve so a stored position can never strand the drag handle
+// fully off-screen. The PRECISE clamp (which keeps the header just below
+// BuildCanvas's in-canvas toolbar, measured against the actual canvas
+// area) lives in the panel component's clampPos() and always runs after
+// this on mount / resize / drag-end. Keeping this large (360px) measured
+// the wrong surface — window height instead of the canvas area — and
+// stranded the panel in the vertical middle on short laptop viewports.
+// 120px is a safe backstop that never fights the component clamp.
+const PANEL_MIN_HEADER_VISIBLE = 120;
 
 function clampToViewport(x: number, y: number): { cx: number; cy: number } {
   if (typeof window === 'undefined') return { cx: Math.max(0, x), cy: Math.max(0, y) };

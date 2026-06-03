@@ -233,7 +233,12 @@ export function sendMessage(userText: string): void {
 
 // ── Panel positioning (same pattern as runtime / packet log panels) ──
 
-const PANEL_MIN_HEADER_VISIBLE = 360;
+// Loose backstop only — the precise, canvas-area-aware clamp lives in
+// LlmAssistantPanel's clampPos() and runs after this on mount / resize /
+// drag-end. 360px (measured against window height, not the canvas area)
+// stranded the panel mid-screen on short laptop viewports; 120px lets the
+// component clamp be the binding constraint so the panel reaches the top.
+const PANEL_MIN_HEADER_VISIBLE = 120;
 
 function clampToViewport(x: number, y: number): { cx: number; cy: number } {
   if (typeof window === 'undefined') return { cx: Math.max(0, x), cy: Math.max(0, y) };

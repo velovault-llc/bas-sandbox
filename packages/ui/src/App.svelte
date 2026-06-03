@@ -839,7 +839,11 @@
   }
 
   .left-drawer.open {
-    width: 22rem;
+    /* Scale with the viewport so the drawer doesn't eat a quarter of a
+       laptop screen: ~20vw, but never wider than 20rem (big monitors) or
+       narrower than 14rem (small laptops). The panel contents flex to
+       100% width, so the smaller size doesn't clip anything. */
+    width: clamp(14rem, 20vw, 20rem);
     overflow-y: auto;
     padding: 0.75rem;
   }
@@ -1050,9 +1054,9 @@
     .build-shell {
       height: calc(100vh - 5rem);
     }
-    .left-drawer.open {
-      width: 18rem;
-    }
+    /* clamp() already handles the open width down to 14rem; no override
+       needed here (a fixed 18rem would actually be *wider* than clamp on
+       a narrow phone, the opposite of what we want). */
   }
 
   .dropzone {
