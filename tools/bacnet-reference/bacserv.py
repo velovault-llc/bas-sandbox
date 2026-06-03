@@ -72,6 +72,12 @@ async def main() -> None:
         "--cov-increment", type=float, default=0.5,
         help="COV_Increment on analogValue:1 — notify when value moves this much (default 0.5).",
     )
+    parser.add_argument(
+        "--vendor", type=int, default=None,
+        help="Override the vendor ID reported in I-Am (e.g. 5=Johnson Controls, "
+        "36=Reliable Controls). bacpypes3 only registers vendor 999, so we set it "
+        "directly on the device object — enough to give captures real vendor variety.",
+    )
     args = parser.parse_args()
     if getattr(args, "instance", None) in (None, 999):
         args.instance = 1234
@@ -79,6 +85,13 @@ async def main() -> None:
         args.name = "bas-sandbox-ref"
 
     app = Application.from_args(args)
+
+    # Report a specific vendor on the wire if asked. from_args can only
+    # build with a vendor bacpypes3 has registered (999), but the I-Am
+    # field is read straight off the device object, so overriding it here
+    # gives multi-vendor captures real variety.
+    if getattr(args, "vendor", None) is not None and app.device_object is not None:
+        app.device_object.vendorIdentifier = args.vendor
 
     # Test objects — give ReadProperty + COV something to chew on.
     zn_t = AnalogValueObject(
