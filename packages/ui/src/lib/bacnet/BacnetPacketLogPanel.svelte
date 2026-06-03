@@ -27,6 +27,15 @@
     type LayerFilter,
     type BacnetPacket,
   } from './bacnetPacketLog.svelte';
+  import { downloadPcap, countExportable } from './pcapExport';
+
+  // How many buffered packets carry real BACnet/IP bytes (the only ones
+  // that can go into a .pcap — MS/TP link frames are skipped).
+  let exportableCount = $derived(countExportable(bacnetPacketLog.packets));
+
+  function exportPcap(): void {
+    downloadPcap(bacnetPacketLog.packets, 'bas-sandbox.pcap');
+  }
 
   /** Bound to the panel <aside> for DOM-aware clamping (same pattern as
    *  the runtime log panel — see comment there for why a static
@@ -413,6 +422,15 @@
         </button>
         <button type="button" class="action-btn" onclick={clearPackets} title="Clear buffer">
           ⌫
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          onclick={exportPcap}
+          disabled={exportableCount === 0}
+          title="Download the BACnet/IP packets as a Wireshark .pcap ({exportableCount} frame{exportableCount === 1 ? '' : 's'}; MS/TP link frames are skipped)"
+        >
+          ⬇ pcap
         </button>
       </div>
     </div>
