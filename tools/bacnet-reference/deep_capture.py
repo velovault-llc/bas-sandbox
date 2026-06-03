@@ -31,6 +31,17 @@ import asyncio
 import sys
 import os
 
+# Windows consoles default to cp1252, which can't encode the box-drawing
+# characters this script prints — without this the whole run crashes with
+# UnicodeEncodeError right after it gets a valid reply. Force UTF-8 on the
+# output streams when the runtime supports it (Python 3.7+).
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 try:
     from bacpypes3.app import Application
     from bacpypes3.argparse import SimpleArgumentParser
@@ -86,12 +97,15 @@ def dump_i_am(i_am: IAmRequest) -> None:
         print(f"    {label:<24} = {v}")
 
     # Serialize back to bytes so we can show the wire encoding.
-    # bacpypes3's APDU classes have an encode() method that fills a
-    # PDUData. The raw PDUData.pduData attribute is the bytes.
+    # bacpypes3 0.0.106 changed the API: encode() takes NO arguments and
+    # returns the next protocol layer down. Two hops — APCISequence
+    # (IAmRequest) -> APDU -> PDU — yields the full wire bytes including
+    # the 2-byte unconfirmed-request header (10 00 ...). The older
+    # `i_am.encode(pdu_data)` signature raised "takes 1 positional
+    # argument but 2 were given".
     try:
-        pdu_data = PDUData()
-        i_am.encode(pdu_data)
-        raw = bytes(pdu_data.pduData) if pdu_data.pduData else b""
+        pdu = i_am.encode().encode()
+        raw = bytes(pdu.pduData) if pdu.pduData else b""
         print()
         print(f"  Encoded APDU bytes ({len(raw)} bytes):")
         print(hex_dump(raw))

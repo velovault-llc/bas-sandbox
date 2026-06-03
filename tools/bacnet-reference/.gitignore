@@ -1,0 +1,5 @@
+# Generated packet captures — produced by capture_pcap.py and the
+# docker-compose tcpdump sidecar. Artifacts, not source.
+*.pcap
+*.pcapng
+capture.pcap
