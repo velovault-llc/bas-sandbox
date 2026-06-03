@@ -130,6 +130,52 @@ def write_pcap(path: str, frames: list) -> int:
     return n
 
 
+# ── pcap reader (for the diff tool) ──────────────────────────────────
+
+def read_pcap(path: str) -> list:
+    """Read a DLT_RAW libpcap file and return [(ts, bvlc_payload_bytes)].
+    Strips the IPv4 + UDP headers to leave the BACnet/IP frame (BVLC...).
+    Handles both byte orders; assumes linktype 101 (RAW IP)."""
+    data = open(path, "rb").read()
+    magic = struct.unpack("<I", data[:4])[0]
+    if magic == 0xA1B2C3D4:
+        end = "<"
+    elif magic == 0xD4C3B2A1:
+        end = ">"
+    else:
+        raise ValueError(f"not a libpcap file (magic {magic:08x})")
+    linktype = struct.unpack(end + "I", data[20:24])[0]
+    out = []
+    off = 24
+    while off + 16 <= len(data):
+        ts_sec, ts_usec, incl, orig = struct.unpack(end + "IIII", data[off:off + 16])
+        off += 16
+        pkt = data[off:off + incl]
+        off += incl
+        if linktype != 101:
+            continue  # only raw-IP supported
+        if len(pkt) < 28 or (pkt[0] >> 4) != 4:
+            continue
+        ihl = (pkt[0] & 0x0F) * 4
+        payload = pkt[ihl + 8:]  # skip IP + UDP
+        if payload[:1] == b"\x81":
+            out.append((ts_sec + ts_usec / 1_000_000, payload))
+    return out
+
+
+def apdu_offset(payload: bytes) -> int:
+    """Byte offset of the APDU within a BVLC frame (skip BVLC + NPDU)."""
+    npdu_control = payload[5]
+    off = 6
+    if npdu_control & 0x20:
+        off += 3 + payload[off + 2]
+    if npdu_control & 0x08:
+        off += 3 + payload[off + 2]
+    if npdu_control & 0x20:
+        off += 1
+    return off
+
+
 # ── light APDU summary (console only) ────────────────────────────────
 
 _UNCONF = {0: "I-Am", 1: "I-Have", 2: "Unconfirmed-COV", 7: "Who-Has", 8: "Who-Is"}
