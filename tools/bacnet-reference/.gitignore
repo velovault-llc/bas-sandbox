@@ -3,3 +3,7 @@
 *.pcap
 *.pcapng
 capture.pcap
+
+# Python bytecode
+__pycache__/
+*.pyc
