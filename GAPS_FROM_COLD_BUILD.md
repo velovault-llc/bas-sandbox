@@ -358,6 +358,27 @@ is missing**. This is essentially "do for actuators what Step 7 did for sensors.
 Step 7 — inspector + model/signal/fail-safe picker + AO/BO mismatch (mode-gated)
 + feedback + Delete. Deferred per James ("saving for later"); tracked here.
 
+### ✅ BUILT (actuator parity, this session)
+- **G23 — ✅ actuator inspector + Delete.** Actuators now get a full inspector
+  panel (rename, Delete button, device + specs) like every other node. Verified:
+  Delete removes the actuator.
+- **G24 — ✅ model picker + config.** Dropping an actuator now prompts the model
+  picker (ACTUATOR_CATALOG: Belimo/Honeywell/ABB/Danfoss/Square-D…); the inspector
+  shows the device's **signal · fail-safe · stroke · feedback**, fixed by the
+  model (mirrors the sensor "fixed by device" decision D1). Verified: picker
+  shows "Pick an actuator" with real rows; inspector shows `Belimo AF24-MFT ·
+  2–10 V · fail-closed · 95s stroke · position feedback`.
+- **G25 — ✅ root cause fixed.** The "assigned to a binary output, nothing
+  caught it" symptom was because a *generic* actuator had no signal to validate.
+  Now that actuators are model-backed, `onConnect` auto-routes an analog actuator
+  to an AO terminal (and a binary one to a BO). *Still deferred:* the
+  Realistic-mode "force the wrong output kind and flag it" treatment (mirroring
+  the sensor terminal mismatch) — the auto-shift currently helpfully corrects
+  rather than letting you make+see the mistake in Realistic.
+- **G26 — still deferred.** Position-feedback is now *surfaced* in the inspector
+  ("position feedback" chip), but the feedback signal path (actuator → AI, with a
+  "commanded but didn't move" fault) isn't modeled yet.
+
 ## Step 9 — AHU (G36) + driving conditions
 
 - **G27 (P1) — no unified "conditions" control; OAT + occupancy are scattered.**

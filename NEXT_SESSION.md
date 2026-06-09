@@ -1,6 +1,51 @@
 # Next Session — Prep Notes
 
-Last updated: 2026-05-22 evening. Author: James + Claude.
+Last updated: 2026-06-09. Author: James + Claude.
+
+## 🔖 Resume here — 2026-06-09 (cold-build dogfooding)
+
+**How we're working:** James role-plays a *newbie BAS tech* building a site from
+an empty canvas; Claude guides step-by-step and logs every place the tool
+assumes knowledge / confuses / can't do the realistic thing. Every finding is in
+[GAPS_FROM_COLD_BUILD.md](GAPS_FROM_COLD_BUILD.md) (G1–G29). The site under
+construction is **"Suite 200"** — one rooftop AHU w/ economizer + 3 VAVs w/
+hydronic reheat. Two guidance modes drive the teaching: **Easy** (blocks
+mistakes + shows omniscient hints) and **Realistic** (field-like — no warnings;
+diagnose it yourself, ask the local AI, or hit "Check my work").
+
+**Shipped to prod this arc** (live at https://sandbox.velovaultllc.com):
+- Easy/Realistic guidance modes; allow-and-flag miswiring; Check-my-work; self-loop guard.
+- Nickel RTD (Ni1000) end-to-end; sensor "element fixed by the device" + grouped generic picker.
+- Terminals "truth table" (Installed vs Programmed, Easy-only) + populates before Run.
+- L2 switch + VLAN core validator + Ethernet Switch node.
+- IP-field affordance + live red/green validation; weather OAT now reaches AHU/zones; Assistant panel clamp; always-visible in/out handle tags; "Terminal"→"Programming"; README brought current.
+- **Committed but NOT yet deployed:** actuator parity — inspector + model picker + Delete + fixed-by-device specs (commit `75379d7`).
+
+**Canvas state we left off at** (the in-progress Suite 200):
+- `JACE-RTU` (Tridium JACE 8000) — carries a *deliberate teachable defect*: gateway on the wrong subnet (10.1.10.x with gw 10.0.1.1) → the "Network: 1 err" pill.
+- `VAV-1` (Distech ECY-VAV) on MS/TP to the JACE, with a BAPI Pt1000 zone sensor wired in.
+- `AHU-1` (G36 §5.18) on MS/TP to the JACE; responds to the Weather-drive OAT + sim-clock occupancy.
+
+**Pick the newbie walkthrough up here** (each step is likely to surface gaps):
+1. **Close the thermal loop** — drop a Zone, wire AHU/VAV into it, watch room temp track OAT/occupancy.
+2. **Wire VAV-1's outputs** — actuators are real now: damper + reheat-valve → see AO behavior, then close the loop.
+3. **Add VAV-2 / VAV-3** on the MS/TP trunk — multi-drop addressing + trunk inspector.
+4. **Program a controller** (SpecLang / `>_ Programming`) — the logic surface, still untested (James flagged wanting help here).
+5. **Run + watch** the BACnet packet log + conformance.
+
+**Build backlog (prioritized, from the gap log):**
+- **G25-full** — Realistic-mode AO/BO "force the wrong output kind + flag it" (mirror of the sensor terminal mismatch).
+- **G26** — model actuator position feedback (actuator → AI + "commanded but didn't move" fault).
+- **G27** — unified **Conditions box** (OAT + occupancy/time in one place; today scattered across the Weather tab + sim clock).
+- **G28** — AHU node inspector / self-description (it drops as an opaque box).
+- **Decision guidance** (G1/G3/G10/G13) — "recommended" defaults + explainers in the model pickers (the recurring "beginner can't choose" theme).
+- **G11** — non-uniform separator-line polish.
+
+**How to resume:** dev server at `localhost:5173` (`pnpm --filter @bas/ui dev`, or the preview "ui" config — root `.claude/launch.json` has it). To deploy: `pnpm --filter @bas/ui build` then `netlify deploy --prod --dir=packages/ui/dist --filter @bas/ui --site=602708bc-b819-4afd-9cad-f275d19f9106` (⚠️ rotate the previously-pasted Netlify token first).
+
+---
+
+## Historical — 2026-05-22 session
 
 ## What shipped today (one-window summary)
 
