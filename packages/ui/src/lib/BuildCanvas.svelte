@@ -806,11 +806,11 @@
     // dropping a generic Engine prompts for JACE/NCE/SNE/AS-P/etc.
     const needsPick =
       !vendorModel && !sensorModel && !safetyModel && !actuatorModel && !equipmentModel &&
-      (kind === 'controller' || kind === 'sensor' || kind === 'safety' || kind === 'supervisor');
+      (kind === 'controller' || kind === 'sensor' || kind === 'safety' || kind === 'supervisor' || kind === 'actuator');
 
     if (needsPick) {
       openModelPicker(
-        kind as 'controller' | 'sensor' | 'safety' | 'supervisor',
+        kind as 'controller' | 'sensor' | 'safety' | 'supervisor' | 'actuator',
         (pickedId) => {
           finalizeDrop(item.kind, kind, position, pickedId, undefined);
         },
@@ -5096,6 +5096,12 @@
     return selectedNode;
   });
 
+  const selectedActuator = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'actuator') return null;
+    return selectedNode;
+  });
+
   /** Single-selection subnet zone — drives the CIDR / label edit panel. */
   const selectedSubnetZone = $derived.by(() => {
     if (!selectedNode) return null;
@@ -5470,6 +5476,20 @@
   function signalLabel(s: string | undefined): string {
     if (!s) return '—';
     return SIGNAL_LABEL[s] ?? s;
+  }
+
+  /** Command-signal label for an actuator (it RECEIVES a command, so no
+   *  "transmitter" suffix like the sensor side). */
+  function actuatorSignalLabel(s: string | undefined): string {
+    switch (s) {
+      case 'analog-0-10v': return '0–10 V';
+      case 'analog-2-10v': return '2–10 V';
+      case 'analog-4-20ma': return '4–20 mA';
+      case 'binary-dry': return 'binary (dry contact)';
+      case 'three-point': return '3-point floating';
+      case 'bacnet-mstp': return 'BACnet MS/TP';
+      default: return s ?? '—';
+    }
   }
 
   /** Generic-sensor element picker, grouped by category so the user picks a real
@@ -7216,6 +7236,71 @@
                   />
                 </label>
               </div>
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedActuator}
+          {@const actModelId = (selectedActuator.data as { actuatorModelId?: string } | undefined)?.actuatorModelId}
+          {@const actModel = actModelId ? findActuatorModel(actModelId) : undefined}
+          {@const actBinary = actModel?.signal === 'binary-dry' || actModel?.signal === 'three-point'}
+          <Panel position="bottom-left">
+            <div class="actuator-panel inspector-panel">
+              <div class="inspector-head">
+                <span class="sensor-title">Actuator —</span>
+                <input
+                  class="rename-input"
+                  type="text"
+                  value={nodeLabel(selectedActuator)}
+                  onblur={(e) => renameNode(selectedActuator.id, (e.currentTarget as HTMLInputElement).value)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                    if (e.key === 'Escape') {
+                      (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedActuator);
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  title="Rename this actuator — e.g. DMP-OA, RHV-1, SF-VFD"
+                  aria-label="Actuator name"
+                />
+                <button
+                  type="button"
+                  class="inspector-delete"
+                  title="Delete this actuator (also: select + press Delete or Backspace)"
+                  onclick={() => deleteNodeById(selectedActuator.id)}
+                >
+                  ✕ Delete
+                </button>
+              </div>
+              {#if actModel}
+                <div class="sensor-row sensor-row-block">
+                  <span class="sensor-sub">Device (fixed by model)</span>
+                  <div class="installed-element" title="The actuator's signal, fail-safe, stroke and feedback are properties of the physical device — to change them, install a different actuator.">
+                    <span class="ie-value">{actModel.vendor} {actModel.model}</span>
+                    <span class="ie-fixed">🔒 {actModel.kind}</span>
+                  </div>
+                </div>
+                <div class="actuator-specs">
+                  <span class="spec-chip" title="Control signal the controller's AO/BO output must match">{actuatorSignalLabel(actModel.signal)}</span>
+                  <span class="spec-chip" title="Position the actuator drives to on power loss">fail-{actModel.failSafe}</span>
+                  <span class="spec-chip" title="Time to stroke 0→100%">{actModel.strokeSeconds}s stroke</span>
+                  <span class="spec-chip" class:good={actModel.hasPositionFeedback}>
+                    {actModel.hasPositionFeedback ? 'position feedback' : 'no feedback'}
+                  </span>
+                </div>
+                <p class="actuator-note">
+                  Drive it from a controller <strong>{actBinary ? 'BO (binary)' : 'AO (analog)'}</strong>
+                  output — wiring it to the wrong output kind is a real miswire.
+                  {#if actModel.hasPositionFeedback}Its feedback line wires back to a controller UI/AI so the program can confirm it moved.{:else}No feedback — the controller infers position from the process variable.{/if}
+                </p>
+              {:else}
+                <p class="actuator-note">
+                  Generic actuator — no signal or fail-safe modeled, so wire
+                  validation can't help here. Pick a real model (delete + re-drop,
+                  or drag from <strong>Devices ▸ Actuators</strong>) for signal-type
+                  matching and stroke / fail-safe behavior.
+                </p>
+              {/if}
             </div>
           </Panel>
         {/if}
@@ -10480,6 +10565,33 @@
     font-size: 0.6rem;
     color: color-mix(in srgb, CanvasText 50%, transparent);
     letter-spacing: 0.02em;
+  }
+
+  /* Actuator inspector specs row. */
+  .actuator-specs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+  }
+  .spec-chip {
+    font-size: 0.66rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    color: color-mix(in srgb, CanvasText 75%, transparent);
+    white-space: nowrap;
+  }
+  .spec-chip.good {
+    border-color: color-mix(in srgb, #2ecc71 45%, transparent);
+    color: #2ecc71;
+  }
+  .actuator-note {
+    margin: 0.4rem 0 0;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    max-width: 28rem;
   }
 
   .ctrl-panel {

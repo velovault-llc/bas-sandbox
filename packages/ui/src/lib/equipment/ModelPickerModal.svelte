@@ -3,10 +3,12 @@
     VENDOR_CATALOG,
     SENSOR_CATALOG,
     SAFETY_CATALOG,
+    ACTUATOR_CATALOG,
     formatPointBreakdown,
     type ControllerModel,
     type SensorModel,
     type SafetyDevice,
+    type ActuatorModel,
   } from '@bas/core';
   import {
     modelPickerStore,
@@ -19,7 +21,8 @@
   type ListItem =
     | { type: 'controller'; m: ControllerModel }
     | { type: 'sensor'; m: SensorModel }
-    | { type: 'safety'; m: SafetyDevice };
+    | { type: 'safety'; m: SafetyDevice }
+    | { type: 'actuator'; m: ActuatorModel };
 
   const items = $derived.by((): ListItem[] => {
     const kind = modelPickerStore.pending?.kind;
@@ -40,6 +43,7 @@
         .map((m) => ({ type: 'controller' as const, m }));
     }
     if (kind === 'sensor') return SENSOR_CATALOG.map((m) => ({ type: 'sensor' as const, m }));
+    if (kind === 'actuator') return ACTUATOR_CATALOG.map((m) => ({ type: 'actuator' as const, m }));
     return SAFETY_CATALOG.map((m) => ({ type: 'safety' as const, m }));
   });
 
@@ -54,6 +58,10 @@
       if (it.type === 'sensor') {
         const m = it.m;
         return [m.vendor, m.model, m.subject, m.signal, m.mounting].some((s) => s.toLowerCase().includes(q));
+      }
+      if (it.type === 'actuator') {
+        const m = it.m;
+        return [m.vendor, m.model, m.kind, m.signal].some((s) => s.toLowerCase().includes(q));
       }
       const m = it.m;
       return [m.vendor, m.model, m.kind].some((s) => s.toLowerCase().includes(q));
@@ -82,6 +90,7 @@
       sensor: 'Pick a sensor model',
       safety: 'Pick a safety device',
       supervisor: 'Pick a supervisor / engine',
+      actuator: 'Pick an actuator',
     }[k];
   }
 </script>
@@ -138,6 +147,22 @@
               <span class="pill signal">{it.m.signal}</span>
               <span class="pill mount">{it.m.mounting}</span>
               <span class="muted">{it.m.range[0]}–{it.m.range[1]} {it.m.units} · {it.m.accuracy}</span>
+            </div>
+          </button>
+        {:else if it.type === 'actuator'}
+          <button type="button" class="row" onclick={() => pick(it.m.id)}>
+            <div class="row-head">
+              <strong>{it.m.vendor}</strong>
+              <code>{it.m.model}</code>
+              <span class="pill">{it.m.kind}</span>
+            </div>
+            <div class="row-meta">
+              <span class="pill signal">{it.m.signal}</span>
+              <span class="pill">fail-{it.m.failSafe}</span>
+              <span class="pill" class:portable={it.m.hasPositionFeedback}>
+                {it.m.hasPositionFeedback ? 'w/ feedback' : 'no feedback'}
+              </span>
+              <span class="muted">{it.m.strokeSeconds}s stroke</span>
             </div>
           </button>
         {:else}

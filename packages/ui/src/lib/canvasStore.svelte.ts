@@ -33,7 +33,7 @@ export const canvasActions = $state<{
  * they really want a no-model node). Picking calls back into BuildCanvas
  * via the resolver fn.
  */
-export type PendingKind = 'controller' | 'sensor' | 'safety' | 'supervisor';
+export type PendingKind = 'controller' | 'sensor' | 'safety' | 'supervisor' | 'actuator';
 
 export const modelPickerStore = $state<{
   pending: {
