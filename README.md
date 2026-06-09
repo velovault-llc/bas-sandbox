@@ -2,7 +2,7 @@
 
 **A vendor-neutral simulator for building automation systems. Drag-and-drop topology, real BACnet behavior, thermal response — try the edit before you ship it to the live engine.**
 
-> Status: Phase 0 complete — **try it live at [bas-sandbox.netlify.app](https://bas-sandbox.netlify.app)**. Drag a `.dbexport` onto the page; the parser runs entirely in your browser and renders the topology tree. Phase 1 (static validator) in active development.
+> Status: **live at [sandbox.velovaultllc.com](https://sandbox.velovaultllc.com)** — no install, runs entirely in your browser. An interactive BACnet/IP + MS/TP network simulator with signal-level I/O fidelity, byte-accurate packet capture, a lumped-capacitance thermal model, and an optional on-device LLM assistant. Wire a site up from scratch, or import a Metasys `.dbexport` to auto-build the topology.
 >
 > Maintained by [VELOVAULT LLC](https://velovaultllc.com) — an SBA-certified SDVOSB & VOSB.
 
@@ -26,30 +26,44 @@ Build a reference topology, drop in a candidate sequence, run a 24-hour simulate
 
 Same engine. Different scenario library. Different report.
 
+## What works today
+
+- **Drag-and-drop topology** from a real vendor catalog — engines/supervisors (JACE, NAE, SNE, AS-P, PXC…), field & plant controllers (FEC, VMA, Spyder, Distech…), sensors, safeties, actuators, equipment, zones, IP routers, BBMDs, Ethernet switches, virtual controllers, and a G36 §5.18 AHU.
+- **BACnet that behaves like BACnet** — MS/TP token passing + BACnet/IP, automatic MAC / device-instance / IP addressing, Who-Is/I-Am discovery, ReadProperty, SubscribeCOV + COV notifications, BBMD/BDT broadcast forwarding, baud-derived latency, timeout→retry→Comm-Lost — all surfaced in a **Wireshark-style packet log with a byte-level inspector**.
+- **Byte-accurate wire codec** — validated **byte-for-byte against a 19,523-packet real-capture corpus (100%)**.
+- **Network validation** — duplicate MAC/IP, subnet/mask/gateway mismatches, BBMD/BDT misconfig, and L2/VLAN broadcast-domain checks (the "same subnet, different VLAN, no comms" gotcha).
+- **Signal-level I/O fidelity** — Pt100/Pt1000/Ni1000 RTDs, thermistors, 4-20mA/0-10V/2-10V transmitters, dry contacts; set each controller terminal's input type and catch the *silent* mismatches that bite techs in the field.
+- **Two teaching modes** — *Easy* blocks mistakes and shows omniscient hints; *Realistic* lets you wire it wrong with no warning, like the field — then diagnose it yourself, ask the local AI, or hit "Check my work."
+- **Thermal + sequence sim** — run a controller's logic against a lumped-capacitance zone driven by live weather, and watch the loop respond.
+- **Static validator** — structural lint over an imported Metasys archive (suppressed alarms, duplicate descriptions, unresolved refs).
+
 ## What's underneath
 
-Four composable layers:
+A **TypeScript** monorepo (pnpm workspaces). Everything runs client-side — no backend, no live-engine connection.
 
-| Layer        | What it does                                                                        | Technology                      |
-| ------------ | ----------------------------------------------------------------------------------- | ------------------------------- |
-| **UI**       | Topology canvas, scenario editor, results viewer                                    | TypeScript + Svelte             |
-| **Network**  | BACnet/IP and MS/TP protocol simulation, broadcast and fault injection              | `bacnet-stack` compiled to WASM |
-| **Controls** | Sequence interpreter mapping vendor blocks to ASHRAE Guideline 36 primitives        | Rust → WASM                     |
-| **Physics**  | Lumped-capacitance thermal model (Phase 3), full EnergyPlus co-simulation (Phase 5) | Rust → WASM, FMI later          |
+| Layer         | What it does                                                                                                  | Technology                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| **UI**        | Topology canvas, inspectors, packet log, results                                                              | Svelte 5 + `@xyflow/svelte` (SVG canvas)   |
+| **Network**   | BACnet object model + byte-level wire codec, MS/TP + BACnet/IP + L2/VLAN modeling, addressing, BBMD routing, fault injection | TypeScript (`@bas/core`)      |
+| **Controls**  | Structured-Text interpreter + function-block / SpecLang front-ends; ASHRAE G36 §5.18 single-zone AHU sequence | TypeScript                                 |
+| **Physics**   | Lumped-capacitance zone thermal model, weather-driven OAT (Open-Meteo)                                        | TypeScript                                 |
+| **Assistant** | Optional on-device diagnosis chat                                                                             | local Ollama (no cloud)                    |
 
-Internal data model is [Brick Schema](https://brickschema.org/); display tags from [Project Haystack](https://project-haystack.org/). Ingest is pluggable: Metasys `.dbexport` via the sibling [dbexport-viewer](https://github.com/jmsboswell67-alt/dbexport-viewer) parser, plus generic BACnet discovery and Brick TTL import.
+Data model is [Brick Schema](https://brickschema.org/) with [Project Haystack](https://project-haystack.org/) display tags. Ingest is pluggable: Metasys `.dbexport` via the sibling [dbexport-viewer](https://github.com/jmsboswell67-alt/dbexport-viewer) parser, plus Brick TTL.
+
+> The hot paths (high-resolution MS/TP timing, multi-zone physics) are candidates for a future Rust→WASM port — but the current implementation is pure TypeScript and comfortably real-time for interactive use. [ARCHITECTURE.md](ARCHITECTURE.md) captures the original build-vs-borrow rationale.
 
 ## Roadmap
 
 Full phased plan in [ROADMAP.md](ROADMAP.md). At a glance:
 
-| Phase | Scope                                                   | Status      |
-| ----- | ------------------------------------------------------- | ----------- |
-| 1     | Static validator, multi-vendor ingest, topology canvas  | In progress |
-| 2     | Impact preview, sandbox edit mode, diff-with-validation | Planned     |
-| 3     | BACnet network simulator + toy thermal model            | Planned     |
-| 4     | Full control-logic runtime, G36 mapping                 | Planned     |
-| 5     | Physics-backed runtime via EnergyPlus FMI co-simulation | Planned     |
+| Phase | Scope                                                   | Status              |
+| ----- | ------------------------------------------------------- | ------------------- |
+| 1     | Static validator, multi-vendor ingest, topology canvas  | ✅ Shipped          |
+| 2     | Impact preview, sandbox edit mode, diff-with-validation | Planned             |
+| 3     | BACnet network simulator + toy thermal model            | ✅ Mostly shipped   |
+| 4     | Full control-logic runtime, G36 mapping                 | 🚧 In progress      |
+| 5     | Physics-backed runtime via EnergyPlus FMI co-simulation | Planned             |
 
 ## Architecture
 
@@ -65,4 +79,4 @@ Source is public and free to read, fork, and use for any non-competing purpose �
 
 - **[dbexport-viewer](https://github.com/jmsboswell67-alt/dbexport-viewer)** — ships the Metasys `.dbexport` parser this simulator uses as one ingest path.
 - **[BOPTEST](https://github.com/ibpsa/project1-boptest)** at IBPSA — the closest existing open-source analog, aimed at controls researchers rather than field techs.
-- **[bacnet-stack](https://github.com/bacnet-stack/bacnet-stack)**, **[Brick Schema](https://github.com/BrickSchema/Brick)**, and the ASHRAE Guideline 36 maintainers — the open-source and open-standards work that makes a vendor-neutral simulator possible.
+- **[bacnet-stack](https://github.com/bacnet-stack/bacnet-stack)** and **[BACpypes3](https://github.com/JoelBender/BACpypes3)** — reference implementations our from-scratch BACnet codec is validated against. **[Brick Schema](https://github.com/BrickSchema/Brick)** and the ASHRAE Guideline 36 maintainers — the open standards that make a vendor-neutral simulator possible.
