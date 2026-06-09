@@ -26,7 +26,14 @@
     INPUT_TYPE_LABELS,
     INPUT_TYPE_ORDER,
   } from './terminalConfigStore.svelte';
-  import type { TerminalInputType, SignalKind, RawSignal, ScaledReading } from '@bas/core';
+  import { defaultInputTypeFor } from '@bas/core';
+  import type { TerminalInputType, SignalKind, RawSignal, ScaledReading, SensorSignal } from '@bas/core';
+  import { guidanceStore } from './guidanceStore.svelte';
+
+  // Easy = sandbox shows omniscient hints (installed vs programmed, mismatch).
+  // Realistic = controller-reality only; a real controller can't know what
+  // element is wired to it, so those hints are withheld.
+  const easyMode = $derived(guidanceStore.mode === 'easy');
 
   type TerminalRow = {
     terminalId: string;
@@ -36,6 +43,14 @@
     engMin: number;
     engMax: number;
     sensorNodeId?: string;
+    /** The physically-installed element (sandbox truth). */
+    installedSignal?: string;
+    /** The input type that WOULD correctly match the installed element. */
+    installedType?: TerminalInputType;
+    /** True when the programmed input type ≠ what the installed element needs
+     *  (e.g. Ni1000 sensor, Pt1000 terminal). Same-kind curve mismatches are
+     *  invisible to the controller — this is sandbox-omniscient. */
+    curveMismatch: boolean;
     hasOverride: boolean;
     isPrimary: boolean;
   };
@@ -52,6 +67,10 @@
     const overrides = terminalConfigStore.byCtrl[ctrlId] ?? {};
     const rows: TerminalRow[] = [];
     for (const [terminalId, snap] of snapshots) {
+      const installedSignal = snap.installedSignal;
+      const installedType = installedSignal
+        ? defaultInputTypeFor(installedSignal as SensorSignal)
+        : undefined;
       rows.push({
         terminalId,
         raw: snap.raw,
@@ -60,6 +79,9 @@
         engMin: snap.config.engMin,
         engMax: snap.config.engMax,
         sensorNodeId: snap.sensorNodeId,
+        installedSignal,
+        installedType,
+        curveMismatch: !!installedType && installedType !== snap.config.inputType,
         hasOverride: !!overrides[terminalId],
         isPrimary: !!snap.isPrimary,
       });
@@ -133,15 +155,22 @@
     <div class="body">
       {#if rows.length === 0}
         <p class="empty">
-          No wired sensors detected on this controller yet. Wire a sensor to one of its UI / AI /
-          BI terminals and start the sim — the signal at each terminal appears here in real time.
+          This is a live multimeter view — it fills in once the sim is running.
+          <strong>Hit ▶ Run</strong> and any sensor wired to a UI / AI / BI terminal
+          shows its raw signal (mA / V / Ω) and scaled reading here, where you can
+          also set the input type (Pt1000 vs Ni1000 vs 0–10 V…). If a terminal you
+          expect is missing after Run, the sensor isn't landing on a UI / AI / BI
+          input — re-check the wire.
         </p>
       {:else}
         <table class="terminals-table">
           <thead>
             <tr>
               <th class="col-term">Terminal</th>
-              <th class="col-config">Configured as</th>
+              {#if easyMode}
+                <th class="col-installed" title="What's physically wired here (sandbox truth — a real controller can't know this).">Installed</th>
+              {/if}
+              <th class="col-config">{easyMode ? 'Programmed as' : 'Configured as'}</th>
               <th class="col-raw">Raw signal</th>
               <th class="col-scaled">Scaled (eng)</th>
               <th class="col-status">Status</th>
@@ -149,15 +178,27 @@
           </thead>
           <tbody>
             {#each rows as row (row.terminalId)}
-              {@const mismatch = row.scaled.mismatch === true}
+              {@const kindMismatch = row.scaled.mismatch === true}
+              {@const showMismatch = easyMode && (kindMismatch || row.curveMismatch) && !row.isPrimary}
               {@const fault = row.scaled.fault}
-              <tr class:mismatch={mismatch && !row.isPrimary} class:faulted={!!fault && !row.isPrimary} class:primary={row.isPrimary}>
+              <tr class:mismatch={showMismatch} class:faulted={!!fault && !row.isPrimary} class:primary={row.isPrimary}>
                 <td class="col-term">
                   <code>{row.terminalId}</code>
                   {#if row.isPrimary}
                     <span class="primary-tag" title="This terminal is wired to the controller's primary physics-target sensor. The thermal sim owns its engineering value (with the legacy drift / calibration / noise / stuck faults applied). The raw + scaled values shown here are what the signal layer WOULD produce — useful as a multimeter reference — but changing the input type for this terminal won't affect what the program actually reads.">primary</span>
                   {/if}
                 </td>
+                {#if easyMode}
+                  <td class="col-installed">
+                    {#if row.installedType}
+                      <span class="installed-type" class:bad={row.curveMismatch} title={row.curveMismatch ? 'The installed element does not match the programmed input type — the controller will read a wrong value and never know.' : 'Installed element matches the programmed type.'}>
+                        {INPUT_TYPE_LABELS[row.installedType]}
+                      </span>
+                    {:else}
+                      <span class="muted">—</span>
+                    {/if}
+                  </td>
+                {/if}
                 <td class="col-config">
                   <select
                     aria-label="Input type for {row.terminalId}"
@@ -191,7 +232,7 @@
                   </span>
                 </td>
                 <td class="col-scaled">
-                  <span class="scaled-value" class:warn={mismatch || !!fault}>
+                  <span class="scaled-value" class:warn={showMismatch || !!fault}>
                     {fmtScaled(row.scaled)}
                   </span>
                   <span class="span-hint">[{row.engMin.toFixed(0)} – {row.engMax.toFixed(0)}]</span>
@@ -207,8 +248,8 @@
                     <span class="badge warn" title="Signal exceeded the live range. Reads pegged at engMax.">OVER</span>
                   {:else if fault === 'under-range'}
                     <span class="badge warn" title="Signal below the live range — often a sign the wire is broken on a 4-20mA / 2-10V loop.">UNDER</span>
-                  {:else if mismatch}
-                    <span class="badge mismatch" title="The sensor's signal kind doesn't match what this terminal is configured for. The reading is wrong but plausible — this is the silent-misconfiguration failure mode.">MISMATCH</span>
+                  {:else if showMismatch}
+                    <span class="badge mismatch" title="The installed sensor doesn't match the programmed input type. The reading is wrong but plausible — the silent-misconfiguration failure mode. (Shown in Easy mode only; a real controller can't detect this.)">MISMATCH</span>
                   {:else}
                     <span class="badge ok">OK</span>
                   {/if}
@@ -221,9 +262,16 @@
         <p class="legend">
           <strong>Raw</strong> = what a multimeter clipped to the wire reads.
           <strong>Scaled</strong> = the engineering value the controller program sees after
-          interpreting the wire through the configured input type. When MISMATCH appears,
-          the controller is happily producing a wrong number — exactly what a real
-          mis-configured terminal would do.
+          interpreting the wire through the programmed input type.
+          {#if easyMode}
+            <strong>Installed</strong> shows what's physically wired (sandbox truth) so you
+            can spot a curve mismatch — e.g. an Ni1000 sensor on a Pt1000-programmed
+            terminal reads wrong with no fault flag.
+          {:else}
+            Realistic mode shows only what the controller actually knows — it can't tell
+            what element is wired to it, so there's no "installed" column and no mismatch
+            flag. A wrong reading is your only clue. Switch to Easy for the X-ray view.
+          {/if}
         </p>
       {/if}
     </div>
@@ -344,6 +392,18 @@
       monospace;
     font-size: 0.78rem;
     color: color-mix(in srgb, #4a9eff 95%, CanvasText);
+  }
+
+  .installed-type {
+    font-size: 0.72rem;
+    color: color-mix(in srgb, CanvasText 80%, transparent);
+  }
+  .installed-type.bad {
+    color: #e67e22;
+    font-weight: 600;
+  }
+  .col-installed .muted {
+    color: color-mix(in srgb, CanvasText 40%, transparent);
   }
 
   .col-config select {

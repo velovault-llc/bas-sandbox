@@ -65,6 +65,23 @@ export type {
   PlacedBacnetIpDevice,
   SubnetZone,
 } from './ipv4.js';
+export {
+  validateL2Vlan,
+  computeBroadcastDomains,
+  VLAN_MIN,
+  VLAN_MAX,
+} from './l2vlan.js';
+export type {
+  SwitchPort,
+  SwitchPortMode,
+  L2Switch,
+  L2Link,
+  L2Device,
+  VlanDef,
+  L2Finding,
+  L2FindingId,
+  BroadcastDomainResult,
+} from './l2vlan.js';
 
 export {
   checkBacnetConformance,

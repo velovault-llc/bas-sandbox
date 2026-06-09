@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { setContext } from 'svelte';
+  import { setContext, untrack } from 'svelte';
   import {
     Background,
     Panel,
@@ -23,7 +23,6 @@
     type SensorFault,
   } from './sim/thermal';
   import {
-    SENSOR_TEMPLATES,
     SENSOR_TEMPLATE_BY_ID,
     DEFAULT_SENSOR_SIGNAL,
     type SensorSignal,
@@ -41,12 +40,13 @@
   } from './cli/programStore.svelte';
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
-  import { registerBridge, controllerBridge, bumpTick as bumpBridgeTick, type ControllerSnapshot } from './cli/controllerBridge.svelte';
+  import { registerBridge, controllerBridge, bumpTick as bumpBridgeTick, type ControllerSnapshot, type TerminalSignalSnapshot } from './cli/controllerBridge.svelte';
   import {
     logPacket as logBacnetPacket,
     clearPackets as clearBacnetPackets,
   } from './bacnet/bacnetPacketLog.svelte';
-  import { openTrunkInspector, publishTrunkStates, publishMstpFindings, publishIpv4Findings } from './bacnet/trunkInspectorStore.svelte';
+  import { openTrunkInspector, publishTrunkStates, publishMstpFindings, publishIpv4Findings, trunkInspectorStore } from './bacnet/trunkInspectorStore.svelte';
+  import { guidanceStore, setGuidanceMode } from './guidanceStore.svelte';
   import {
     runProgram,
     makeEnv,
@@ -84,6 +84,7 @@
     parseIpv4 as parseIpv4FromUiCanvas,
     formatIpv4 as formatIpv4FromUiCanvas,
     parseCidr as parseCidrFromUiCanvas,
+    isContiguousMask as isContiguousMaskUi,
     emitIAm,
     emitSubscribeCov,
     emitSubscribeCovAck,
@@ -120,6 +121,7 @@
     resolveTerminalConfig,
     clearAllTerminalConfig,
     rehydrateTerminalConfigs,
+    terminalConfigStore,
   } from './terminalConfigStore.svelte';
 
   const nodeTypes = { bas: BasNode, subnet: SubnetZone };
@@ -156,6 +158,32 @@
   function isCidrInvalid(s: string | undefined | null): boolean {
     if (!s) return false;
     return parseCidrFromUiCanvas(s) === null;
+  }
+
+  /** Live validity state for an addressing field, driving the red/green
+   *  border-as-you-type affordance. Empty → '' (neutral: no nag before the
+   *  user has typed anything). Otherwise 'valid' (green) when it parses,
+   *  'invalid' (red) when it doesn't — so "10.0.1" or "10.0.1.300" reads as
+   *  wrong the instant it's typed, and a clean dotted-quad reads as right.
+   *
+   *  - ipAddrState:  the device IP field, which also accepts CIDR shorthand.
+   *  - maskState:    a subnet mask must parse AND be a contiguous run of 1s.
+   *  - gwState:      a plain dotted-quad. */
+  function ipAddrState(s: string | undefined | null): 'valid' | 'invalid' | '' {
+    if (!s) return '';
+    if (parseIpv4FromUiCanvas(s) !== null) return 'valid';
+    if (parseCidrFromUiCanvas(s) !== null) return 'valid';
+    return 'invalid';
+  }
+  function maskState(s: string | undefined | null): 'valid' | 'invalid' | '' {
+    if (!s) return '';
+    const m = parseIpv4FromUiCanvas(s);
+    if (m === null) return 'invalid';
+    return isContiguousMaskUi(m) ? 'valid' : 'invalid';
+  }
+  function gwState(s: string | undefined | null): 'valid' | 'invalid' | '' {
+    if (!s) return '';
+    return parseIpv4FromUiCanvas(s) !== null ? 'valid' : 'invalid';
   }
 
   // ============ Net.5 — broadcast routing trace ============
@@ -296,7 +324,30 @@
     nodes = nodes.filter((n) => n.id !== zoneId);
   }
 
-  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd' | 'virtual-controller' | 'vahu';
+  type Kind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'actuator' | 'equipment' | 'zone' | 'router' | 'bbmd' | 'switch' | 'virtual-controller' | 'vahu';
+
+  /** One port on a switch node (Net.L2). Mirrors core's SwitchPort; kept
+   *  local so the canvas doesn't import the type just for authoring. */
+  type SwitchPortUi = {
+    id: string;
+    label?: string;
+    mode: 'access' | 'trunk';
+    accessVlan?: number;
+    trunkVlans?: number[];
+    nativeVlan?: number;
+  };
+
+  /** Default port table for a freshly-dropped switch: 8 access ports on
+   *  VLAN 1 + one trunk uplink carrying VLAN 1. The user re-VLANs ports in
+   *  the inspector. Matches a small managed access switch out of the box. */
+  function defaultSwitchPorts(): SwitchPortUi[] {
+    const ports: SwitchPortUi[] = [];
+    for (let i = 1; i <= 8; i++) {
+      ports.push({ id: `p${i}`, label: `Port ${i}`, mode: 'access', accessVlan: 1 });
+    }
+    ports.push({ id: 'p9', label: 'Uplink', mode: 'trunk', trunkVlans: [1], nativeVlan: 1 });
+    return ports;
+  }
 
   // ============ Wire kinds (trunk types) ============
 
@@ -589,6 +640,13 @@
       description: 'BACnet Broadcast Management Device — dedicated bridge for BACnet broadcasts (Who-Is / I-Am) across IP subnets. Drop one per subnet; populate the BDT with peer BBMD IPs. Models a Contemporary Controls BAS Router, a JACE BBMD service, or a Cimetrics Eapi.',
     },
     {
+      kind: 'switch',
+      label: 'Ethernet Switch',
+      defaultName: 'SW-1',
+      icon: '▦',
+      description: 'Layer-2 Ethernet switch. Devices plug into access ports (one untagged VLAN each); switch-to-switch uplinks are trunk ports (802.1Q tagged). The VLAN a port is on decides which broadcast domain its device lands in — two devices on the same subnet but different VLANs can\'t talk. Configure ports in the inspector.',
+    },
+    {
       kind: 'virtual-controller',
       label: 'Virtual Controller',
       defaultName: 'vVAV-1',
@@ -878,6 +936,13 @@
       data.isBBMD = true;
       data.bdtPeers = [];
       data.subtitle = 'Dedicated BBMD — set IP, mask, and BDT peers below';
+    }
+    // Net.L2 — a fresh switch lands with 8 access ports on VLAN 1 + a
+    // trunk uplink, so the user can wire devices immediately and re-VLAN
+    // ports in the inspector.
+    if (paletteKind === 'switch') {
+      data.ports = defaultSwitchPorts();
+      data.subtitle = '8 access (VLAN 1) + 1 trunk — set port VLANs below';
     }
     nodes = [
       ...nodes,
@@ -1582,6 +1647,7 @@
             scaled,
             sensorNodeId: senNode.id,
             isPrimary,
+            installedSignal: senMeta.signal,
           });
         }
         // Only SECONDARY sensors feed the program env. Primary is owned
@@ -2250,9 +2316,18 @@
     // The actuator's role binding (e.g., reheat-valve) determines whether
     // its command produces heating or cooling on the served zone.
     const zoneStateUpdates = new Map<string, ZoneState>();
-    const oatForZones = runningSnapshot[0]
-      ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60)
-      : 60;
+    // OAT for standalone nodes (AHU/zone) that aren't physics-wired targets.
+    // The weather drive only writes into runningSnapshot targets' config, so
+    // without this an AHU on an otherwise-empty canvas was stuck at the 60°F
+    // fallback and ignored the Weather drive. Prefer the live weather OAT when
+    // the drive is active, then any physics target's OAT, then 60°F.
+    const weatherOat =
+      weatherStore.mode !== 'off' && weatherStore.status === 'ready'
+        ? (currentWeatherSample()?.T_F ?? null)
+        : null;
+    const oatForZones =
+      weatherOat ??
+      (runningSnapshot[0] ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60) : 60);
     const simHourForZones = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
 
     // Build current zone-temp map for neighbor heat-exchange calc.
@@ -4376,6 +4451,74 @@
     }, 6000);
   }
 
+  // ── Guidance mode ───────────────────────────────────────────────────
+  // 'easy'   — training wheels: an incompatible wire is blocked outright,
+  //            same as before. The tool won't let you make the mistake.
+  // 'realistic' — like the field: the incompatible wire is allowed and you
+  //            get ZERO automatic warning. The device just won't work and
+  //            you have to notice. Ask the local AI, or hit "Check my work,"
+  //            to reveal what's wrong.
+  // Topology-impossible connections (a terminal already wired, a controller
+  // getting a second supervisor) are ALWAYS blocked in both modes — those
+  // aren't teachable field mistakes, they can't physically exist.
+  //
+  // State lives in a shared store so the Terminals inspector can gate its
+  // omniscient "installed vs programmed" hints on the same mode.
+  const guidanceMode = $derived(guidanceStore.mode);
+
+  // The "Auto" wire option is a training wheel — it infers the trunk
+  // protocol for you. The field has no such thing: you have to know whether
+  // you're on MS/TP or BACnet/IP. So Auto only shows in Easy mode, and we
+  // make sure the selection never sits on 'auto' while Realistic (otherwise
+  // onConnect would still silently auto-infer). Defaults to MS/TP — the most
+  // common field bus — which the user then consciously changes if wrong.
+  $effect(() => {
+    if (guidanceMode === 'realistic' && selectedWireKind === 'auto') {
+      selectedWireKind = 'mstp';
+    }
+  });
+
+  // ── "Check my work" — on-demand error reveal ────────────────────────
+  // The no-AI fallback for a stuck learner. Aggregates the mistakes the
+  // tool would otherwise stay quiet about in realistic mode: miswired
+  // edges (tagged on the edge when allowed-through), plus whatever the
+  // network validators last surfaced. Available in both modes.
+  type CheckItem = { severity: 'error' | 'warning' | 'info'; title: string; detail: string };
+  let checkModalOpen = $state(false);
+  let checkResults = $state<CheckItem[]>([]);
+
+  function runCheckMyWork(): void {
+    const results: CheckItem[] = [];
+    // 1. Miswired edges — the protocol/compat mistakes allowed through in
+    //    realistic mode. Read straight off the edge; no sim run needed.
+    for (const e of edges) {
+      const mis = (e.data as { miswire?: string } | undefined)?.miswire;
+      if (!mis) continue;
+      const s = nodes.find((n) => n.id === e.source);
+      const t = nodes.find((n) => n.id === e.target);
+      results.push({
+        severity: 'error',
+        title: `Bad wire: ${s ? nodeLabel(s) : e.source} ↔ ${t ? nodeLabel(t) : e.target}`,
+        detail: mis,
+      });
+    }
+    // 2. BACnet/IP findings the validator last computed (populated while the
+    //    sim ticks). Skip info-level so the reveal stays signal, not noise.
+    for (const f of trunkInspectorStore.ipv4Findings) {
+      if (f.severity === 'info') continue;
+      results.push({ severity: f.severity, title: f.title, detail: f.description });
+    }
+    // 3. MS/TP link-layer findings, same source.
+    for (const arr of trunkInspectorStore.findingsByTrunkId.values()) {
+      for (const f of arr) {
+        if (f.severity === 'info') continue;
+        results.push({ severity: f.severity, title: f.title, detail: f.description });
+      }
+    }
+    checkResults = results;
+    checkModalOpen = true;
+  }
+
   /**
    * Validate that a proposed wire is realistic given both endpoints' real-
    * world capabilities. Returns null when OK, or a human-readable reason
@@ -4389,7 +4532,13 @@
    *    vendor catalog `protocols[]` list. Generic (no-vendor) controllers
    *    are assumed to support anything.
    */
-  function validateWireCompat(srcN: Node, tgtN: Node, kind: WireKind): string | null {
+  /** A wire problem. `block` = physically/topologically impossible, always
+   *  refused. `fault` = a real-world misconfiguration: refused in easy mode,
+   *  but allowed-through (and tagged on the edge) in realistic mode so the
+   *  learner can make the mistake and diagnose it. */
+  type WireCompat = { severity: 'block' | 'fault'; reason: string };
+
+  function validateWireCompat(srcN: Node, tgtN: Node, kind: WireKind): WireCompat | null {
     const srcKind = nodeKind(srcN);
     const tgtKind = nodeKind(tgtN);
 
@@ -4418,7 +4567,10 @@
         const supId = existing.source === ctrlNode.id ? existing.target : existing.source;
         const supNode = nodes.find((n) => n.id === supId);
         const supLabel = supNode ? nodeLabel(supNode) : 'another engine';
-        return `${nodeLabel(ctrlNode)} is already hosted by ${supLabel}. Disconnect the existing trunk first — a controller has one upstream engine in real installs (N+1 redundancy is enterprise-tier and isn't modeled here).`;
+        return {
+          severity: 'block',
+          reason: `${nodeLabel(ctrlNode)} is already hosted by ${supLabel}. Disconnect the existing trunk first — a controller has one upstream engine in real installs (N+1 redundancy is enterprise-tier and isn't modeled here).`,
+        };
       }
     }
 
@@ -4427,7 +4579,10 @@
     // sandbox doesn't model them yet).
     if (srcKind === 'sensor' || srcKind === 'safety' || tgtKind === 'sensor' || tgtKind === 'safety') {
       if (kind !== 'hardwired') {
-        return `${kind} can't connect to a ${srcKind === 'sensor' || tgtKind === 'sensor' ? 'sensor' : 'safety device'} — use "Hardwired" (or pick a BACnet-MS/TP smart sensor in a future release).`;
+        return {
+          severity: 'fault',
+          reason: `${kind} can't connect to a ${srcKind === 'sensor' || tgtKind === 'sensor' ? 'sensor' : 'safety device'} — a dumb sensor has no network port; it lands on a hardwired UI/AI/BI terminal. Use "Hardwired."`,
+        };
       }
       return null;
     }
@@ -4450,10 +4605,16 @@
     const tgtModel = tgtVendorId ? findControllerModel(tgtVendorId) : null;
 
     if (srcModel && !srcModel.protocols.includes(need as never)) {
-      return `${srcModel.vendor} ${srcModel.model} doesn't speak ${need} (supports: ${srcModel.protocols.join(', ')}).`;
+      return {
+        severity: 'fault',
+        reason: `${srcModel.vendor} ${srcModel.model} doesn't speak ${need} (it supports: ${srcModel.protocols.join(', ')}). On a ${need} trunk it has no matching port, so it'll never communicate.`,
+      };
     }
     if (tgtModel && !tgtModel.protocols.includes(need as never)) {
-      return `${tgtModel.vendor} ${tgtModel.model} doesn't speak ${need} (supports: ${tgtModel.protocols.join(', ')}).`;
+      return {
+        severity: 'fault',
+        reason: `${tgtModel.vendor} ${tgtModel.model} doesn't speak ${need} (it supports: ${tgtModel.protocols.join(', ')}). On a ${need} trunk it has no matching port, so it'll never communicate.`,
+      };
     }
     return null;
   }
@@ -4479,6 +4640,14 @@
     const src = nodes.find((n) => n.id === connection.source);
     const tgt = nodes.find((n) => n.id === connection.target);
     if (!src || !tgt) return;
+
+    // Self-loop guard — a device can't wire to itself. Topology-impossible
+    // in BOTH modes (not a teachable field mistake — there's no such cable),
+    // so it's always refused even in realistic mode.
+    if (connection.source === connection.target) {
+      flashWireRefusal(`Can't wire ${nodeLabel(src)} to itself — pick two different devices.`);
+      return;
+    }
 
     const isTerminal = (h: string | null | undefined) =>
       !!h && h !== 'net-in' && h !== 'net-out';
@@ -4679,8 +4848,11 @@
         ? defaultWireKind(nodeKind(src), nodeKind(tgt))
         : selectedWireKind;
     const refusal = validateWireCompat(src, tgt, kind);
-    if (refusal) {
-      flashWireRefusal(refusal);
+    // Block always when topology-impossible, or for any fault in easy mode.
+    // In realistic mode a 'fault' is allowed through silently — tagged on the
+    // edge so "Check my work" / the AI can surface it, but no warning here.
+    if (refusal && (refusal.severity === 'block' || guidanceMode === 'easy')) {
+      flashWireRefusal(refusal.reason);
       return;
     }
     const newEdge: Edge = {
@@ -4689,7 +4861,10 @@
       target: connection.target!,
       sourceHandle: resolvedSourceHandle,
       targetHandle: resolvedTargetHandle,
-      data: { wireKind: kind },
+      data: {
+        wireKind: kind,
+        ...(refusal?.severity === 'fault' ? { miswire: refusal.reason } : {}),
+      },
     };
     edges = addEdge(withStyle(newEdge), edges);
   }
@@ -5274,6 +5449,39 @@
     return { online, offline, faults, alarms };
   });
 
+  /** Human label for any element/signal — covers the full core SensorSignal set
+   *  (model-backed sensors can carry Pt100 / Type III / 20k / nickel, which the
+   *  UI SENSOR_TEMPLATES subset doesn't). Used by the sensor inspector's
+   *  read-only "Installed element" display. */
+  const SIGNAL_LABEL: Record<string, string> = {
+    'rtd-pt1000': 'Pt1000 RTD (platinum)',
+    'rtd-pt100': 'Pt100 RTD (platinum)',
+    'rtd-ni1000': 'Ni1000 RTD (nickel)',
+    'thermistor-10k-t2': '10 kΩ Type II thermistor',
+    'thermistor-10k-t3': '10 kΩ Type III thermistor',
+    'thermistor-20k': '20 kΩ thermistor',
+    'analog-0-10v': '0–10 V transmitter',
+    'analog-2-10v': '2–10 V transmitter',
+    'analog-0-5v': '0–5 V transmitter',
+    'analog-4-20ma': '4–20 mA transmitter',
+    'binary-dry': 'Dry contact',
+    'bacnet-mstp': 'BACnet MS/TP (smart)',
+  };
+  function signalLabel(s: string | undefined): string {
+    if (!s) return '—';
+    return SIGNAL_LABEL[s] ?? s;
+  }
+
+  /** Generic-sensor element picker, grouped by category so the user picks a real
+   *  device class instead of a flat list that mixes resistive elements with
+   *  transmitter outputs. (Model-backed sensors skip this — their element is
+   *  fixed by the product.) Ids are the UI SENSOR_TEMPLATES subset. */
+  const SIGNAL_GROUPS: ReadonlyArray<{ label: string; ids: readonly SensorSignal[] }> = [
+    { label: 'Temperature element (resistive — controller reads Ω)', ids: ['rtd-pt1000', 'rtd-ni1000', 'thermistor-10k-t2'] },
+    { label: 'Transmitter output (analog — measures, then outputs a standard signal)', ids: ['analog-0-10v', 'analog-4-20ma'] },
+    { label: 'Binary (dry contact)', ids: ['binary-dry'] },
+  ];
+
   /** Update a sensor's signal template. UI-only change today — the template
    *  feeds the subtitle and (future) poll-cadence sim, but the thermal model
    *  treats every sensor as a generic zone-temp source. */
@@ -5282,6 +5490,114 @@
       n.id === sensorId ? { ...n, data: { ...(n.data as Record<string, unknown>), signal } } : n,
     );
   }
+
+  // ── Static (pre-run) terminal-signal pass ───────────────────────────
+  // The sim loop owns controllerBridge.terminalSignalsByCtrl while running.
+  // But the Terminals panel needs to show wired terminals — and let you set
+  // each one's input type — BEFORE you hit Run (programming, then verify).
+  // This pass builds the same per-terminal snapshots at a NOMINAL operating
+  // point so the panel populates the instant a sensor is wired.
+
+  /** Pull signal + range + subject for a sensor node — shared by the live
+   *  sim pass and this static pass. Pure (only reads the node + catalogs). */
+  function sensorMetaOf(senNode: Node): {
+    signal: import('@bas/core').SensorSignal;
+    range: readonly [number, number];
+    subject: import('@bas/core').SensorSubject;
+  } | null {
+    const data = senNode.data as
+      | { sensorModelId?: string; signal?: import('@bas/core').SensorSignal }
+      | undefined;
+    if (data?.sensorModelId) {
+      const m = findSensorModel(data.sensorModelId);
+      if (m) return { signal: m.signal, range: m.range, subject: m.subject };
+    }
+    if (data?.signal) {
+      const tpl = SENSOR_TEMPLATE_BY_ID.get(
+        data.signal as Parameters<typeof SENSOR_TEMPLATE_BY_ID.get>[0],
+      );
+      if (tpl) {
+        let subject: import('@bas/core').SensorSubject = 'temp';
+        switch (data.signal) {
+          case 'analog-0-10v': subject = 'damper-position'; break;
+          case 'analog-4-20ma': subject = 'pressure-differential'; break;
+          case 'binary-dry': subject = 'occupancy'; break;
+          default: subject = 'temp';
+        }
+        return { signal: data.signal, range: tpl.range, subject };
+      }
+    }
+    return null;
+  }
+
+  /** Rebuild terminal snapshots for every controller from the current wiring,
+   *  at a nominal operating point. Only used while the sim is stopped. */
+  function runStaticBridgePass(): void {
+    const NOMINAL = { hour: 12, actuator: 0, zoneTemp: 72, outsideTemp: 72 };
+    for (const ctrl of nodes) {
+      if (nodeKind(ctrl) !== 'controller') continue;
+      const perCtrl = new Map<string, TerminalSignalSnapshot>();
+      for (const edge of edges) {
+        let sensorEnd: string | null = null;
+        let terminalHandle: string | null | undefined = null;
+        if (edge.target === ctrl.id) {
+          sensorEnd = edge.source;
+          terminalHandle = edge.targetHandle;
+        } else if (edge.source === ctrl.id) {
+          sensorEnd = edge.target;
+          terminalHandle = edge.sourceHandle;
+        } else {
+          continue;
+        }
+        const senNode = nodes.find((n) => n.id === sensorEnd);
+        if (!senNode || nodeKind(senNode) !== 'sensor') continue;
+        if (!terminalHandle) {
+          const senLabel = (senNode.data as { label?: string } | undefined)?.label ?? sensorEnd;
+          terminalHandle = `auto:${senLabel}`;
+        }
+        const meta = sensorMetaOf(senNode);
+        if (!meta) continue;
+        const sFault = (senNode.data as { fault?: string } | undefined)?.fault;
+        const sigFault: SignalFault | undefined =
+          sFault === 'open' ? 'open-circuit' : sFault === 'short' ? 'short-circuit' : undefined;
+        const reading = computeSensorReading(meta.subject, NOMINAL, {
+          signal: meta.signal,
+          range: meta.range,
+          fault: sigFault,
+        });
+        if (!reading.raw) continue;
+        const defaultCfg = defaultTerminalConfig(meta.signal, meta.range);
+        const termCfg = resolveTerminalConfig(ctrl.id, terminalHandle, defaultCfg);
+        const scaled = signalToEng(reading.raw, termCfg);
+        perCtrl.set(terminalHandle, {
+          raw: reading.raw,
+          config: termCfg,
+          scaled,
+          sensorNodeId: senNode.id,
+          isPrimary: false,
+          installedSignal: meta.signal,
+        });
+      }
+      if (perCtrl.size > 0) controllerBridge.terminalSignalsByCtrl.set(ctrl.id, perCtrl);
+      else controllerBridge.terminalSignalsByCtrl.delete(ctrl.id);
+    }
+    bumpBridgeTick();
+  }
+
+  // Keep the Terminals panel live while STOPPED: rebuild snapshots whenever the
+  // wiring or a terminal's configured input type changes. While running, the
+  // sim loop owns the bridge, so this stands down. The write to the (shared)
+  // controllerBridge state is wrapped in untrack() — we subscribe to the inputs
+  // below, but the bridge mutation must not feed back into this effect.
+  $effect(() => {
+    // Touch deps so the effect re-runs on topology / config changes.
+    void edges;
+    void nodes;
+    void terminalConfigStore.rev;
+    const isRunning = running;
+    if (isRunning) return;
+    untrack(() => runStaticBridgePass());
+  });
 
   /** Set or clear a controller's high/low alarm threshold from the inspector. */
   function setControllerAlarm(controllerId: string, which: 'high' | 'low', raw: string): void {
@@ -5936,17 +6252,19 @@
         <h3>Wires</h3>
         <p class="hint">Pick a trunk type, then drag between handles.</p>
         <div class="wire-palette">
-          <button
-            type="button"
-            class="wire-row"
-            class:active={selectedWireKind === 'auto'}
-            title="Pick the trunk kind automatically based on what's being connected."
-            onclick={() => (selectedWireKind = 'auto')}
-          >
-            <span class="wire-swatch auto"></span>
-            <span class="wire-row-label">Auto</span>
-            <span class="wire-row-sub">smart-pick</span>
-          </button>
+          {#if guidanceMode === 'easy'}
+            <button
+              type="button"
+              class="wire-row"
+              class:active={selectedWireKind === 'auto'}
+              title="Pick the trunk kind automatically based on what's being connected. (Easy mode only — in the field you have to know which bus you're on.)"
+              onclick={() => (selectedWireKind = 'auto')}
+            >
+              <span class="wire-swatch auto"></span>
+              <span class="wire-row-label">Auto</span>
+              <span class="wire-row-sub">smart-pick</span>
+            </button>
+          {/if}
           {#each WIRE_KINDS as wk (wk.kind)}
             <button
               type="button"
@@ -6233,6 +6551,7 @@
                 <input
                   class="cidr-input"
                   class:invalid={isCidrInvalid(zoneData.cidr)}
+                  class:valid={!!zoneData.cidr && !isCidrInvalid(zoneData.cidr)}
                   type="text"
                   value={zoneData.cidr}
                   oninput={(e) => updateZoneField(selectedSubnetZone.id, 'cidr', (e.currentTarget as HTMLInputElement).value)}
@@ -6354,6 +6673,8 @@
                       class="ip-input"
                       type="text"
                       value={iface.ip ?? ''}
+                      class:valid={gwState(iface.ip) === 'valid'}
+                      class:invalid={gwState(iface.ip) === 'invalid'}
                       placeholder="10.0.1.1"
                       title="Router's IP on this interface (informational — what matters for routing is the CIDR)."
                       oninput={(e) => updateRouterInterface(selectedRouter.id, i, 'ip', (e.currentTarget as HTMLInputElement).value)}
@@ -6363,6 +6684,7 @@
                     <input
                       class="ip-input"
                       class:invalid={isCidrInvalid(iface.cidr)}
+                      class:valid={!!iface.cidr && !isCidrInvalid(iface.cidr)}
                       type="text"
                       value={iface.cidr}
                       placeholder="10.0.1.0/24"
@@ -6441,9 +6763,14 @@
                 <span>IP</span>
                 <input
                   class="ip-input"
+                  class:valid={ipAddrState(ipData.ipAddress) === 'valid'}
+                  class:invalid={ipAddrState(ipData.ipAddress) === 'invalid'}
                   type="text"
                   value={ipData.ipAddress ?? ''}
                   placeholder="10.0.1.10  or  10.0.1.10/24"
+                  title={ipAddrState(ipData.ipAddress) === 'invalid'
+                    ? `"${ipData.ipAddress}" isn't a valid IPv4 address. Need four parts, each 0–255 — e.g. 10.0.1.10 (or CIDR like 10.0.1.10/24).`
+                    : 'IPv4 address — dotted-quad (10.0.1.10) or CIDR (10.0.1.10/24, which auto-fills the mask).'}
                   oninput={(e) => setIpAddressOrCidr(selectedIpDevice.id, (e.currentTarget as HTMLInputElement).value)}
                   spellcheck="false"
                   autocapitalize="off"
@@ -6453,9 +6780,14 @@
                 <span>Mask</span>
                 <input
                   class="ip-input"
+                  class:valid={maskState(ipData.subnetMask) === 'valid'}
+                  class:invalid={maskState(ipData.subnetMask) === 'invalid'}
                   type="text"
                   value={ipData.subnetMask ?? ''}
                   placeholder="255.255.255.0"
+                  title={maskState(ipData.subnetMask) === 'invalid'
+                    ? `"${ipData.subnetMask}" isn't a valid subnet mask. It must be a contiguous run of 1-bits, e.g. 255.255.255.0 (/24) or 255.255.0.0 (/16).`
+                    : 'Subnet mask — dotted-quad, e.g. 255.255.255.0.'}
                   oninput={(e) => updateNodeField(selectedIpDevice.id, 'subnetMask', (e.currentTarget as HTMLInputElement).value)}
                   spellcheck="false"
                   autocapitalize="off"
@@ -6465,9 +6797,14 @@
                 <span>GW</span>
                 <input
                   class="ip-input"
+                  class:valid={gwState(ipData.gateway) === 'valid'}
+                  class:invalid={gwState(ipData.gateway) === 'invalid'}
                   type="text"
                   value={ipData.gateway ?? ''}
                   placeholder="10.0.1.1"
+                  title={gwState(ipData.gateway) === 'invalid'
+                    ? `"${ipData.gateway}" isn't a valid gateway address. Need a dotted-quad — e.g. 10.0.1.1.`
+                    : 'Default gateway — dotted-quad, e.g. 10.0.1.1.'}
                   oninput={(e) => updateNodeField(selectedIpDevice.id, 'gateway', (e.currentTarget as HTMLInputElement).value)}
                   spellcheck="false"
                   autocapitalize="off"
@@ -6685,6 +7022,9 @@
             | undefined}
           {@const currentFault = (sensorData?.fault ?? 'normal') as SensorFault}
           {@const currentSignal = (sensorData?.signal ?? DEFAULT_SENSOR_SIGNAL) as SensorSignal}
+          {@const sensorModelId = (selectedSensor.data as { sensorModelId?: string } | undefined)?.sensorModelId}
+          {@const sensorModel = sensorModelId ? findSensorModel(sensorModelId) : undefined}
+          {@const installedSignal = (sensorModel?.signal ?? currentSignal) as string}
           {@const wiredHere = wiredTargets.some((t) => t.sensorId === selectedSensor.id)}
           <Panel position="bottom-left">
             <div class="sensor-panel inspector-panel">
@@ -6714,21 +7054,43 @@
                   ✕ Delete
                 </button>
               </div>
-              <div class="sensor-row">
-                <span class="sensor-sub">Signal</span>
-                <div class="signal-chips">
-                  {#each SENSOR_TEMPLATES as tpl (tpl.id)}
-                    <button
-                      type="button"
-                      class="signal-chip"
-                      class:active={currentSignal === tpl.id}
-                      title="{tpl.accuracy} · polled ~{tpl.pollSec}s"
-                      onclick={() => setSensorSignal(selectedSensor.id, tpl.id)}
-                    >
-                      {tpl.label}
-                    </button>
-                  {/each}
-                </div>
+              <div class="sensor-row sensor-row-block">
+                <span class="sensor-sub">Installed element</span>
+                {#if sensorModel}
+                  <!-- Model-backed sensor: the element is a physical property of
+                       the device you bought — read-only. You don't "select" a
+                       BA/1K into a 4-20mA sensor; you'd buy a different sensor.
+                       The thing you PROGRAM is the controller terminal. -->
+                  <div class="installed-element" title="This is the physical sensor's element — fixed by the model. To change it, install a different sensor. What you program is the controller's terminal (open Terminals on the controller).">
+                    <span class="ie-value">{signalLabel(installedSignal)}</span>
+                    <span class="ie-fixed">🔒 fixed by {sensorModel.model}</span>
+                  </div>
+                {:else}
+                  <!-- Generic sensor: declare what you installed, grouped by
+                       category so resistive elements aren't mixed with
+                       transmitter outputs. -->
+                  <div class="signal-groups">
+                    {#each SIGNAL_GROUPS as grp (grp.label)}
+                      <div class="signal-group">
+                        <span class="sg-head">{grp.label}</span>
+                        <div class="signal-chips">
+                          {#each grp.ids as id (id)}
+                            {@const tpl = SENSOR_TEMPLATE_BY_ID.get(id)}
+                            <button
+                              type="button"
+                              class="signal-chip"
+                              class:active={currentSignal === id}
+                              title={tpl ? `${tpl.accuracy} · polled ~${tpl.pollSec}s` : ''}
+                              onclick={() => setSensorSignal(selectedSensor.id, id)}
+                            >
+                              {tpl?.label ?? id}
+                            </button>
+                          {/each}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               </div>
               <div class="sensor-row">
                 <span class="sensor-sub">Fault</span>
@@ -6750,7 +7112,7 @@
               <p class="fault-note">
                 <strong>open</strong> / <strong>short</strong> propagate through the
                 signal layer — visible on the controller's
-                <strong>📐 Terminals</strong> panel as OPEN / SHORT badges with the
+                <strong>Terminals</strong> panel as OPEN / SHORT badges with the
                 raw wire reading pegged at the fault rail. The others perturb the
                 primary-sensor engineering value upstream (drift, calibration
                 offset, noise, etc.) via the thermal-sim's SensorState pipeline.
@@ -6899,11 +7261,11 @@
                   type="button"
                   class="inspector-terminal"
                   title={ctrlStPortable
-                    ? 'Open Cisco-IOS-style terminal (program this controller in Structured Text)'
-                    : 'Open terminal (programming unavailable for this vendor — see show config)'}
+                    ? 'Open the programming console — write this controller\'s logic in Structured Text (Cisco-IOS-style CLI). Distinct from "Terminals," which is the I/O wiring view.'
+                    : 'Open the programming console (unavailable for this vendor — see show config)'}
                   onclick={() => openCli(selectedController.id, nodeLabel(selectedController))}
                 >
-                  &gt;_ Terminal
+                  &gt;_ Programming
                 </button>
                 {#if ctrlStPortable}
                   <button
@@ -6912,7 +7274,7 @@
                     title="Open block diagram editor (IEC 61131-3 FBD)"
                     onclick={() => openFbd(selectedController.id, nodeLabel(selectedController))}
                   >
-                    ▦ Diagram
+                    Diagram
                   </button>
                 {/if}
                 <button
@@ -6921,7 +7283,7 @@
                   title="Open SpecLang — plain-English programming. Works on every controller in the catalog."
                   onclick={() => openSpecLang(selectedController.id, nodeLabel(selectedController))}
                 >
-                  📝 SpecLang
+                  SpecLang
                 </button>
                 <button
                   type="button"
@@ -6929,7 +7291,7 @@
                   title="BACnet objects — see what a supervisor (YABE, Niagara Spy) would discover on this controller."
                   onclick={() => openBacnet(selectedController.id, nodeLabel(selectedController))}
                 >
-                  🔌 BACnet
+                  BACnet
                 </button>
                 <button
                   type="button"
@@ -6937,7 +7299,7 @@
                   title="Terminals — multimeter-style view of every wired terminal. See the raw signal on the wire (mA / V / Ω), pick the input type (Pt1000 vs 0-10V etc.), and spot mismatched / faulted terminals at a glance."
                   onclick={() => openTerminals(selectedController.id, nodeLabel(selectedController))}
                 >
-                  📐 Terminals
+                  Terminals
                 </button>
                 <button
                   type="button"
@@ -7433,6 +7795,49 @@
           </Panel>
         {/if}
 
+        {#if checkModalOpen}
+          <div
+            class="check-modal-overlay"
+            role="button"
+            tabindex="-1"
+            onclick={() => (checkModalOpen = false)}
+            onkeydown={(e) => { if (e.key === 'Escape') checkModalOpen = false; }}
+          >
+            <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+            <div class="check-modal" role="dialog" aria-modal="true" aria-label="Check my work" onclick={(e) => e.stopPropagation()}>
+              <div class="check-modal-head">
+                <span class="check-modal-title">🔍 Check my work</span>
+                <button type="button" class="check-modal-close" onclick={() => (checkModalOpen = false)} aria-label="Close">✕</button>
+              </div>
+              {#if checkResults.length === 0}
+                <p class="check-empty">
+                  ✓ No problems found in what the checks can see right now.
+                  <br />
+                  <span class="check-empty-sub">
+                    Wiring looks compatible. Note: deeper checks (addressing, comms,
+                    cross-subnet) populate once you hit ▶ Run — re-check after a run
+                    if something still isn't working.
+                  </span>
+                </p>
+              {:else}
+                <p class="check-intro">{checkResults.length} thing{checkResults.length === 1 ? '' : 's'} to look at:</p>
+                <ul class="check-list">
+                  {#each checkResults as item (item.title + item.detail)}
+                    <li class="check-item check-{item.severity}">
+                      <span class="check-item-glyph">{item.severity === 'error' ? '✕' : item.severity === 'warning' ? '⚠' : 'ℹ'}</span>
+                      <div class="check-item-body">
+                        <span class="check-item-title">{item.title}</span>
+                        <span class="check-item-detail">{item.detail}</span>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              <p class="check-foot">Tip: the Assistant can explain any of these if you ask it.</p>
+            </div>
+          </div>
+        {/if}
+
         <Panel position="top-left">
           <div class="canvas-actions">
             <button
@@ -7460,6 +7865,38 @@
               ⟲ Reset
             </button>
             <CorpusBadge />
+            <span class="ca-divider"></span>
+            <div
+              class="guidance-toggle"
+              role="group"
+              aria-label="Guidance mode"
+              title="Easy: incompatible wiring is blocked (training wheels). Realistic: the field — bad wiring is allowed with no warning; use the AI or 'Check my work' to find it."
+            >
+              <button
+                type="button"
+                class="gt-btn"
+                class:active={guidanceMode === 'easy'}
+                onclick={() => setGuidanceMode('easy')}
+              >
+                🛟 Easy
+              </button>
+              <button
+                type="button"
+                class="gt-btn"
+                class:active={guidanceMode === 'realistic'}
+                onclick={() => setGuidanceMode('realistic')}
+              >
+                🔧 Realistic
+              </button>
+            </div>
+            <button
+              type="button"
+              class="ca-btn ca-btn-check"
+              onclick={runCheckMyWork}
+              title="Reveal what's wired wrong + other errors. The no-AI fallback when you're stuck — especially useful in Realistic mode where nothing warns you."
+            >
+              🔍 Check my work
+            </button>
           </div>
         </Panel>
 
@@ -8402,12 +8839,20 @@
      regardless of how the page is scrolled or rendered. */
   .canvas-actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.4rem;
     padding: 0.35rem 0.55rem;
     background: color-mix(in srgb, Canvas 90%, transparent);
     backdrop-filter: blur(4px);
     border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
     border-radius: 6px;
+  }
+  .ca-divider {
+    width: 1px;
+    align-self: stretch;
+    background: color-mix(in srgb, CanvasText 18%, transparent);
+    margin: 0 0.1rem;
   }
 
   .ca-btn {
@@ -8436,6 +8881,156 @@
   .ca-btn-danger:hover {
     background: color-mix(in srgb, #e74c3c 14%, transparent);
     color: #e74c3c;
+  }
+
+  .ca-btn-check {
+    border-color: color-mix(in srgb, #4a9eff 40%, transparent);
+    color: color-mix(in srgb, #4a9eff 90%, CanvasText);
+  }
+  .ca-btn-check:hover {
+    background: color-mix(in srgb, #4a9eff 14%, transparent);
+    color: #4a9eff;
+  }
+
+  /* Guidance-mode toggle — Easy (training wheels) vs Realistic (the field). */
+  .guidance-toggle {
+    display: inline-flex;
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .gt-btn {
+    background: transparent;
+    border: none;
+    color: color-mix(in srgb, CanvasText 65%, transparent);
+    padding: 0.25rem 0.55rem;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .gt-btn:hover {
+    background: color-mix(in srgb, CanvasText 8%, transparent);
+  }
+  .gt-btn.active {
+    background: color-mix(in srgb, #4a9eff 22%, transparent);
+    color: CanvasText;
+    font-weight: 600;
+  }
+
+  /* "Check my work" reveal modal. */
+  .check-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, #000 45%, transparent);
+    backdrop-filter: blur(2px);
+  }
+  .check-modal {
+    width: min(560px, 92vw);
+    max-height: 80vh;
+    overflow-y: auto;
+    background: Canvas;
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    padding: 1rem 1.1rem 0.9rem;
+  }
+  .check-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+  }
+  .check-modal-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .check-modal-close {
+    background: transparent;
+    border: none;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+  }
+  .check-modal-close:hover {
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+    color: CanvasText;
+  }
+  .check-intro {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+  }
+  .check-empty {
+    margin: 0.4rem 0 0.6rem;
+    font-size: 0.85rem;
+    color: #2ecc71;
+  }
+  .check-empty-sub {
+    font-size: 0.74rem;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+  }
+  .check-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .check-item {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+    background: color-mix(in srgb, CanvasText 4%, transparent);
+  }
+  .check-item.check-error {
+    border-color: color-mix(in srgb, #e74c3c 40%, transparent);
+    background: color-mix(in srgb, #e74c3c 8%, transparent);
+  }
+  .check-item.check-warning {
+    border-color: color-mix(in srgb, #f59e0b 40%, transparent);
+    background: color-mix(in srgb, #f59e0b 8%, transparent);
+  }
+  .check-item-glyph {
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+  .check-error .check-item-glyph {
+    color: #e74c3c;
+  }
+  .check-warning .check-item-glyph {
+    color: #f59e0b;
+  }
+  .check-item-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .check-item-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .check-item-detail {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    line-height: 1.4;
+  }
+  .check-foot {
+    margin: 0.8rem 0 0;
+    font-size: 0.72rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-style: italic;
   }
 
   .sim-panel button {
@@ -8995,9 +9590,13 @@
     color: color-mix(in srgb, CanvasText 65%, transparent);
   }
   .ip-field input.ip-input {
-    background: Canvas;
+    /* Inset fill + a clearly visible border so the field reads as an
+       editable box, not static text. (The old CanvasText-20% border was
+       invisible on the dark panel — a novice read the placeholder as a
+       fixed value.) */
+    background: color-mix(in srgb, CanvasText 7%, Canvas);
     color: CanvasText;
-    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 38%, transparent);
     border-radius: 4px;
     font: inherit;
     font-size: 0.75rem;
@@ -9006,13 +9605,38 @@
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
       monospace;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
   }
-  /* Live CIDR-validation state — red border + faint red fill when the
-     current text doesn't parse as IP/prefix. Empty input is fine. */
+  .ip-field input.ip-input:hover {
+    border-color: color-mix(in srgb, CanvasText 55%, transparent);
+  }
+  .ip-field input.ip-input:focus {
+    outline: none;
+    border-color: #4a9eff;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #4a9eff 30%, transparent);
+  }
+  /* Live address-validation state. Empty input stays neutral; as soon as
+     there's text it goes red (doesn't parse) or green (parses). Teaches
+     correct addressing the instant it's typed. */
   input.ip-input.invalid,
   input.cidr-input.invalid {
     border-color: #e74c3c;
     background: color-mix(in srgb, #e74c3c 8%, Canvas);
+  }
+  input.ip-input.invalid:focus,
+  input.cidr-input.invalid:focus {
+    border-color: #e74c3c;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #e74c3c 30%, transparent);
+  }
+  input.ip-input.valid,
+  input.cidr-input.valid {
+    border-color: #2ecc71;
+    background: color-mix(in srgb, #2ecc71 9%, Canvas);
+  }
+  input.ip-input.valid:focus,
+  input.cidr-input.valid:focus {
+    border-color: #2ecc71;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #2ecc71 30%, transparent);
   }
   .ip-divider {
     width: 1px;
@@ -9678,10 +10302,16 @@
   .inspector-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 0.4rem;
     width: 100%;
     margin-bottom: 0.15rem;
+  }
+  /* Push Delete to the end of the (possibly wrapped) button row so it never
+     clips off the panel edge. */
+  .inspector-delete {
+    margin-left: auto;
   }
 
   .inspector-delete {
@@ -9803,6 +10433,53 @@
     border-color: #4a9eff;
     background: color-mix(in srgb, #4a9eff 18%, transparent);
     color: #4a9eff;
+  }
+
+  /* A sensor row that stacks its label above a multi-line block. */
+  .sensor-row-block {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  /* Read-only "installed element" for a model-backed sensor — reads as a
+     physical fact of the device, not an editable setting. */
+  .installed-element {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .ie-value {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: CanvasText;
+  }
+  .ie-fixed {
+    font-size: 0.66rem;
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    white-space: nowrap;
+  }
+
+  /* Generic-sensor element picker, grouped by category. */
+  .signal-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+  }
+  .signal-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .sg-head {
+    font-size: 0.6rem;
+    color: color-mix(in srgb, CanvasText 50%, transparent);
+    letter-spacing: 0.02em;
   }
 
   .ctrl-panel {

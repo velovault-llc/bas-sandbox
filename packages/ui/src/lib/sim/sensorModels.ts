@@ -11,6 +11,7 @@
 
 export type SensorSignal =
   | 'rtd-pt1000'
+  | 'rtd-ni1000'
   | 'thermistor-10k-t2'
   | 'analog-0-10v'
   | 'analog-4-20ma'
@@ -40,6 +41,15 @@ export const SENSOR_TEMPLATES: readonly SensorTemplate[] = [
     range: [-40, 250],
     pollSec: 5,
     accuracy: '±0.3°F',
+    subject: 'temp',
+  },
+  {
+    id: 'rtd-ni1000',
+    label: 'Ni1000 RTD',
+    units: '°F',
+    range: [-40, 250],
+    pollSec: 5,
+    accuracy: '±0.4°F',
     subject: 'temp',
   },
   {

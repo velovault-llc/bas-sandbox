@@ -213,7 +213,12 @@
       const other = w.source === ctrlId ? w.target : w.source;
       const direction = w.source === ctrlId ? 'downstream →' : '← upstream';
       const wireKind = (w.data as { wireKind?: string } | undefined)?.wireKind ?? '?';
-      topologyLines.push(`  ${direction} ${labelOf(other)} [${kindOf(other)}] via ${wireKind}`);
+      // A miswire tag is set when an incompatible connection was allowed
+      // through in realistic mode. Surface it so the AI can catch the
+      // mistake the tool stayed silent about.
+      const miswire = (w.data as { miswire?: string } | undefined)?.miswire;
+      const flag = miswire ? `  ⚠ MISWIRE: ${miswire}` : '';
+      topologyLines.push(`  ${direction} ${labelOf(other)} [${kindOf(other)}] via ${wireKind}${flag}`);
     }
     const topologySummary = topologyLines.length > 0
       ? topologyLines.join('\n')
@@ -451,7 +456,10 @@ docker exec ollama ollama pull {llmStore.model}</pre>
     right: 1rem;
     bottom: 1rem;
     width: min(32rem, calc(100% - 2rem));
-    max-height: 30rem;
+    /* Cap to the available height (minus top headroom + bottom margin) so a
+       bottom-anchored panel never grows taller than the viewport and pushes
+       its own drag header off the top edge where it can't be grabbed. */
+    max-height: min(30rem, calc(100% - 4.5rem));
     display: flex;
     flex-direction: column;
     border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);

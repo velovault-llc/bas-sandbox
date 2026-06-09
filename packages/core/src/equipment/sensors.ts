@@ -27,6 +27,7 @@ export type SensorSubject =
 export type SensorSignal =
   | 'rtd-pt1000'
   | 'rtd-pt100'
+  | 'rtd-ni1000'
   | 'thermistor-10k-t2'
   | 'thermistor-10k-t3'
   | 'thermistor-20k'
@@ -143,6 +144,32 @@ export const SENSOR_CATALOG: readonly SensorModel[] = [
     accuracy: '±0.4°F',
     inputTerminal: 'UI',
     notes: 'Immersion well probe — chilled / hot water supply and return temps.',
+  },
+  {
+    id: 'jci-te-6300-ni',
+    vendor: 'Johnson Controls',
+    model: 'TE-6300 (Ni1000)',
+    subject: 'temp',
+    signal: 'rtd-ni1000',
+    mounting: 'duct-averaging',
+    range: [-40, 250],
+    units: '°F',
+    accuracy: '±0.4°F',
+    inputTerminal: 'UI',
+    notes: 'Nickel-1000 (Ni1000) averaging probe — the classic JCI/legacy curve. Set the controller terminal to Ni1000, NOT Pt1000, or the reading reads high.',
+  },
+  {
+    id: 'bapi-ba-ni1k-zone',
+    vendor: 'BAPI',
+    model: 'BA/N1K-2-A2X-W-BB',
+    subject: 'temp',
+    signal: 'rtd-ni1000',
+    mounting: 'wall',
+    range: [-40, 250],
+    units: '°F',
+    accuracy: '±0.5°F',
+    inputTerminal: 'UI',
+    notes: 'Nickel-1000 zone temp sensor — drop-in for older Honeywell/JCI panels wired for nickel. Curve is steeper than platinum (≈6180 ppm/°C vs 3850).',
   },
 
   // ── Pressure ──────────────────────────────────────────────────────────

@@ -228,7 +228,7 @@
     <div class="cli-title">
       <span class="dot"></span>
       <strong>{ctx?.controllerLabel ?? 'CTRL'}</strong>
-      <span class="muted">— terminal</span>
+      <span class="muted">— programming</span>
     </div>
     <button type="button" class="cli-close" onclick={onClose} title="Close (Esc)">
       ✕

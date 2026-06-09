@@ -25,6 +25,12 @@ export interface TerminalSignalSnapshot {
   readonly scaled: ScaledReading;
   /** Canvas node id of the sensor feeding this terminal, when known. */
   readonly sensorNodeId?: string;
+  /** The element/signal the PHYSICALLY-INSTALLED sensor emits (e.g.
+   *  'rtd-ni1000'). Sandbox-omniscient truth — a real controller can't know
+   *  this; it only reads ohms. The Terminals panel uses it in EASY mode to
+   *  show "Installed: Ni1000 · Programmed: Pt1000 — mismatch". Withheld from
+   *  the user in realistic mode. */
+  readonly installedSignal?: string;
   /** True when this terminal is wired to the controller's PRIMARY
    *  physics-target sensor. The thermal sim owns that sensor's
    *  engineering value (with the legacy `SensorState` faults applied);

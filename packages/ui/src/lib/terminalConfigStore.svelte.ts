@@ -139,8 +139,9 @@ export function clearAllTerminalConfig(controllerId: string): void {
 
 /** Human-readable label per input type for the dropdown UI. */
 export const INPUT_TYPE_LABELS: Record<TerminalInputType, string> = {
-  'rtd-pt1000': 'RTD · Pt1000',
-  'rtd-pt100': 'RTD · Pt100',
+  'rtd-pt1000': 'RTD · Pt1000 (platinum)',
+  'rtd-pt100': 'RTD · Pt100 (platinum)',
+  'rtd-ni1000': 'RTD · Ni1000 (nickel)',
   'thermistor-10k-t2': 'Thermistor · 10 kΩ Type II',
   'thermistor-10k-t3': 'Thermistor · 10 kΩ Type III',
   'thermistor-20k': 'Thermistor · 20 kΩ',
@@ -156,6 +157,7 @@ export const INPUT_TYPE_LABELS: Record<TerminalInputType, string> = {
 export const INPUT_TYPE_ORDER: readonly TerminalInputType[] = [
   'rtd-pt1000',
   'rtd-pt100',
+  'rtd-ni1000',
   'thermistor-10k-t2',
   'thermistor-10k-t3',
   'thermistor-20k',

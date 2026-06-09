@@ -36,15 +36,17 @@
     let zones = 0,
       routers = 0,
       bbmds = 0,
+      switches = 0,
       supervisorBbmds = 0;
     for (const n of canvasSnapshot.nodes) {
       const d = n.data as { kind?: string; isBBMD?: boolean };
       if (d.kind === 'subnet-zone') zones++;
       else if (d.kind === 'router') routers++;
       else if (d.kind === 'bbmd') bbmds++;
+      else if (d.kind === 'switch') switches++;
       else if (d.isBBMD) supervisorBbmds++;
     }
-    return { zones, routers, bbmds, supervisorBbmds };
+    return { zones, routers, bbmds, switches, supervisorBbmds };
   });
 </script>
 
@@ -74,6 +76,20 @@
 
   <section class="devices">
     <h4>Network devices</h4>
+    <div
+      class="net-tile draggable"
+      draggable="true"
+      ondragstart={(e) => onTileDragStart(e, 'switch')}
+      title="Drag onto the canvas. Layer-2 Ethernet switch. Devices plug into access ports (one VLAN each); switch-to-switch uplinks are trunk ports. The port's VLAN decides which broadcast domain the device lands in."
+      role="button"
+      tabindex="0"
+    >
+      <span class="net-tile-glyph switch-color">▦</span>
+      <div class="net-tile-body">
+        <span class="net-tile-title">Ethernet Switch</span>
+        <span class="net-tile-sub">L2 device · access/trunk ports · VLANs</span>
+      </div>
+    </div>
     <div
       class="net-tile draggable"
       draggable="true"
@@ -148,6 +164,7 @@
     <h4>On the canvas</h4>
     <ul>
       <li><strong>{inventory.zones}</strong> subnet zone{inventory.zones === 1 ? '' : 's'}</li>
+      <li><strong>{inventory.switches}</strong> switch{inventory.switches === 1 ? '' : 'es'}</li>
       <li><strong>{inventory.routers}</strong> IP router{inventory.routers === 1 ? '' : 's'}</li>
       <li>
         <strong>{inventory.bbmds}</strong> BBMD appliance{inventory.bbmds === 1 ? '' : 's'}
@@ -248,6 +265,9 @@
   }
   .net-tile-glyph.bbmd-color {
     color: #06b6d4;
+  }
+  .net-tile-glyph.switch-color {
+    color: #2dd4bf;
   }
   .net-tile-body {
     display: flex;

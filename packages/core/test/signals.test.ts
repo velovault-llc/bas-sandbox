@@ -54,6 +54,19 @@ describe('engToSignal', () => {
     expect(r.value).toBeCloseTo(100, 2);
   });
 
+  it('Ni1000: 32 °F (ice point) = 1000 Ω', () => {
+    const r = engToSignal(32, 'rtd-ni1000', [-40, 250]);
+    expect(r.kind).toBe('resistance-ohms');
+    expect(r.value).toBeCloseTo(1000, 1);
+  });
+
+  it('Ni1000 climbs steeper than Pt1000 above the ice point', () => {
+    // Same temperature, nickel's higher coefficient → more ohms.
+    const ni = engToSignal(150, 'rtd-ni1000', [-40, 250]).value;
+    const pt = engToSignal(150, 'rtd-pt1000', [-40, 250]).value;
+    expect(ni).toBeGreaterThan(pt);
+  });
+
   it('10kΩ T2 thermistor: 77 °F (25 °C) = ~10 000 Ω', () => {
     const r = engToSignal(77, 'thermistor-10k-t2', [-40, 250]);
     expect(r.value).toBeCloseTo(10000, -1);
@@ -114,6 +127,7 @@ describe('signalToEng — matched-kind round-trip', () => {
     { signal: 'analog-0-5v', range: [0, 100], values: [0, 25, 50, 75, 100] },
     { signal: 'rtd-pt1000', range: [-40, 250], values: [-40, 0, 32, 72, 200, 250] },
     { signal: 'rtd-pt100', range: [-40, 250], values: [-40, 0, 32, 72, 200, 250] },
+    { signal: 'rtd-ni1000', range: [-40, 250], values: [-40, 0, 32, 72, 200, 250] },
     { signal: 'thermistor-10k-t2', range: [-40, 250], values: [0, 32, 72, 150, 200] },
     { signal: 'thermistor-10k-t3', range: [-40, 250], values: [0, 32, 72, 150, 200] },
     { signal: 'thermistor-20k', range: [-40, 250], values: [0, 32, 72, 150, 200] },
@@ -147,6 +161,23 @@ describe('signalToEng — mismatch (wrong terminal config)', () => {
     expect(result.mismatch).toBe(true);
     // The number is wrong, but NOT NaN — it looks like a temperature.
     expect(Number.isFinite(result.value)).toBe(true);
+  });
+
+  it('Ni1000 sensor on a Pt1000-configured terminal reads HIGH — the silent nickel/platinum miss', () => {
+    // A nickel sensor at 72 °F puts ~1137 Ω on the wire. Both nickel and
+    // platinum are resistive, so the controller never flags a kind-mismatch —
+    // it just decodes 1137 Ω with the platinum curve and gets a too-high temp.
+    const raw = engToSignal(72, 'rtd-ni1000', [-40, 250]);
+    const ptCfg: TerminalConfig = { inputType: 'rtd-pt1000', engMin: -40, engMax: 250 };
+    const result = signalToEng(raw, ptCfg);
+    // Same signal kind (resistance) → no mismatch flag; this is why it's silent.
+    expect(result.mismatch).toBeUndefined();
+    expect(Number.isFinite(result.value)).toBe(true);
+    // Reads meaningfully HIGH (≈96 °F instead of 72 °F).
+    expect(result.value).toBeGreaterThan(85);
+    // And configuring the terminal correctly as Ni1000 reads it right.
+    const niCfg: TerminalConfig = { inputType: 'rtd-ni1000', engMin: -40, engMax: 250 };
+    expect(signalToEng(raw, niCfg).value).toBeCloseTo(72, 0);
   });
 
   it('wires Pt1000 (1085 Ω at 72 °F) into 0-10V UI → wrong but plausible reading', () => {

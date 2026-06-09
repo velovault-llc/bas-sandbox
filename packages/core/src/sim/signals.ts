@@ -66,6 +66,7 @@ export interface RawSignal {
 export type TerminalInputType =
   | 'rtd-pt1000'
   | 'rtd-pt100'
+  | 'rtd-ni1000'
   | 'thermistor-10k-t2'
   | 'thermistor-10k-t3'
   | 'thermistor-20k'
@@ -138,6 +139,13 @@ export function engToSignal(
       const R0 = signal === 'rtd-pt1000' ? 1000 : 100;
       return { kind: 'resistance-ohms', value: R0 * (1 + RTD_ALPHA * tempC) };
     }
+    case 'rtd-ni1000': {
+      // Nickel-1000: same linear form, steeper coefficient (~6180 ppm/°C vs
+      // platinum's 3850). R0 = 1000Ω at 0°C. This steeper slope is exactly
+      // why a Ni1000 read by a Pt1000-configured terminal reads HIGH.
+      const tempC = fahrenheitToCelsius(engValue);
+      return { kind: 'resistance-ohms', value: 1000 * (1 + NICKEL_ALPHA * tempC) };
+    }
     case 'thermistor-10k-t2':
     case 'thermistor-10k-t3':
     case 'thermistor-20k': {
@@ -168,6 +176,7 @@ function openCircuit(signal: SensorSignal): RawSignal {
       return { kind: 'voltage-v', value: 0, fault: 'open-circuit' };
     case 'rtd-pt1000':
     case 'rtd-pt100':
+    case 'rtd-ni1000':
     case 'thermistor-10k-t2':
     case 'thermistor-10k-t3':
     case 'thermistor-20k':
@@ -197,6 +206,7 @@ function shortCircuit(signal: SensorSignal): RawSignal {
       return { kind: 'voltage-v', value: 0, fault: 'short-circuit' };
     case 'rtd-pt1000':
     case 'rtd-pt100':
+    case 'rtd-ni1000':
     case 'thermistor-10k-t2':
     case 'thermistor-10k-t3':
     case 'thermistor-20k':
@@ -290,6 +300,16 @@ export function signalToEng(raw: RawSignal, cfg: TerminalConfig): ScaledReading 
       const tempC = (raw.value / R0 - 1) / RTD_ALPHA;
       return { value: celsiusToFahrenheit(tempC) };
     }
+    case 'rtd-ni1000': {
+      if (!Number.isFinite(raw.value) || raw.value > 5000) {
+        return { value: cfg.engMax, fault: 'over-range' };
+      }
+      if (raw.value < 50) {
+        return { value: cfg.engMin, fault: 'under-range' };
+      }
+      const tempC = (raw.value / 1000 - 1) / NICKEL_ALPHA;
+      return { value: celsiusToFahrenheit(tempC) };
+    }
     case 'thermistor-10k-t2':
     case 'thermistor-10k-t3':
     case 'thermistor-20k': {
@@ -335,6 +355,7 @@ export function defaultInputTypeFor(signal: SensorSignal): TerminalInputType {
   switch (signal) {
     case 'rtd-pt1000': return 'rtd-pt1000';
     case 'rtd-pt100': return 'rtd-pt100';
+    case 'rtd-ni1000': return 'rtd-ni1000';
     case 'thermistor-10k-t2': return 'thermistor-10k-t2';
     case 'thermistor-10k-t3': return 'thermistor-10k-t3';
     case 'thermistor-20k': return 'thermistor-20k';
@@ -359,6 +380,7 @@ export function kindForTerminalInput(t: TerminalInputType): SignalKind {
       return 'voltage-v';
     case 'rtd-pt1000':
     case 'rtd-pt100':
+    case 'rtd-ni1000':
     case 'thermistor-10k-t2':
     case 'thermistor-10k-t3':
     case 'thermistor-20k':
@@ -379,6 +401,7 @@ export function kindForSensorSignal(s: SensorSignal): SignalKind {
       return 'voltage-v';
     case 'rtd-pt1000':
     case 'rtd-pt100':
+    case 'rtd-ni1000':
     case 'thermistor-10k-t2':
     case 'thermistor-10k-t3':
     case 'thermistor-20k':
@@ -402,6 +425,7 @@ function referenceMaxFor(t: TerminalInputType): number {
     case 'analog-0-5v': return 5;
     case 'rtd-pt1000': return 1500;     // ~120°C
     case 'rtd-pt100': return 150;       // ~120°C
+    case 'rtd-ni1000': return 1742;     // ~120°C (steeper nickel curve)
     case 'thermistor-10k-t2': return 30000;
     case 'thermistor-10k-t3': return 30000;
     case 'thermistor-20k': return 60000;
@@ -426,6 +450,7 @@ function pegValueForOpen(cfg: TerminalConfig): number {
       return cfg.engMin;
     case 'rtd-pt1000':
     case 'rtd-pt100':
+    case 'rtd-ni1000':
       // Open RTD reads ∞ → infinitely high temp → peg at engMax.
       return cfg.engMax;
     case 'thermistor-10k-t2':
@@ -442,6 +467,7 @@ function pegValueForShort(cfg: TerminalConfig): number {
   switch (cfg.inputType) {
     case 'rtd-pt1000':
     case 'rtd-pt100':
+    case 'rtd-ni1000':
       // Short → 0Ω → coldest possible (formula goes very negative).
       return cfg.engMin;
     case 'thermistor-10k-t2':
@@ -478,6 +504,11 @@ function thermistorParams(s: SensorSignal): { r25: number; beta: number } {
 
 /** Temperature coefficient α for Pt100 / Pt1000 — DIN/IEC 60751 standard. */
 const RTD_ALPHA = 0.00385;
+
+/** Temperature coefficient α for Ni1000 nickel RTD — DIN 43760 (~6180
+ *  ppm/°C average 0–100°C). Markedly steeper than platinum, which is why a
+ *  nickel sensor read on a platinum-configured terminal reports high. */
+const NICKEL_ALPHA = 0.00618;
 
 /** Reference temperature for thermistor R25 spec, in Kelvin. 25°C = 298.15 K. */
 const T25_K = 298.15;

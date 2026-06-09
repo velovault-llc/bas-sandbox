@@ -15,7 +15,17 @@
    *  otherwise paint an unreadable column of dots. */
   const TERMINAL_HANDLE_CAP = 24;
 
-  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router' | 'bbmd' | 'virtual-controller';
+  type BasNodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'expansion' | 'router' | 'bbmd' | 'virtual-controller' | 'switch';
+
+  /** One port on a switch node — mirrors core's SwitchPort. */
+  type SwitchPortUi = {
+    id: string;
+    label?: string;
+    mode: 'access' | 'trunk';
+    accessVlan?: number;
+    trunkVlans?: number[];
+    nativeVlan?: number;
+  };
 
   type BasNodeData = {
     label: string;
@@ -92,6 +102,10 @@
      *  (lookup happens in BuildCanvas, but we render the cached value
      *  so a stale host that's been deleted still reads sensibly). */
     hostLabel?: string;
+    /** Switch-only: the port table. Each port renders a connection handle
+     *  along the bottom edge (id === port.id) so a cable lands on a
+     *  specific port, and a VLAN chip in the summary row. (Net.L2) */
+    ports?: SwitchPortUi[];
   };
 
   /** Human label + glyph for each fault, used on the node badge. */
@@ -192,6 +206,7 @@
     router: '◆',
     bbmd: '◫',
     'virtual-controller': '◌',
+    switch: '▦',
   };
 
   const KIND_LABEL: Record<BasNodeKind, string> = {
@@ -203,6 +218,7 @@
     router: 'IP Router',
     bbmd: 'BBMD',
     'virtual-controller': 'Virtual Ctrl',
+    switch: 'Switch',
   };
 
   /** Subtitle for a sensor — prefers any import-supplied subtitle (mac / instance
@@ -234,7 +250,13 @@
   <!-- Network trunk in (always rendered). Controllers receive supervisor
        traffic via the top edge; sensors/safeties receive their hardwired
        cable from a controller's left/right terminal. -->
-  <Handle type="target" position={Position.Top} id="net-in" />
+  <Handle
+    type="target"
+    position={Position.Top}
+    id="net-in"
+    title="Network IN (top) — the trunk/cable from a supervisor or upstream device lands here."
+  />
+  <span class="io-tag io-tag-in" aria-hidden="true">in ▾</span>
 
   <!-- Inline power button. Visible at all times so a user can power-cycle
        any node from the canvas without opening the inspector panel.
@@ -275,6 +297,28 @@
           id={t.id}
           class="term term-{t.kind}"
         />
+      </span>
+    {/each}
+  {/if}
+
+  <!-- Switch ports — one connection handle per port along the bottom edge.
+       Handle id === port.id so an edge's source/target handle identifies the
+       exact port (and therefore its VLAN). Both a target and a source handle
+       are rendered per port (same id): devices plug IN (their net-out → port
+       target) and switch-to-switch trunks go OUT (port source → peer port).
+       The source handle overlaps the target and is invisible. -->
+  {#if data.kind === 'switch' && data.ports && data.ports.length > 0}
+    {#each data.ports as p, i (p.id)}
+      {@const leftPct = data.ports.length === 1 ? 50 : 8 + (i / (data.ports.length - 1)) * 84}
+      <span
+        class="port-wrap"
+        style:left="{leftPct}%"
+        data-tip="{p.label ?? p.id} · {p.mode === 'access'
+          ? 'access VLAN ' + (p.accessVlan ?? '—')
+          : 'trunk ' + ((p.trunkVlans ?? []).join(',') || '—') + ' (native ' + (p.nativeVlan ?? 1) + ')'}"
+      >
+        <Handle type="target" position={Position.Bottom} id={p.id} class="port port-{p.mode}" />
+        <Handle type="source" position={Position.Bottom} id={p.id} class="port-src" />
       </span>
     {/each}
   {/if}
@@ -366,6 +410,15 @@
       {/each}
     </div>
   {/if}
+  {#if data.kind === 'switch' && data.ports && data.ports.length > 0}
+    <div class="switch-ports" title="Switch ports — green = access (one untagged VLAN), amber = trunk (tagged uplink). The number is the access VLAN; T = trunk.">
+      {#each data.ports as p (p.id)}
+        <span class="port-chip port-chip-{p.mode}" title="{p.label ?? p.id}">
+          {p.mode === 'access' ? (p.accessVlan ?? '—') : 'T'}
+        </span>
+      {/each}
+    </div>
+  {/if}
   {#if data.poweredOff}
     <div class="power-off-badge" title="Device is powered off. Excluded from network validation + broadcast traces.">
       ⏻ POWERED OFF
@@ -395,7 +448,13 @@
 
   <!-- Network trunk out — downstream MS/TP or hardwired cable from this
        controller to downstream devices (sensors, sub-controllers). -->
-  <Handle type="source" position={Position.Bottom} id="net-out" />
+  <span class="io-tag io-tag-out" aria-hidden="true">▴ out</span>
+  <Handle
+    type="source"
+    position={Position.Bottom}
+    id="net-out"
+    title="Network OUT (bottom) — run a wire from here down to downstream controllers, sensors, or actuators."
+  />
 </div>
 
 <style>
@@ -609,6 +668,11 @@
   .kind-bbmd {
     --accent: #06b6d4;
   }
+  /* Switch — teal accent. An L2 device, distinct from the L3 router
+     (amber) and the BBMD (cyan). (Net.L2) */
+  .kind-switch {
+    --accent: #2dd4bf;
+  }
   /* Virtual controller — soft purple to read as "lives inside a host"
      rather than a physical device. Dashed border drives that home. */
   .kind-virtual-controller {
@@ -735,6 +799,99 @@
     border: 1px solid color-mix(in srgb, var(--accent, #f59e0b) 40%, transparent);
   }
 
+  /* Switch port chips — a compact VLAN-at-a-glance row. Green = access
+     (the digit is the VLAN id), amber = trunk. (Net.L2) */
+  .switch-ports {
+    margin-top: 0.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem;
+    justify-content: center;
+  }
+  .port-chip {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.58rem;
+    font-weight: 700;
+    min-width: 1rem;
+    text-align: center;
+    padding: 0.02rem 0.2rem;
+    border-radius: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .port-chip-access {
+    background: color-mix(in srgb, #2ecc71 20%, transparent);
+    color: #2ecc71;
+    border: 1px solid color-mix(in srgb, #2ecc71 45%, transparent);
+  }
+  .port-chip-trunk {
+    background: color-mix(in srgb, #f59e0b 20%, transparent);
+    color: #f59e0b;
+    border: 1px solid color-mix(in srgb, #f59e0b 50%, transparent);
+  }
+
+  /* Per-port connection handles along the switch's bottom edge. */
+  .port-wrap {
+    position: absolute;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .port-wrap :global(.svelte-flow__handle) {
+    pointer-events: auto;
+  }
+  :global(.bas-node .port) {
+    width: 9px !important;
+    height: 9px !important;
+    border: 1.5px solid color-mix(in srgb, CanvasText 35%, transparent) !important;
+    background: Canvas !important;
+  }
+  :global(.bas-node .port-access) {
+    border-color: #2ecc71 !important;
+    background: color-mix(in srgb, #2ecc71 25%, Canvas) !important;
+  }
+  :global(.bas-node .port-trunk) {
+    border-color: #f59e0b !important;
+    background: color-mix(in srgb, #f59e0b 25%, Canvas) !important;
+  }
+  /* The source handle overlaps its target twin; invisible but connectable
+     so switch→switch trunk links can originate from a port. */
+  :global(.bas-node .port-src) {
+    opacity: 0 !important;
+    width: 11px !important;
+    height: 11px !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  .port-wrap::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 0.85rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.6rem;
+    padding: 0.1rem 0.4rem;
+    background: color-mix(in srgb, Canvas 95%, CanvasText 8%);
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 4px;
+    color: CanvasText;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    transition: opacity 60ms ease;
+    z-index: 10;
+  }
+  .port-wrap:hover::after {
+    opacity: 1;
+  }
+
   .header {
     display: flex;
     align-items: center;
@@ -859,6 +1016,39 @@
   .pt-count {
     opacity: 0.75;
     margin-left: 0.15rem;
+  }
+
+  /* Always-visible in/out tags at the top (target) and bottom (source)
+     network handles, so you don't have to hover to know which edge is which.
+     Sit just outside the card so they don't overlap content; faint by
+     default, brighten when the node is hovered. */
+  .io-tag {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 0.5rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, CanvasText 42%, transparent);
+    opacity: 0.7;
+    pointer-events: none;
+    white-space: nowrap;
+    transition: opacity 120ms ease, color 120ms ease;
+    z-index: 3;
+  }
+  .io-tag-in {
+    top: -0.72rem;
+  }
+  .io-tag-out {
+    bottom: -0.72rem;
+  }
+  .bas-node:hover .io-tag {
+    opacity: 1;
+    color: color-mix(in srgb, var(--accent) 75%, CanvasText);
   }
 
   /* xyflow handles render with their own classes; tweak a bit for visibility */
