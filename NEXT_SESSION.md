@@ -2,7 +2,34 @@
 
 Last updated: 2026-06-10. Author: James + Claude.
 
-## 🔖 Resume here — 2026-06-10 (walkthrough leg 2 + solo demo audit, uncommitted)
+## 🔖 Resume here — 2026-06-10 evening ("knock em all out" build sprint, ALL COMMITTED)
+
+**Four commits landed** (`77ec882` → `2880987` → `1b58939` → `0559941`):
+all prior uncommitted work + revamp slices **1, 2, 2b, 2c, 4, 6, 7** shipped,
+tested (361/361 · typecheck 0 · build clean), and live-verified in preview.
+
+- **Slice 4 (AHU terminals)** — the G36 AHU has a real terminal block now
+  (AI-1 OAT / AI-4 ZN-T override synthetic inputs through the signal
+  bridge; AO-1..4/BO-1 drive wired actuators from live sequence state —
+  verified the Belimo damper slewing to 100% in Economizer). **A CRITICAL
+  bug was introduced+caught during this slice:** restore-time edge styling
+  hit a TDZ on `nodes`, the try/catch swallowed it, and every reload
+  silently wiped the canvas to defaults. Fixed + guarded. If your canvas
+  vanished mid-evening, that was it — apologies.
+- **Slice 7 (capture-point packet log)** — James's sniffer design: hidden
+  until traffic exists, auto-taps the first segment, "all segments" is an
+  explicit omniscient opt-in.
+- **Slice 2b (ring) + 2c (one-engine-per-trunk, supervisor EOL toggle)** —
+  see WIRING_REVAMP_PLAN.md table for verification notes.
+
+**Remaining (the two big ones + stragglers):** slice 3 (IP port model:
+catalog `ethernetPorts`, 1-port daisy block, 2-port daisy lesson, L2 loop →
+broadcast storm), slice 5 (equipment AHU + controller split; G36 as
+loadable program; fixes G40 air-side physics), repeater catalog device,
+2d EOL sim-consequence, real-network reference rig (bacnet-stack +
+BACpypes3 scripts). Deploy + Netlify token rotation STILL pending.
+
+## 🔖 Previous resume point — 2026-06-10 (walkthrough leg 2 + solo demo audit)
 
 **Walkthrough findings (James driving, Realistic mode):** G33 trunk-panel
 Delete clipped under Run (✅ fixed, wraps now), G34 actuator wired onto MS/TP
