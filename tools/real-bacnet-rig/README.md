@@ -38,6 +38,22 @@ behavior, that's everything.
 This covers recipes 1–4 below (for timeout/retry: kill bacserv mid-poll).
 Everything after this section is just MORE DEVICES — same method.
 
+### Firewall & network checklist (nothing gets DISABLED)
+
+- Every machine (YABE host and bacserv hosts alike) needs inbound UDP
+  47808 allowed: click Allow (Private) on the Windows prompt, or run as
+  admin:
+  `New-NetFirewallRule -DisplayName "BACnet/IP" -Direction Inbound -Protocol UDP -LocalPort 47808 -Action Allow -Profile Private`
+  (Why: Who-Is goes out as broadcast but I-Am / COV notifications come
+  back UNICAST — the stateful firewall won't match those as replies.)
+- Network profile = **Private** on every Windows machine (a LAN classified
+  Public blocks inbound regardless of app rules).
+- Same LAN for everything: no guest SSID (separate subnet = invisible,
+  broadcasts don't route), and beware router/mesh **AP/client isolation**
+  which blocks wireless peers from each other — the classic "firewall's
+  open but nothing appears" culprit. Ethernet sidesteps it.
+- Wireshark needs nothing — passive capture.
+
 ## James's fleet → lab topology (planned 2026-06-10)
 
 | Box | Role |
