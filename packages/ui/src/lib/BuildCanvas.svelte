@@ -3,6 +3,7 @@
   import {
     Background,
     ConnectionMode,
+    MarkerType,
     Panel,
     SvelteFlow,
     SvelteFlowProvider,
@@ -456,12 +457,41 @@
     return 'stroke: #e74c3c; stroke-width: 2px; stroke-dasharray: 6 4; opacity: 0.95;';
   }
 
+  /** Process links (air/water flow) are a different physical class from
+   *  network/signal wires: equipment pushes INTO a zone, an actuator drives
+   *  INTO equipment, an AHU supplies a zone, zones share walls. They get
+   *  duct/pipe styling + a directional arrowhead — the one place an arrow
+   *  MEANS something (network trunks have no direction). */
+  function isProcessLink(e: Edge): boolean {
+    const s = nodes.find((n) => n.id === e.source);
+    const t = nodes.find((n) => n.id === e.target);
+    if (!s || !t) return false;
+    const sk = nodeKind(s);
+    const tk = nodeKind(t);
+    return (
+      (sk === 'equipment' && tk === 'zone') ||
+      (sk === 'actuator' && tk === 'equipment') ||
+      (sk === 'vahu' && tk === 'zone') ||
+      (sk === 'zone' && tk === 'vahu') ||
+      (sk === 'zone' && tk === 'zone')
+    );
+  }
+
+  const PROCESS_LINK_COLOR = '#5fb8b0';
+
   function withStyle(e: Edge): Edge {
     const kind: WireKind = (e.data?.wireKind as WireKind) ?? 'mstp';
     const broken = (e.data?.comm as string | undefined) === 'broken';
     if (broken) {
       // Force animation off — a broken trunk doesn't carry traffic.
       return { ...e, animated: false, style: styleForBrokenWire() };
+    }
+    if (isProcessLink(e)) {
+      return {
+        ...e,
+        style: `stroke: ${PROCESS_LINK_COLOR}; stroke-width: 3px; opacity: 0.75;`,
+        markerEnd: { type: MarkerType.ArrowClosed, color: PROCESS_LINK_COLOR, width: 16, height: 16 },
+      };
     }
     return { ...e, style: styleForWire(kind, !!e.animated) };
   }
@@ -4442,7 +4472,10 @@
     simSecondsElapsed = 0;
     runningSamples = new Map();
     nodes = parsed.topology.nodes;
-    edges = parsed.topology.edges;
+    // Style on load (nodes are assigned above, so process-link detection
+    // sees endpoint kinds) — wire colors + duct/pipe arrows render
+    // immediately instead of waiting for the first Run restyle.
+    edges = parsed.topology.edges.map((e) => withStyle(e));
 
     // v1.2+ scenarios carry an explicit wiredTargets array.
     if (parsed.wiredTargets && parsed.wiredTargets.length >= 0) {
@@ -4789,7 +4822,17 @@
         }
         return seen;
       };
-      const merged = new Set([...reach(srcN.id), ...reach(tgtN.id)]);
+      // Closing the chain into a ring: if the two endpoints are ALREADY on
+      // the same trunk, this wire creates a loop — two parallel signal
+      // paths and no ends to terminate. (RS-485 is a line, not a ring.)
+      const srcReach = reach(srcN.id);
+      if (srcReach.has(tgtN.id)) {
+        return {
+          severity: 'fault',
+          reason: `${nodeLabel(srcN)} and ${nodeLabel(tgtN)} are already on the same MS/TP trunk — this wire would close the chain into a RING. RS-485 is a line: a loop gives the signal two parallel paths (reflections, phantom echoes) and leaves no ends to terminate. Run the bus end to end instead.`,
+        };
+      }
+      const merged = new Set([...srcReach, ...reach(tgtN.id)]);
       const engines = [...merged]
         .map((id) => nodes.find((n) => n.id === id))
         .filter((n): n is Node => !!n && nodeKind(n) === 'supervisor');

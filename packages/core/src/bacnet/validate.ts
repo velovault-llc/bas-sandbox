@@ -32,6 +32,7 @@ export type MstpFindingId =
   | 'mstp.no-supervisor'
   | 'mstp.multiple-supervisors'
   | 'mstp.t-tap'
+  | 'mstp.ring'
   | 'mstp.eol-missing'
   | 'mstp.eol-mid-chain'
   | 'mstp.eol-unset'
@@ -119,6 +120,26 @@ export function validateMstpTopology(
           `stubs corrupt frames (works at 9600 baud, dies at 38400). Re-route the cable as a chain through ` +
           `each device, or branch through an RS-485 repeater.`,
         nodeIds: [nodeId],
+      });
+    }
+
+    // 1a. Ring: a connected component with as many wires as devices
+    // contains a cycle — the chain was closed into a loop. RS-485 has no
+    // ring topology: a loop means two parallel signal paths (reflections,
+    // phantom echoes) and NO physical ends to terminate. Found during
+    // slice-2 testing when "starring" a chain end accidentally built one.
+    if (comp.edges.length >= comp.nodeIds.length) {
+      out.push({
+        id: 'mstp.ring',
+        severity: 'error',
+        trunkId: comp.trunkKey,
+        title: 'MS/TP trunk wired in a ring',
+        description:
+          `This segment has ${comp.edges.length} wires between ${comp.nodeIds.length} devices — the chain ` +
+          `loops back on itself. RS-485 is a LINE, not a ring: a loop gives the signal two parallel paths ` +
+          `(reflections and phantom echoes) and leaves no physical ends to terminate. Remove one wire so ` +
+          `the bus runs end to end.`,
+        nodeIds: comp.nodeIds,
       });
     }
 

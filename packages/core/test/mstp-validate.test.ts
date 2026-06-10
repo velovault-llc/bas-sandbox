@@ -148,6 +148,19 @@ describe('validateMstpTopology', () => {
     expect(mid!.nodeIds).toEqual(['a']);
   });
 
+  it('closed loop is flagged as a ring (and a ring has no EOL ends to check)', () => {
+    // sup — a — b — sup: 3 devices, 3 wires = cycle.
+    const findings = validateMstpTopology(
+      [tnode('sup', 'supervisor'), tnode('a'), tnode('b')],
+      [wire('e1', 'sup', 'a'), wire('e2', 'a', 'b'), wire('e3', 'b', 'sup')],
+    );
+    const ring = findings.find((x) => x.id === 'mstp.ring');
+    expect(ring).toBeDefined();
+    expect(ring!.severity).toBe('error');
+    // No degree-3 node in a simple ring → no T-tap false positive.
+    expect(findings.filter((x) => x.id === 'mstp.t-tap')).toEqual([]);
+  });
+
   it('two engines on one trunk: error naming both supervisors', () => {
     // sup1 — fec — sup2: physically a legal multi-master chain, but in BAS
     // practice one engine OWNS a field bus — the addressing demotes one
