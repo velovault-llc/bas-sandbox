@@ -43,8 +43,13 @@ Lab-night checklist (phase A):
 
 ## Tier 1 — zero-code (one evening): bacnet-stack demo binaries
 
-[bacnet-stack](https://github.com/bacnet-stack/bacnet-stack) ships prebuilt
-Windows demo apps (Releases → `bacnet-tools-*.zip`). The important ones:
+⚠ The GitHub repo's Releases page is EMPTY (James hit this) — the project
+predates GitHub and publishes its prebuilt Windows binaries on SourceForge:
+**https://sourceforge.net/projects/bacnet/files/bacnet-tools/** → newest
+folder (1.4.1 as of 2026-06) → `bacnet-tools-1.4.1.zip` (~10 MB). Verified
+present. (Source lives at github.com/bacnet-stack/bacnet-stack if we ever
+want to build custom behavior; the zip also ships `mstpcap` — the MS/TP
+sniffer for the future RS-485-dongle phase.) The important tools:
 
 | Tool | What it is |
 |---|---|
