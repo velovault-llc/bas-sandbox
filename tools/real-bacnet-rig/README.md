@@ -53,6 +53,33 @@ Everything after this section is just MORE DEVICES — same method.
   which blocks wireless peers from each other — the classic "firewall's
   open but nothing appears" culprit. Ethernet sidesteps it.
 - Wireshark needs nothing — passive capture.
+- **Instance roulette (2026-06-10's recurring trap):** YABE's Room Simulator
+  rolls a RANDOM device instance every launch. Subscriptions bind to an
+  instance → every sim restart orphans every subscription row, which then
+  sits in YABE showing confident stale values (we fell for this 3×). bacserv
+  doesn't have this problem (instance is a fixed CLI arg). Real sites mandate
+  STATIC device instances for exactly this reason — teachable moment AND lab
+  rule: prefer bacserv for repeatable captures; re-subscribe after any sim
+  restart; always sanity-check the Time column.
+
+## Dedicated lab router (James's plan — next session)
+
+A small router/AP serving ONLY the lab machines. Benefits: isolation from
+the home mesh (no AP-isolation surprises, no family traffic), DHCP control
+→ **static reservations** for every lab box (kills IP roulette), and it's
+the hardware for phase-B (second subnet / BBMD recipe). Setup checklist —
+every item below is a trap we already hit once on the home network:
+1. Connect desktop + laptop(s); give each a **DHCP reservation** (or static
+   IP) and write them in this file.
+2. On EVERY machine, first thing: `Get-NetConnectionProfile` →
+   `Set-NetConnectionProfile -NetworkCategory Private` (new network = new
+   profile = defaults to Public = silent firewall wall).
+3. Firewall rules are profile-scoped but ours are Private-wide — they carry
+   over once the profile is Private. Verify UDP 47808 + ICMP + SSH (22).
+4. Update the SSH target IP in the lab notes; first connect re-prompts for
+   the host key (new IP).
+5. Re-run the two-machine smoke test (START HERE section) before any
+   recipe.
 - **CHECK THE PROFILE FIRST (learned the hard way, 2026-06-10):** run
   `Get-NetConnectionProfile` on EVERY machine before anything else. Both
   lab boxes turned out to be **Public** — meaning every `-Profile Private`
