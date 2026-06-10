@@ -646,6 +646,30 @@ LAN) — each of these is on a real wire and absent from the sim:
 - (Open observation: bacserv's I-Am arrives ×2 ~150 µs apart per trigger —
   multi-send or capture artifact; resolve on a wired-Ethernet capture.)
 
+From `wireshark/lab3-cov-lifecycle.pcapng` (the COV-lifecycle ground truth):
+
+- **G47 — no initial notification on subscribe.** Real devices notify the
+  current value immediately on every (re)subscribe (observed ~12/12 times,
+  0.2–7 s later). The sandbox seeds `lastReportedValue` silently — a
+  subscriber never learns the starting value via COV.
+- **G48 — subscription lifetime/renewal not modeled.** The sandbox's
+  subscriptions are eternal. Real: lifetime (YABE default 120 s) with the
+  client re-subscribing at **exactly lifetime/2** — a periodic
+  SubscribeCOV+ACK heartbeat the packet log should show. (TTL-expiry
+  behavior still uncaptured — needs a self-changing value; Room Simulator.)
+- **G49 (flavor) — COV detection is scan-based against last-NOTIFIED.**
+  bacserv evaluates Δ vs the last value it notified, on a 0.2–7 s scan —
+  rapid intermediate writes vanish without ever hitting the wire. The
+  sandbox's per-tick check vs lastReported has the same Δ semantics ✓ but
+  notifies same-tick; a small randomized scan latency would match reality.
+- **G50 (lesson candidate) — duplicate subscriptions multiply traffic.**
+  Real devices keep one subscription per (subscriber, process-id) — three
+  stray YABE rows produced 3 notifications per change. The sandbox dedupes
+  by object key, hiding a real failure mode worth teaching.
+- bacserv **boot dance** (lab2): `who-Is <own instance range>` BEFORE i-Am —
+  a device checking for instance collision at startup. Candidate sim
+  behavior + duplicate-DI lesson tie-in.
+
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
   drive only wrote `sample.T_F` into *physics-wired targets'* config; the
