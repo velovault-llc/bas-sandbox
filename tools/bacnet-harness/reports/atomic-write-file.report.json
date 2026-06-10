@@ -1,6 +1,6 @@
 {
   "capture": "atomic-write-file.cap",
-  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "adapter": "harness.bas_adapter:RawPassthroughAdapter",
   "byte_exact": false,
   "passed": 1557,
   "total": 1557,

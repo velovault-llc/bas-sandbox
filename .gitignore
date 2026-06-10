@@ -16,6 +16,7 @@ build/
 .svelte-kit/
 .vite/
 *.tsbuildinfo
+.netlify/
 
 # Rust / WASM
 target/

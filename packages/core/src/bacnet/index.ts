@@ -25,6 +25,7 @@ export {
   mstpServiceLatencySeconds,
   BACNET_IP_RTT_SECONDS,
   assignMstpAddressing,
+  mstpComponents,
 } from './mstp.js';
 export type {
   MstpDevice,
@@ -33,10 +34,12 @@ export type {
   MstpAddressingEdge,
   MstpTrunkAddressing,
   MstpAddressingResult,
+  MstpComponent,
 } from './mstp.js';
 
 export {
   validateMstpTrunks,
+  validateMstpTopology,
   MSTP_TRUNK_RECOMMENDED_MAX_DEVICES,
   MSTP_MAC_MIN,
   MSTP_MAC_MAX,

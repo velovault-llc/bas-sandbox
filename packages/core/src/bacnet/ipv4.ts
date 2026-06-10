@@ -79,6 +79,7 @@ export type Ipv4FindingId =
   | 'ipv4.zone-invalid-cidr'
   | 'ipv4.outside-any-zone'
   | 'ipv4.cross-subnet-no-bridge'
+  | 'ipv4.cross-subnet-foreign-device'
   | 'ipv4.bbmd-empty-bdt'
   | 'ipv4.bbmd-asymmetric-bdt'
   | 'ipv4.bbmd-peer-unknown';
@@ -309,12 +310,20 @@ export function validateBacnetIpNetwork(
           edgeIds: [e.edgeId],
         });
       } else if (bridgeStatus.kind === 'one-side-bbmd') {
-        // Only one side is a BBMD — the other isn't bridging at all.
+        // Exactly one side is a BBMD. NOT a misconfig — this is the
+        // Annex-J FOREIGN-DEVICE pattern: the non-BBMD registers with the
+        // BBMD (Register-Foreign-Device → BVLC-Result) and receives
+        // broadcasts as unicast Forwarded-NPDUs while its TTL is alive.
+        // Every commissioning laptop (YABE, Niagara Workbench) joins
+        // remote sites this way, and the sim emits the registration flow
+        // for exactly this topology — flagging it as an error contradicted
+        // the sim's own (correct) behavior. Info-level: explain WHY it
+        // works + the field caveat.
         findings.push({
-          id: 'ipv4.cross-subnet-no-bridge',
-          severity: 'error',
-          title: `Cross-subnet BACnet/IP needs BBMDs on BOTH ends`,
-          description: `${a.dev.label} (${a.dev.ipAddress}/${maskToCidr(a.mask)}) and ${b.dev.label} (${b.dev.ipAddress}) are on different subnets. ${bridgeStatus.bbmdSide.label} is a BBMD but ${bridgeStatus.nonBbmdSide.label} isn't — broadcasts have nowhere to land on the far side. Either make ${bridgeStatus.nonBbmdSide.label} a BBMD too, or re-IP onto the same subnet.`,
+          id: 'ipv4.cross-subnet-foreign-device',
+          severity: 'info',
+          title: `Cross-subnet BACnet/IP — foreign-device registration`,
+          description: `${bridgeStatus.nonBbmdSide.label} (${bridgeStatus.nonBbmdSide.ipAddress}) is on a different subnet from BBMD ${bridgeStatus.bbmdSide.label} (${bridgeStatus.bbmdSide.ipAddress}) and isn't a BBMD itself — so it joins as an Annex-J foreign device: it registers with ${bridgeStatus.bbmdSide.label} and receives broadcasts as unicast Forwarded-NPDUs while its registration TTL is alive. Standard for commissioning laptops; for PERMANENT equipment prefer a BBMD on each subnet — a lapsed re-registration silently drops a foreign device off the broadcast domain.`,
           nodeIds: [a.dev.nodeId, b.dev.nodeId],
           edgeIds: [e.edgeId],
         });

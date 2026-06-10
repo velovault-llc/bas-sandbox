@@ -1,6 +1,6 @@
 {
   "capture": "BACnetARRAY-elements.cap",
-  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "adapter": "harness.bas_adapter:RawPassthroughAdapter",
   "byte_exact": false,
   "passed": 4,
   "total": 4,

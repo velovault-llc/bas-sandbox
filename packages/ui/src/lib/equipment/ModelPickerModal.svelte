@@ -68,6 +68,48 @@
     });
   });
 
+  // Actuator family grouping (decision-guidance: a flat 14-item scroll gave
+  // no basis to tell a VAV damper from a reheat valve). Headers + a "start
+  // with a damper" hint orient a beginner the way the supervisor picker
+  // still doesn't.
+  type ActuatorFamily = 'Dampers' | 'Valves' | 'VFDs' | 'Relays & starters';
+  const ACTUATOR_FAMILY_ORDER: readonly ActuatorFamily[] = [
+    'Dampers',
+    'Valves',
+    'VFDs',
+    'Relays & starters',
+  ];
+  function actuatorFamily(kind: ActuatorModel['kind']): ActuatorFamily {
+    if (kind === 'damper-modulating' || kind === 'damper-binary') return 'Dampers';
+    if (kind === 'valve-modulating' || kind === 'valve-floating' || kind === 'valve-binary')
+      return 'Valves';
+    if (kind === 'vfd') return 'VFDs';
+    return 'Relays & starters'; // contactor, pump-relay
+  }
+  const FAMILY_BLURB: Record<ActuatorFamily, string> = {
+    Dampers: 'Throttle airflow — a VAV box’s primary output. Start here.',
+    Valves: 'Modulate a hydronic coil — reheat, chilled/hot water.',
+    VFDs: 'Drive fan / pump speed (variable frequency).',
+    'Relays & starters': 'On/off motor starters and pump relays.',
+  };
+  const actuatorGroups = $derived.by(
+    (): { family: ActuatorFamily; blurb: string; rows: ActuatorModel[] }[] => {
+      if (modelPickerStore.pending?.kind !== 'actuator') return [];
+      const byFamily = new Map<ActuatorFamily, ActuatorModel[]>();
+      for (const it of filtered) {
+        if (it.type !== 'actuator') continue;
+        const fam = actuatorFamily(it.m.kind);
+        if (!byFamily.has(fam)) byFamily.set(fam, []);
+        byFamily.get(fam)!.push(it.m);
+      }
+      return ACTUATOR_FAMILY_ORDER.filter((f) => byFamily.has(f)).map((family) => ({
+        family,
+        blurb: FAMILY_BLURB[family],
+        rows: byFamily.get(family)!,
+      }));
+    },
+  );
+
   function pick(modelId: string | null): void {
     modelPickerStore.pending?.resolve(modelId);
     closeModelPicker();
@@ -122,6 +164,34 @@
         <span class="muted">No real-world model — for rapid sketching only. Use the catalog when possible.</span>
       </button>
 
+      {#if kind === 'actuator'}
+        {#each actuatorGroups as grp (grp.family)}
+          <div class="group-head">
+            <span class="group-title">{grp.family}</span>
+            <span class="muted">{grp.blurb}</span>
+          </div>
+          {#each grp.rows as m (m.id)}
+            <button type="button" class="row" onclick={() => pick(m.id)}>
+              <div class="row-head">
+                <strong>{m.vendor}</strong>
+                <code>{m.model}</code>
+                <span class="pill">{m.kind}</span>
+              </div>
+              <div class="row-meta">
+                <span class="pill signal">{m.signal}</span>
+                <span class="pill">fail-{m.failSafe}</span>
+                <span class="pill" class:portable={m.hasPositionFeedback}>
+                  {m.hasPositionFeedback ? 'w/ feedback' : 'no feedback'}
+                </span>
+                <span class="muted">{m.strokeSeconds}s stroke</span>
+              </div>
+            </button>
+          {/each}
+        {/each}
+        {#if actuatorGroups.length === 0}
+          <p class="muted no-match">No actuator matches “{query}”.</p>
+        {/if}
+      {:else}
       {#each filtered as it (it.type === 'controller' ? it.m.id : it.type === 'sensor' ? it.m.id : it.m.id)}
         {#if it.type === 'controller'}
           <button type="button" class="row" onclick={() => pick(it.m.id)}>
@@ -186,6 +256,7 @@
           </button>
         {/if}
       {/each}
+      {/if}
     </div>
   </div>
 {/if}
@@ -275,6 +346,28 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+  }
+
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 0.25rem 0.1rem;
+    margin-top: 0.15rem;
+    border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  }
+
+  .group-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 85%, transparent);
+  }
+
+  .no-match {
+    padding: 0.6rem 0.25rem;
   }
 
   .generic-row {

@@ -371,17 +371,41 @@ Step 7 — inspector + model/signal/fail-safe picker + AO/BO mismatch (mode-gate
 - **G25 — ✅ root cause fixed.** The "assigned to a binary output, nothing
   caught it" symptom was because a *generic* actuator had no signal to validate.
   Now that actuators are model-backed, `onConnect` auto-routes an analog actuator
-  to an AO terminal (and a binary one to a BO). *Still deferred:* the
-  Realistic-mode "force the wrong output kind and flag it" treatment (mirroring
-  the sensor terminal mismatch) — the auto-shift currently helpfully corrects
-  rather than letting you make+see the mistake in Realistic.
-- **G26 — still deferred.** Position-feedback is now *surfaced* in the inspector
-  ("position feedback" chip), but the feedback signal path (actuator → AI, with a
-  "commanded but didn't move" fault) isn't modeled yet.
+  to an AO terminal (and a binary one to a BO).
+- **G25-full — ✅ BUILT (2026-06-09 session 2).** Realistic mode now lets a
+  deliberate aim at a FREE wrong-kind output terminal through (analog actuator →
+  BO, binary → AO) with zero warning, tagged on `edge.data.miswire` — same
+  reveal path as the protocol miswires (Check-my-work + AI summary). Easy mode
+  keeps the helpful auto-shift. Auto-shift still resolves taken terminals and
+  non-terminal drops in both modes. *Verified via code path + the shared
+  miswire display (Check-my-work render confirmed live); the wire-drag gesture
+  itself needs one manual confirmation in the browser.*
+- **G26 — ✅ BUILT (2026-06-09 session 2), verified end-to-end live.**
+  - **Feedback path:** an actuator wired INTO a controller input (actuator →
+    AI/UI) now emits its position as a 2–10 V signal when the model has
+    `hasPositionFeedback` — shows as a real row in the Terminals truth table
+    (verified: Belimo AF24-MFT at 100% → `AI-1 · 10.000 V · 100.00 [0–100] ·
+    OK`) and feeds the program env as `fb_<actuator-label>`. Pre-run static
+    pass shows the row too (G19 parity).
+  - **Stuck fault:** actuator inspector gained a Fault row (normal / stuck).
+    Stuck freezes `actual` while commands keep coming; the node card shows
+    "⚠ stuck at 100% (cmd 20%)" in Easy (in Realistic just the never-closing
+    "(cmd …% ↑)" — the authentic symptom).
+  - **Check-my-work** reports "commanded but didn't move" with the
+    feedback-vs-no-feedback teaching note (verified live).
 
 ## Step 9 — AHU (G36) + driving conditions
 
-- **G27 (P1) — no unified "conditions" control; OAT + occupancy are scattered.**
+- **G27 — ✅ BUILT (2026-06-09 session 2).** "🌤 Conditions" button on the run
+  toolbar opens the one box for "what's the world doing": OAT row (From weather
+  ↔ Manual slider −20–110 °F; manual persists to localStorage and overrides the
+  weather sample for EVERY consumer — physics-wired targets AND standalone
+  AHU/zone nodes) + Time/occupancy row (live sim clock, occupied % pill, the
+  actual 06:00–19:00 office schedule, pointer to the start-hour control).
+  Verified live: manual 95 °F flipped the G36 cold-start demo from
+  heating-premise to Cooling with econ correctly locked out (OA damper pinned
+  at 20% min). Original gap text follows for history.
+- **G27 (P1, original) — no unified "conditions" control; OAT + occupancy are scattered.**
   James (running the AHU): "not sure where to change occupancy and OAT settings —
   intuitively I should have a box with environmental settings somewhere, which I
   thought we had." Reality: **OAT** is driven by the WEATHER sidebar tab
@@ -393,11 +417,183 @@ Step 7 — inspector + model/signal/fail-safe picker + AO/BO mismatch (mode-gate
   "from weather" toggle), occupancy/time-of-day, maybe internal-load — the
   things you turn to make the building *do* something. Today a newbie can't find
   how to make the AHU leave Unoccupied.
-- **G28 (P2) — AHU drops as an opaque box.** James: "just drops in as a box,
+- **G28 — ✅ BUILT (2026-06-09 session 2).** The AHU now gets a full inspector:
+  rename + Delete, a self-description (what it reads, where OAT/occupancy/zone
+  temp come from, what it exposes), LIVE sequence state while running (mode ·
+  SAT sp · OA damper · heat/cool valves · fan; OAT/RAT/MAT/DAT + occupied
+  pill), and the G36 config chips (zone sp / SAT cool / SAT heat / econ limit /
+  min OA). Pre-run it shows a "Press ▶ Run" hint. Verified live in both the
+  cold-start and economizer demos. *Config EDITING still deferred — chips are
+  read-only.* Original gap text follows.
+- **G28 (P2, original) — AHU drops as an opaque box.** James: "just drops in as a box,
   nothing special." The G36 §5.18 AHU runs a real sequence + synthesizes 15
   BACnet objects, but the node doesn't explain what it controls, its I/O, or how
   it relates to the VAVs/zone. Needs an inspector / self-description like the
   other nodes (and a way to see its mode/SAT-setpoint/damper/valve live).
+## Step 10 — found during the 2026-06-09 session-2 testing pass
+
+- **G30 (P1) — ✅ FIXED — `T_zone_init` was set by demos but consumed nowhere.**
+  Both G36 demos pin a zone start temp (`T_zone_init: 62` cold-start /
+  `76` economizer), but the zone init path ignored it — zones always
+  initialized at ambient/OAT. The economizer demo's premise silently never
+  happened (zone started at OAT 58 °F instead of 76 °F, so it never called for
+  cooling). Fixed: the zone step now reads `zoneConfig.T_zone_init` ahead of
+  the OAT fallback. Verified: economizer demo now starts warm → Economizer
+  mode, OA damper 100%.
+- **G31 (P3) — occupancy schedule documentation drift.** The gap log + UI copy
+  said "6am–10pm" but `defaultOccupancySchedule` is actually 06:00–19:00
+  (ramp-down 17:00–19:00). Conditions-panel copy now states 06:00–19:00.
+  *Open question for James: should the schedule itself extend to 22:00?*
+- **G32 (P2) — generic controllers render no terminal handles, so auto-shifted
+  edges are invisible.** `onConnect` auto-routes a controller→actuator wire to
+  `AO-1`, but a generic (no-model) controller node only renders `net-in`/
+  `net-out` handles — xyflow can't anchor the edge, so the wire exists in the
+  sim but draws nothing on canvas. Confirmed live (demo controller + dropped
+  actuator). Candidate fix: render terminal handles on generic controllers
+  (16-channel default), or fall back to net-out for the visual.
+
+- **G33 — ✅ FIXED + VERIFIED (2026-06-09 session 2).** `.wire-panel` was a
+  single non-wrapping flex row that grew without bound and slid its right edge
+  (the Delete button) under the top-right sim panel. Now `flex-wrap: wrap` +
+  `max-width: min(42rem, calc(100% - 24rem))` + centered, so it stays compact
+  and wraps instead of overflowing. Verified at 1920px: trunk panel right edge
+  1044, Delete button right edge 1010, sim panel left edge 1222 — fully clear.
+- **G33 (P3, UI, original) — trunk-inspector "✕ Delete" button hidden behind the Run
+  button.** When you select an MS/TP wire, the trunk inspector toolbar
+  (`TRUNK · BACnet/IP · MS/TP · … · baud · ✂ Break trunk · ✕ Delete`) renders
+  across the top of the canvas and runs UNDER the top-right sim panel
+  (▶ Run / Reset sim / clock). The Delete button is the last item, so it's the
+  one that gets clipped — you can't reliably hit it. James caught it live.
+  **Fix:** the trunk-inspector panel and the sim panel both live at the top of
+  the canvas and collide on narrower viewports; give the trunk inspector its
+  own row / wrap, or right-pad it clear of the sim panel. (Same family as the
+  G21 inspector-Delete clipping fix — Delete buttons keep landing under other
+  chrome.)
+
+- **G34 — ✅ FIXED (2026-06-09 session 2); part (a) verified live, part (b)
+  needs one manual wire-gesture confirmation.** Two-part fix per the
+  allow-and-flag thesis:
+  - **(a) No fake MAC** — `assignMstpAddressing` ([mstp.ts:239](packages/core/src/bacnet/mstp.ts))
+    now filters `sensor`/`safety`/`actuator` out of trunk MAC assignment (they
+    stay in the connectivity graph so the trunk still forms between real
+    devices, but never get a MAC/DI). **Verified live:** injected a
+    controller→actuator MS/TP edge → actuator `DMP-1` shows *no MAC* while the
+    real controllers keep theirs (master MAC 0, child MAC 1).
+  - **(b) Flagged miswire** — `validateWireCompat` now treats the field-device
+    rule as `{sensor, safety, actuator}` (was sensor/safety only): a network
+    wire (mstp/bacnet-ip/n2/lon) to any of them returns `severity:'fault'` with
+    a "no network port — use Hardwired" reason. Easy blocks it; Realistic tags
+    `edge.data.miswire` → Check-my-work + the AI surface it. Logic is identical
+    to the proven sensor/safety path; the live wire-drag gesture can't be
+    synthesized in the preview harness, so James should confirm with one manual
+    wire (Realistic: MS/TP controller→actuator → "Check my work" lists it;
+    Easy: the wire is now refused with the Hardwired hint).
+  - 351/351 core tests pass, UI typecheck 0 errors.
+- **G34 (P1, product-thesis, original) — an actuator can be wired onto an MS/TP trunk
+  and silently becomes a fake BACnet device; the helper doesn't catch it.**
+  In Realistic mode, with MS/TP as the selected wire kind, James wired
+  VAV-1 → LR24-3 (a Belimo valve actuator). The actuator got pulled onto the
+  MS/TP trunk and **assigned `MAC 2 · DI 1002`**, bumping VAV-1 to `MAC 3`.
+  But a damper/valve actuator is a *dumb hardwired field device* — no RS-485
+  port, no MAC, no Device Instance. It's driven by the controller's **AO over
+  a hardwired signal wire**. Root cause: `assignMstpAddressing`
+  ([mstp.ts:194](packages/core/src/bacnet/mstp.ts)) filters edges by
+  `wireKind === 'mstp'` and assigns a MAC to *every* node on the resulting
+  trunk, with no kind exclusion — so an actuator (or sensor / safety) wired
+  with MS/TP joins the trunk as a peer. Worse, neither the Realistic miswire
+  tag nor **Check-my-work** flags it ("its back on the helper isnt catching
+  the issue") — so the impossible wiring masquerades as a valid networked
+  device. **Fix (allow-and-flag, per the thesis):** (a) exclude field-device
+  kinds (`actuator`/`sensor`/`safety`) from MS/TP MAC assignment — they never
+  get a MAC; (b) in `validateWireCompat`, treat a network wire kind
+  (mstp / bacnet-ip / n2 / lon) to an actuator/sensor/safety as a `fault`
+  ("a damper/valve actuator has no network port — wire it Hardwired to a
+  controller AO"), so Easy blocks it and Realistic tags `edge.data.miswire`
+  → Check-my-work + the AI surface it; (c) optionally auto-pick Hardwired for
+  controller→actuator drops the way Auto does. Highest-value find of this pass
+  — it's the same "sim must let you make the mistake AND be able to reveal it"
+  premise as G12.
+
+- **G35 (P2, decision-guidance) — ✅ FIXED + VERIFIED — actuator picker was a
+  flat 14-item scroll.** James (real tech) grabbed a `valve-modulating` from
+  habit when reaching for "the VAV actuator," because nothing distinguished a
+  damper from a reheat valve: "I think we would need a way to separate dampers,
+  actuators, etc." Same decision-guidance theme as G1/G3/G10/G13. **Fixed:** the
+  `ModelPickerModal` now groups actuators by family with section headers —
+  **Dampers** ("Throttle airflow — a VAV box's primary output. Start here.") ·
+  **Valves** · **VFDs** · **Relays & starters** — in that order, with a one-line
+  blurb per family. Search still filters across families and hides empty groups.
+  Verified live: all four headers render in order, dampers lead, "vfd" search
+  collapses to just the VFDs group. *Still open: a "for a VAV box, start with a
+  damper" nudge is in the Dampers blurb but not at the dock-drop moment; the
+  same grouping treatment should extend to the sensor/safety pickers.*
+
+## Step 11 — solo "demo premise audit" (2026-06-10, Claude-driven sweep)
+
+Method: load every bundled demo, run it, and verify the sim actually does what
+the demo's description promises — plus fault injections and Check-my-work
+sweeps. Found two P1 state bugs, one validator false-positive, one design
+incoherence. All four fixed/addressed same-session; 351/351 tests, typecheck
+clean, build clean after.
+
+- **G36 (P2, design) — TWO independent occupancy schedules can contradict each
+  other on screen.** The "Occupancy schedule" demo runs its controller on a
+  per-target `config.schedule` (06:00–22:00, occ 72 / unocc 78 — thermal.ts
+  `effectiveSetpoint`), while zones / vAHUs / the Conditions panel read the
+  global `defaultOccupancySchedule` (06:00–19:00, zone.ts). At sim-20:00 the
+  demo VAV holds the occupied setpoint while the Conditions panel says
+  "unoccupied." **Visibility fix shipped:** the Conditions panel now labels the
+  global row "zones / AHUs" and lists every wired target with its OWN enabled
+  schedule (window + occupied/setback + active SP), so the two sources are
+  side-by-side instead of silently contradicting. **Open design call for
+  James:** unify on one schedule source (Conditions panel as master? per-zone
+  schedules?) — relates to the G27 panel and the G31 19:00-vs-22:00 question.
+- **G37 (P1) — ✅ FIXED — demo/scenario loads leaked protocol state across
+  topologies; one leak also silently suppressed Who-Is.** `applyScenario()`
+  cleared the packet capture but not `covSubscriptions`, `mstpTrunkStates`,
+  poll schedules, retry state, the runtime log, or `simStartHour`. Demos reuse
+  generic node/edge ids, so consequences observed live: (a) **ghost packets** —
+  demo 0's "VAV-SF" kept emitting ConfirmedCOVNotifications inside demo 1's
+  capture (stale subscription with cached label passed the liveness check);
+  (b) **Who-Is/I-Am never fired** on the quick-start demo — the stale
+  `mstpTrunkStates` made the new trunk look already-discovered, so the whole
+  discovery bootstrap was skipped (the conformance checker correctly flagged
+  it, contradicting the demo's own description); (c) demo-4 gateway errors
+  lingered in the runtime log under the healthy BBMD demo; (d) a start hour
+  set for one demo leaked into the next. Fixed: applyScenario resets all of
+  it. Verified live: 0 ghosts, full Who-Is → I-Am → SubscribeCOV dance,
+  clean log, start hour 0.
+- **G38 (P2) — ✅ FIXED — validator called Annex-J foreign-device registration
+  an ERROR.** The BBMD demo ("laptop registers as a foreign device with
+  NAE-A") tripped `Cross-subnet BACnet/IP needs BBMDs on BOTH ends` — but a
+  non-BBMD cross-subnet device registering with a BBMD is exactly the
+  legitimate Annex-J FD pattern (it's how every commissioning laptop joins a
+  site), and the sim itself emits Register-Foreign-Device for that topology.
+  The validator contradicted the sim. Now `ipv4.cross-subnet-foreign-device`,
+  info-level, with the TTL/re-registration field caveat. Test updated to
+  assert the new semantics.
+- **G39 (P1) — ✅ FIXED — ALL BACnet/IP COV notifications were dead; the "COV
+  firehose" demo streamed zero.** The per-tick subscription cleanup built its
+  liveness index from MS/TP trunk members only, so every `ip-edge:`/`ip-host:`
+  subscription was deleted one tick after creation — SubscribeCOV went out,
+  ACK came back, then the supervisor forgot. Verified before: 4.5 sim-hours,
+  64 polls, 8 subscribes, **0 notifications**. After: IP subs live as long as
+  their child node exists → **17 ConfirmedCOVNotifications** streaming in the
+  same window. The flagship watch-the-bus demo works again.
+- **P3 notes from the sweep:** demo-0's description quotes example values
+  ("~11.2 mA at 900 ppm", "~6 V at 50%") that assume occupied hours / mid-stroke
+  state — at the default 00:00 start a learner sees 7.6 mA / 450 ppm and may
+  think it's broken. And the permanent "I-Am replies missing required fields"
+  conformance warning (a documented sandbox limitation) reads like the
+  LEARNER's mistake — consider a distinct "sandbox limitation" severity so it
+  doesn't look like their topology is wrong.
+- **Audit scorecard:** demos 0–12 all premise-checked. PASS: signal fidelity,
+  quick-start (after G37), trunk break (break/restore + retry→comm-lost),
+  occupancy (after G36 visibility), subnet mismatch, duplicate MAC, BBMD+FD
+  (after G37/G38), JACE 5 vVAVs power-off, winter heating, COV firehose
+  (after G39), mid-rise 12 vVAVs, G36 cold-start + economizer (fixed
+  yesterday, G30).
+
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
   drive only wrote `sample.T_F` into *physics-wired targets'* config; the

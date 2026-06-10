@@ -141,6 +141,11 @@ export interface MstpAddressingNode {
   readonly forcedMac?: number;
   /** Explicit device-instance override. Falls back to `1000 + mac`. */
   readonly deviceInstance?: number;
+  /** RS-485 end-of-line termination (the EOL dip switch / resistor).
+   *  undefined = not modeled on this device yet; true/false = the user
+   *  (or a scenario) explicitly set the switch. The topology validator
+   *  checks that exactly the two physical chain ends are terminated. */
+  readonly eolTerminated?: boolean;
 }
 
 /** Minimal edge shape: `wireKind` distinguishes MS/TP segments (`'mstp'`)
@@ -186,11 +191,22 @@ const DEFAULT_MSTP_BAUD = 38400;
  *     the next free child MAC in label order.
  *   - Device instance honors an explicit override, else `1000 + mac`.
  */
-export function assignMstpAddressing(
-  nodes: readonly MstpAddressingNode[],
+/** One physical MS/TP segment as a graph: its member node ids, the MS/TP
+ *  edges between them, and the trunk's stable key (representative edge id).
+ *  Shared by addressing AND the topology validator so trunk identity can
+ *  never drift between the two. */
+export interface MstpComponent {
+  /** Stable trunk key — the lowest-listed member edge's id. */
+  readonly trunkKey: string;
+  readonly nodeIds: readonly string[];
+  readonly edges: readonly MstpAddressingEdge[];
+}
+
+/** Group `wireKind: 'mstp'` edges into connected components (physical
+ *  trunks). Undirected — a bus has no in/out. */
+export function mstpComponents(
   edges: readonly MstpAddressingEdge[],
-): MstpAddressingResult {
-  const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+): MstpComponent[] {
   const mstpEdges = edges.filter((e) => e.wireKind === 'mstp');
 
   // Adjacency over MS/TP wires → connected components (trunks).
@@ -203,7 +219,7 @@ export function assignMstpAddressing(
     adj.get(e.target)!.add(e.source);
   }
   const visited = new Set<string>();
-  const components: string[][] = [];
+  const out: MstpComponent[] = [];
   for (const start of adj.keys()) {
     if (visited.has(start)) continue;
     const stack = [start];
@@ -215,8 +231,21 @@ export function assignMstpAddressing(
       group.push(cur);
       for (const nb of adj.get(cur) ?? []) if (!visited.has(nb)) stack.push(nb);
     }
-    components.push(group);
+    const memberEdges = mstpEdges.filter(
+      (e) => group.includes(e.source) && group.includes(e.target),
+    );
+    if (memberEdges.length === 0) continue;
+    out.push({ trunkKey: memberEdges[0].id, nodeIds: group, edges: memberEdges });
   }
+  return out;
+}
+
+export function assignMstpAddressing(
+  nodes: readonly MstpAddressingNode[],
+  edges: readonly MstpAddressingEdge[],
+): MstpAddressingResult {
+  const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+  const components = mstpComponents(edges);
 
   const hasBacnetIpUplink = (nodeId: string): boolean =>
     edges.some(
@@ -227,18 +256,29 @@ export function assignMstpAddressing(
   const byNode = new Map<string, MstpDevice & { trunkKey: string }>();
 
   for (const comp of components) {
-    // Representative edge: lowest-listed MS/TP edge whose endpoints are
-    // both in this component. Its id is the trunk's stable key.
-    const trunkEdge = mstpEdges.find(
-      (e) => comp.includes(e.source) && comp.includes(e.target),
-    );
-    if (!trunkEdge) continue;
-    const baud = trunkEdge.baud ?? DEFAULT_MSTP_BAUD;
+    const baud = comp.edges[0]?.baud ?? DEFAULT_MSTP_BAUD;
 
     // Sort by label so MAC assignment is deterministic across renders.
-    const trunkNodes = comp
+    // Field devices (sensors, safeties, actuators) are dumb hardwired
+    // endpoints — they have no RS-485 transceiver and never take a MAC or
+    // device-instance, even if a learner mis-wires one onto an MS/TP trunk
+    // in Realistic mode. They stay in the connectivity graph (so the trunk
+    // still forms between the real BACnet devices) but are excluded here so
+    // they don't masquerade as networked peers.
+    const trunkNodes = comp.nodeIds
       .map((id) => nodeById.get(id))
       .filter((n): n is MstpAddressingNode => !!n)
+      // Zones (rooms) and equipment (fans/coils/boilers) aren't BACnet
+      // devices either — a duct or pipe drawn as an MS/TP wire must not
+      // hand the ROOM a MAC address.
+      .filter(
+        (n) =>
+          n.kind !== 'sensor' &&
+          n.kind !== 'safety' &&
+          n.kind !== 'actuator' &&
+          n.kind !== 'zone' &&
+          n.kind !== 'equipment',
+      )
       .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
 
     const forcedZero = trunkNodes.find((n) => n.forcedMac === 0);
@@ -266,8 +306,8 @@ export function assignMstpAddressing(
     // Token ring is MAC-ordered.
     devices.sort((a, b) => a.mac - b.mac);
 
-    trunks.push({ trunkKey: trunkEdge.id, baud, devices });
-    for (const d of devices) byNode.set(d.nodeId, { ...d, trunkKey: trunkEdge.id });
+    trunks.push({ trunkKey: comp.trunkKey, baud, devices });
+    for (const d of devices) byNode.set(d.nodeId, { ...d, trunkKey: comp.trunkKey });
   }
 
   return { trunks, byNode };

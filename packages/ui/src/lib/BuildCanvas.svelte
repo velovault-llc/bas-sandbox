@@ -2,6 +2,7 @@
   import { setContext, untrack } from 'svelte';
   import {
     Background,
+    ConnectionMode,
     Panel,
     SvelteFlow,
     SvelteFlowProvider,
@@ -28,7 +29,7 @@
     type SensorSignal,
   } from './sim/sensorModels';
   import { importStore, canvasActions, openModelPicker, selectionStore, canvasSnapshot } from './canvasStore.svelte';
-  import { log as logEvent } from './runtime/runtimeLogStore.svelte';
+  import { log as logEvent, clearLog as clearRuntimeLog } from './runtime/runtimeLogStore.svelte';
   import { advancePlayback, currentWeatherSample, weatherStore } from './weather/weatherStore.svelte';
   import {
     openCli,
@@ -63,6 +64,7 @@
     computeSensorReading,
     defaultTerminalConfig,
     signalToEng,
+    engToSignal,
     type SignalFault,
     stepLoop,
     initLoopState,
@@ -79,6 +81,7 @@
     mstpServiceLatencySeconds,
     assignMstpAddressing,
     validateMstpTrunks,
+    validateMstpTopology,
     validateBacnetIpNetwork,
     validateIpZones,
     parseIpv4 as parseIpv4FromUiCanvas,
@@ -1058,23 +1061,32 @@
   // emission) and the `nodeAddressing` derived (canvas badge) call it, so
   // the address a tech reads on a node card is exactly the MAC that shows
   // up in the packet log for that device.
-  function computeMstpAddressing() {
-    return assignMstpAddressing(
-      nodes.map((n) => ({
+  /** The pure-core node/edge shapes for addressing + topology validation.
+   *  One mapper so the MAC map and the T-tap/EOL validator can never see
+   *  different graphs. */
+  function mstpGraphInputs() {
+    return {
+      nodes: nodes.map((n) => ({
         id: n.id,
         label: nodeLabel(n) || n.id,
         kind: nodeKind(n) ?? '',
         forcedMac: (n.data as { forcedMac?: number } | undefined)?.forcedMac,
         deviceInstance: (n.data as { deviceInstance?: number } | undefined)?.deviceInstance,
+        eolTerminated: (n.data as { eolTerminated?: boolean } | undefined)?.eolTerminated,
       })),
-      edges.map((e) => ({
+      edges: edges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
         wireKind: (e.data as { wireKind?: string } | undefined)?.wireKind,
         baud: (e.data as { baud?: number } | undefined)?.baud,
       })),
-    );
+    };
+  }
+
+  function computeMstpAddressing() {
+    const g = mstpGraphInputs();
+    return assignMstpAddressing(g.nodes, g.edges);
   }
 
   // nodeId → { mac, deviceInstance } for every MS/TP device, derived from
@@ -1157,6 +1169,23 @@
       ? Number(localStorage.getItem('bas-sandbox.sim-speed') ?? '1') || 1
       : 1,
   );
+  /** Manual OAT override (°F) set from the Conditions panel. null = follow
+   *  the Weather drive (or the 60°F fallback). When set, it wins over the
+   *  weather sample for EVERY consumer — physics-wired targets and the
+   *  standalone AHU/zone path — so "make it 95°F outside" is one slider. */
+  let manualOat = $state<number | null>(
+    typeof localStorage !== 'undefined' && localStorage.getItem('bas-sandbox.manual-oat') !== null
+      ? Number(localStorage.getItem('bas-sandbox.manual-oat'))
+      : null,
+  );
+  /** Conditions dropdown (G27) — the one box for "what's the world doing". */
+  let conditionsOpen = $state(false);
+  function setManualOat(v: number | null) {
+    manualOat = v;
+    if (typeof localStorage === 'undefined') return;
+    if (v === null) localStorage.removeItem('bas-sandbox.manual-oat');
+    else localStorage.setItem('bas-sandbox.manual-oat', String(v));
+  }
   function setSimSpeed(v: number): void {
     simSpeed = v;
     if (typeof localStorage !== 'undefined') {
@@ -1216,7 +1245,7 @@
   let vahuObjectsCache = new Map<string, import('@bas/core').BacnetObject[]>();
   /** Previous-tick vAHU inputs per node — needed by vAhuCovDeltas to
    *  know what changed since the last notification was emitted. */
-  let vahuPrevInputs = new Map<string, VAhuInputs>();
+  let vahuPrevInputs = $state.raw(new Map<string, VAhuInputs>());
   // Per-trunk poll cadence (sim-seconds). Real supervisors use a SLOW
   // poll as a heartbeat/redundancy on top of COV subscriptions — if a
   // value drifts without firing a CoV (e.g. the deadband never gets
@@ -1486,6 +1515,14 @@
     // advancePlayback() are both no-ops.
     if (weatherStore.mode !== 'off' && weatherStore.status === 'ready') {
       advancePlayback(dtSeconds);
+    }
+    // Manual OAT (Conditions panel) beats the weather sample; weather beats
+    // the scenario's static outdoorAir.
+    if (manualOat !== null) {
+      for (const target of runningSnapshot) {
+        (target.config as { outdoorAir: number }).outdoorAir = manualOat;
+      }
+    } else if (weatherStore.mode !== 'off' && weatherStore.status === 'ready') {
       const sample = currentWeatherSample();
       if (sample) {
         for (const target of runningSnapshot) {
@@ -1601,6 +1638,46 @@
         }
         const senNode = nodes.find((n) => n.id === sensorEnd);
         if (!senNode) continue;
+        // G26 — actuator position feedback. An actuator wired INTO a
+        // controller input (actuator → AI/UI) puts its position on the
+        // wire as a 2-10V feedback signal — but only when the installed
+        // model actually has feedback. The command wire (controller →
+        // actuator, edge.source === controllerId) is the dynamics pass's
+        // job, not a signal into this controller.
+        if (nodeKind(senNode) === 'actuator') {
+          if (edge.target !== controllerId) continue;
+          const aData = senNode.data as {
+            actuatorModelId?: string;
+            actuatorState?: { commanded: number; actual: number };
+            label?: string;
+          };
+          const aModel = aData.actuatorModelId ? findActuatorModel(aData.actuatorModelId) : undefined;
+          if (!aModel?.hasPositionFeedback) continue;
+          if (!terminalHandle) terminalHandle = `auto:${aData.label ?? sensorEnd}`;
+          const fbPct = Math.max(0, Math.min(100, (aData.actuatorState?.actual ?? 0) * 100));
+          const fbRaw = engToSignal(fbPct, 'analog-2-10v', [0, 100]);
+          const fbDefaultCfg = defaultTerminalConfig('analog-2-10v', [0, 100]);
+          const fbTermCfg = resolveTerminalConfig(controllerId, terminalHandle, fbDefaultCfg);
+          const fbScaled = signalToEng(fbRaw, fbTermCfg);
+          let perCtrlFb = controllerBridge.terminalSignalsByCtrl.get(controllerId);
+          if (!perCtrlFb) {
+            perCtrlFb = new Map();
+            controllerBridge.terminalSignalsByCtrl.set(controllerId, perCtrlFb);
+          }
+          perCtrlFb.set(terminalHandle, {
+            raw: fbRaw,
+            config: fbTermCfg,
+            scaled: fbScaled,
+            sensorNodeId: senNode.id,
+            isPrimary: false,
+            installedSignal: 'analog-2-10v',
+          });
+          // Program-readable key: env.inputs.fb_<actuator label>, e.g. a
+          // damper named DMP-OA reads back as fb_dmp_oa (% open).
+          const fbKey = `fb_${(aData.label ?? 'actuator').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+          sigForCtrl.set(terminalHandle, { inputKey: fbKey, value: fbScaled.value });
+          continue;
+        }
         if (nodeKind(senNode) !== 'sensor') continue;
         // When the demo / user didn't pin the wire to a specific terminal
         // (svelte-flow handle), synthesize an id from the sensor so the
@@ -2109,7 +2186,11 @@
       const routedValue = routedKey && routedKey in srcOutputs ? srcOutputs[routedKey] : undefined;
       const commanded = Math.max(0, Math.min(1, routedValue ?? sample.actuator));
 
-      const tgtData = tgtN.data as { actuatorState?: { actual: number }; actuatorModelId?: string };
+      const tgtData = tgtN.data as {
+        actuatorState?: { actual: number };
+        actuatorModelId?: string;
+        fault?: string;
+      };
       const prevActual = tgtData.actuatorState?.actual ?? 0;
 
       const actuatorModelId = tgtData.actuatorModelId;
@@ -2118,9 +2199,18 @@
 
       // Linear stroke (good enough for v1). Real actuators are slightly
       // S-curve (acceleration + deceleration); we can refine later.
+      // A 'stuck' fault (jammed damper, lost linkage) freezes the actual
+      // position regardless of command — the controller keeps commanding,
+      // nothing moves. With position feedback wired, the program can see
+      // the divergence; without it, the only tell is the zone misbehaving.
+      const isStuck = tgtData.fault === 'stuck';
       const maxStep = dtSeconds / strokeSec;
       const diff = commanded - prevActual;
-      const actual = Math.abs(diff) <= maxStep ? commanded : prevActual + Math.sign(diff) * maxStep;
+      const actual = isStuck
+        ? prevActual
+        : Math.abs(diff) <= maxStep
+          ? commanded
+          : prevActual + Math.sign(diff) * maxStep;
 
       actuatorStateUpdates.set(tgtN.id, { commanded, actual });
 
@@ -2138,7 +2228,14 @@
       const roleSuffix = srcTerminal
         ? ` · ${srcTerminal}${srcRoleTpl ? ` → ${srcRoleTpl.display}` : ' → (unbound role)'}`
         : '';
-      const positionStr = slewing ? `${pct}% (cmd ${cmdPct}% ↑)` : `${pct}%`;
+      // Easy mode names the stuck fault outright (omniscient hint);
+      // Realistic just shows the symptom — commanded ≠ position, forever.
+      const positionStr =
+        isStuck && slewing && guidanceMode === 'easy'
+          ? `⚠ stuck at ${pct}% (cmd ${cmdPct}%)`
+          : slewing
+            ? `${pct}% (cmd ${cmdPct}% ↑)`
+            : `${pct}%`;
       physicsValueByNode.set(tgtN.id, {
         value: positionStr + roleSuffix,
         status: 'responded',
@@ -2326,6 +2423,7 @@
         ? (currentWeatherSample()?.T_F ?? null)
         : null;
     const oatForZones =
+      manualOat ??
       weatherOat ??
       (runningSnapshot[0] ? (sampleByCtrl.get(runningSnapshot[0].controllerId)?.T_OA ?? 60) : 60);
     const simHourForZones = ((simStartHour * 3600 + simSecondsElapsed) / 3600) % 24;
@@ -2424,7 +2522,11 @@
       // Per-zone config — overrides default field-by-field so the
       // inspector can edit just peak_occupants without touching volume.
       const zoneConfig = { ...DEFAULT_ZONE_CONFIG, ...(zData.zoneConfig ?? {}) };
-      const prev = zData.zoneState ?? initZoneState(zoneConfig, oatForZones);
+      // A scenario-pinned start temp (T_zone_init) wins over the ambient
+      // fallback — the G36 demos' "cold start 62°F" / "zone at 76°F"
+      // premises depend on it.
+      const zoneInitT = (zData.zoneConfig as { T_zone_init?: number } | undefined)?.T_zone_init;
+      const prev = zData.zoneState ?? initZoneState(zoneConfig, zoneInitT ?? oatForZones);
 
       // Sum heat from neighboring zones via shared-wall edges (zone↔zone).
       // ΔT is clamped so a temporarily-explosive neighbor temp can't
@@ -3254,10 +3356,19 @@
         }
       }
       // Drop subscriptions whose child has been removed (offline / membership change).
+      // liveChildKeys only knows MS/TP trunk members — IP-pair subscriptions
+      // (trunkId "ip-edge:…" / "ip-host:…") are NOT in it, and running them
+      // through the trunk-membership check deleted every IP sub one tick
+      // after it was created. That silently killed ConfirmedCOVNotification
+      // for ALL BACnet/IP children (the "COV firehose" demo streamed zero
+      // notifications). IP subs live as long as their child node exists;
+      // applyScenario() clears the whole map on topology swaps.
       for (const [subKey, sub] of covSubscriptions) {
-        if (!liveChildKeys.has(`${sub.trunkId}|${sub.childNodeId}`)) {
-          covSubscriptions.delete(subKey);
-        }
+        const isIpSub = sub.trunkId.startsWith('ip-edge:') || sub.trunkId.startsWith('ip-host:');
+        const alive = isIpSub
+          ? nodes.some((n) => n.id === sub.childNodeId)
+          : liveChildKeys.has(`${sub.trunkId}|${sub.childNodeId}`);
+        if (!alive) covSubscriptions.delete(subKey);
       }
       // Now evaluate each live subscription.
       for (const sub of covSubscriptions.values()) {
@@ -3371,7 +3482,13 @@
         trunkId,
         devices: st.devices,
       }));
-      const allFindings = validateMstpTrunks(snapshots);
+      // Config checks (MAC hygiene) + physical topology checks (T-tap /
+      // star, EOL termination) — both keyed by the same trunk ids.
+      const topoGraph = mstpGraphInputs();
+      const allFindings = [
+        ...validateMstpTrunks(snapshots),
+        ...validateMstpTopology(topoGraph.nodes, topoGraph.edges),
+      ];
       for (const f of allFindings) {
         const list = findingsByTrunk.get(f.trunkId) ?? [];
         list.push(f);
@@ -4301,7 +4418,28 @@
     // log is a live sniffer view, so carrying packets across a topology
     // swap would mix two unrelated networks. Fresh instance per demo.
     clearBacnetPackets();
+    // A topology swap is a DIFFERENT network — every protocol-state map
+    // keyed by node/edge ids must go too. Demos reuse generic ids ('sup',
+    // 'vav1', …), so a stale COV subscription from the previous demo can
+    // pass the per-tick liveness check and keep emitting notifications
+    // under its cached old label (ghost "VAV-SF" packets in the next
+    // demo's capture). Same hazard for trunk state, poll schedules, and
+    // retry/comm-lost tracking.
+    covSubscriptions = new Map();
+    mstpTrunkStates = new Map();
+    bacnetPollSchedule = new Map();
+    ipPollSchedule = new Map();
+    failingChildren.clear();
+    // The runtime log too — sim timestamps restart at 00:00 per run, so
+    // entries from the previous demo interleave confusingly with the new
+    // one's (stale "gateway off-subnet" errors showing up under a healthy
+    // BBMD demo). Fresh log per topology, same rationale as the capture.
+    clearRuntimeLog();
+    // …and the sim start hour: a demo that says "OAT 28°F cold start" should
+    // not inherit hour 21.5 from whatever the user tried previously.
+    simStartHour = 0;
     tick = 0;
+    simSecondsElapsed = 0;
     runningSamples = new Map();
     nodes = parsed.topology.nodes;
     edges = parsed.topology.edges;
@@ -4502,6 +4640,31 @@
         detail: mis,
       });
     }
+    // 1b. Actuators commanded but not moving (G26). Check-my-work is the
+    //     sandbox-omniscient reveal, so it names the stuck fault directly —
+    //     in the field you'd find this via the feedback line (or the zone
+    //     never recovering, if the model has no feedback).
+    for (const n of nodes) {
+      if (nodeKind(n) !== 'actuator') continue;
+      const aData = n.data as {
+        actuatorState?: { commanded: number; actual: number };
+        actuatorModelId?: string;
+        fault?: string;
+      };
+      const st = aData.actuatorState;
+      if (aData.fault !== 'stuck' || !st || Math.abs(st.commanded - st.actual) <= 0.05) continue;
+      const aModel = aData.actuatorModelId ? findActuatorModel(aData.actuatorModelId) : undefined;
+      results.push({
+        severity: 'error',
+        title: `${nodeLabel(n)} commanded but didn't move`,
+        detail:
+          `Commanded to ${Math.round(st.commanded * 100)}% but sitting at ${Math.round(st.actual * 100)}% — ` +
+          `jammed damper/valve, lost linkage, or a failed motor. ` +
+          (aModel?.hasPositionFeedback
+            ? `This model has position feedback: wire the actuator to a controller AI/UI and the program can alarm on command-vs-feedback divergence.`
+            : `This model has no position feedback, so a real controller can't see it — the symptom is the zone never reaching setpoint.`),
+      });
+    }
     // 2. BACnet/IP findings the validator last computed (populated while the
     //    sim ticks). Skip info-level so the reveal stays signal, not noise.
     for (const f of trunkInspectorStore.ipv4Findings) {
@@ -4574,17 +4737,93 @@
       }
     }
 
-    // Sensor / safety endpoints: only hardwired makes physical sense in
-    // most real installs (intelligent BACnet sensors exist but the
-    // sandbox doesn't model them yet).
-    if (srcKind === 'sensor' || srcKind === 'safety' || tgtKind === 'sensor' || tgtKind === 'safety') {
+    // Field-device endpoints (sensor / safety / actuator): only hardwired
+    // makes physical sense. A dumb sensor, a dry-contact safety, and a
+    // damper/valve actuator all lack an RS-485 / Ethernet transceiver —
+    // they land on a hardwired controller terminal (UI/AI/BI for inputs,
+    // AO/BO for an actuator command, UI/AI for actuator feedback).
+    // Intelligent BACnet sensors/actuators exist in the real world but the
+    // sandbox doesn't model them yet.
+    const fieldKinds = new Set(['sensor', 'safety', 'actuator']);
+    if (fieldKinds.has(srcKind ?? '') || fieldKinds.has(tgtKind ?? '')) {
       if (kind !== 'hardwired') {
+        const fieldKind = fieldKinds.has(srcKind ?? '') ? srcKind : tgtKind;
+        const noun =
+          fieldKind === 'sensor' ? 'sensor'
+          : fieldKind === 'safety' ? 'safety device'
+          : 'damper/valve actuator';
+        const where =
+          fieldKind === 'actuator'
+            ? 'it’s driven by a hardwired controller AO/BO (and any feedback wires to a UI/AI)'
+            : 'it lands on a hardwired UI/AI/BI terminal';
         return {
           severity: 'fault',
-          reason: `${kind} can't connect to a ${srcKind === 'sensor' || tgtKind === 'sensor' ? 'sensor' : 'safety device'} — a dumb sensor has no network port; it lands on a hardwired UI/AI/BI terminal. Use "Hardwired."`,
+          reason: `${kind} can't connect to a ${noun} — it has no network port; ${where}. Use "Hardwired."`,
         };
       }
       return null;
+    }
+
+    // One engine per MS/TP field bus. The proposed wire would merge the
+    // two endpoints' trunks — if the merged segment ends up with 2+
+    // supervisors, that's the "two engines fighting over one field bus"
+    // mistake (conflicting polls, overlapping databases, one engine
+    // silently demoted to a child MAC). Physically possible → fault, not
+    // block: Easy explains and refuses, Realistic lets you live it.
+    if (kind === 'mstp') {
+      const isMstpEdge = (e: Edge) =>
+        (e.data as { wireKind?: string } | undefined)?.wireKind === 'mstp';
+      const reach = (startId: string): Set<string> => {
+        const seen = new Set<string>([startId]);
+        const stack = [startId];
+        while (stack.length > 0) {
+          const cur = stack.pop()!;
+          for (const e of edges) {
+            if (!isMstpEdge(e)) continue;
+            const other = e.source === cur ? e.target : e.target === cur ? e.source : null;
+            if (other && !seen.has(other)) {
+              seen.add(other);
+              stack.push(other);
+            }
+          }
+        }
+        return seen;
+      };
+      const merged = new Set([...reach(srcN.id), ...reach(tgtN.id)]);
+      const engines = [...merged]
+        .map((id) => nodes.find((n) => n.id === id))
+        .filter((n): n is Node => !!n && nodeKind(n) === 'supervisor');
+      if (engines.length > 1) {
+        return {
+          severity: 'fault',
+          reason: `This wire puts ${engines.map((n) => nodeLabel(n)).join(' and ')} on the SAME MS/TP trunk. One engine owns a field bus — two supervisors fight over the same devices with conflicting polls, and only one gets MAC 0 (the other is silently demoted to a child). Give each engine its own trunk, or connect them over BACnet/IP.`,
+        };
+      }
+    }
+
+    // MS/TP is a daisy-chain: a third wire landing on a device T-taps the
+    // RS-485 bus into a star — reflections corrupt frames at speed. A real
+    // mistake a tech can absolutely make (and should get to diagnose in
+    // Realistic), so it's a fault, not a block. Repeaters legitimately
+    // branch a segment.
+    if (kind === 'mstp') {
+      for (const n of [srcN, tgtN]) {
+        // 'repeater' isn't in the Kind union yet (arrives with the network
+        // gear catalog entry later in slice 2) — compare as string.
+        const k = nodeKind(n) as string | undefined;
+        if (k === 'repeater') continue;
+        const deg = edges.filter(
+          (e) =>
+            (e.data as { wireKind?: string } | undefined)?.wireKind === 'mstp' &&
+            (e.source === n.id || e.target === n.id),
+        ).length;
+        if (deg >= 2) {
+          return {
+            severity: 'fault',
+            reason: `${nodeLabel(n)} already has ${deg} MS/TP wires — a third T-taps the RS-485 bus into a star. Reflections off the unterminated stubs corrupt frames (works at 9600 baud, dies at 38400). Daisy-chain the cable through each device instead, or branch through a repeater.`,
+          };
+        }
+      }
     }
 
     // Network-protocol wires (BACnet/IP, MS/TP, N2, LON) require the
@@ -4710,6 +4949,53 @@
     const srcKind = nodeKind(src);
     const tgtKind = nodeKind(tgt);
 
+    // ── Wiring revamp slice 1: undirected network gestures ────────────
+    // With ConnectionMode.Loose a wire can start/end on ANY handle, in
+    // either direction — a trunk has no in/out, so supervisor→AHU and
+    // AHU→supervisor are the same cable. Normalize pure net↔net gestures:
+    //  · canonical handle fields (source renders from net-out, target into
+    //    net-in) so anchors stay tidy regardless of which dots were grabbed
+    //  · one cable per device pair — a second net wire between the same two
+    //    boxes is a duplicate, not a topology (parallel/ring paths arrive
+    //    with the L2 loop work in slice 3)
+    const isNetHandle = (h: string | null | undefined): boolean =>
+      !h || h === 'net-in' || h === 'net-out';
+    const isNetGesture = isNetHandle(connection.sourceHandle) && isNetHandle(connection.targetHandle);
+    if (isNetGesture) {
+      const dup = edges.find(
+        (e) =>
+          isNetHandle(e.sourceHandle) &&
+          isNetHandle(e.targetHandle) &&
+          ((e.source === src.id && e.target === tgt.id) ||
+            (e.source === tgt.id && e.target === src.id)),
+      );
+      if (dup) {
+        flashWireRefusal(
+          `${nodeLabel(src)} and ${nodeLabel(tgt)} are already wired — one cable per device pair. Delete the existing wire first.`,
+        );
+        return;
+      }
+    }
+    // Loose mode also lets two terminal handles meet directly. Two OUTPUTS
+    // fighting each other (AO→AO) or two INPUTS with no source (AI→AI) are
+    // topology-impossible — refuse in both modes (no such cable exists).
+    {
+      const sKind = termKindOf(connection.sourceHandle);
+      const tKindH = termKindOf(connection.targetHandle);
+      if (sKind && tKindH) {
+        const bothOut = OUTPUTS.has(sKind as 'UO' | 'AO' | 'BO') && OUTPUTS.has(tKindH as 'UO' | 'AO' | 'BO');
+        const bothIn = !OUTPUTS.has(sKind as 'UO' | 'AO' | 'BO') && !OUTPUTS.has(tKindH as 'UO' | 'AO' | 'BO');
+        if (bothOut || bothIn) {
+          flashWireRefusal(
+            bothOut
+              ? `Can't wire two outputs together (${connection.sourceHandle} ↔ ${connection.targetHandle}) — two driven signals fight each other.`
+              : `Can't wire two inputs together (${connection.sourceHandle} ↔ ${connection.targetHandle}) — neither side drives the signal.`,
+          );
+          return;
+        }
+      }
+    }
+
     // Auto-shift logic: if the user's wire landed on a controller terminal
     // that's already wired (because handles snap by proximity and a busy
     // controller has lots of taken terminals), find the next free terminal
@@ -4750,6 +5036,10 @@
     // is the actuator's net-in. Validate signal type (AO can't drive a
     // binary contactor; BO can't drive a modulating valve) and auto-shift
     // to a free output terminal of the right kind when needed.
+    // In REALISTIC mode a deliberate aim at a free wrong-kind output is a
+    // teachable field mistake (G25): the wire lands, tagged as a miswire,
+    // with zero warning — Check-my-work / the AI reveal it on demand.
+    let outputMiswire: string | null = null;
     if (srcKind === 'controller' && tgtKind === 'actuator') {
       const actuatorModelId = (tgt.data as { actuatorModelId?: string } | undefined)?.actuatorModelId;
       const actuatorModel = actuatorModelId ? findActuatorModel(actuatorModelId) : undefined;
@@ -4772,7 +5062,20 @@
       const sourceIsTaken = !!resolvedSourceHandle && edges.some(
         (e) => e.source === src.id && e.sourceHandle === resolvedSourceHandle,
       );
-      if (!sourceIsAllowed || sourceIsTaken || !isTerminal(resolvedSourceHandle)) {
+      // Deliberate wrong-kind aim: the handle IS a free output terminal,
+      // just not one this actuator's signal can use. Realistic lets the
+      // mistake through; Easy keeps the helpful auto-shift below.
+      const aimedWrongKind =
+        !sourceIsAllowed &&
+        !sourceIsTaken &&
+        !!srcTermKind &&
+        OUTPUTS.has(srcTermKind as 'UO' | 'AO' | 'BO') &&
+        !!actuatorModel;
+      if (aimedWrongKind && guidanceMode === 'realistic' && actuatorModel) {
+        outputMiswire = wantsAnalog
+          ? `${actuatorModel.vendor} ${actuatorModel.model} is a modulating actuator (${actuatorModel.signal}) wired to ${resolvedSourceHandle}, a binary output — it will never modulate (at best it slams full open/closed).`
+          : `${actuatorModel.vendor} ${actuatorModel.model} is a ${actuatorModel.signal} actuator wired to ${resolvedSourceHandle}, an analog output — a binary device on a modulating signal chatters or never picks up.`;
+      } else if (!sourceIsAllowed || sourceIsTaken || !isTerminal(resolvedSourceHandle)) {
         const next = nextFreeTerminal(src, preferredOutputs, 'source');
         if (next) {
           resolvedSourceHandle = next;
@@ -4855,15 +5158,41 @@
       flashWireRefusal(refusal.reason);
       return;
     }
+    // ── Direction normalization ───────────────────────────────────────
+    // Process links are DIRECTED (flow semantics): equipment pushes air/heat
+    // INTO a zone, an actuator drives INTO equipment. A backwards gesture
+    // used to create an edge the thermal pass silently ignored — fix the
+    // direction instead of punishing the gesture. Network wires get
+    // canonical handle anchors (out-bottom → in-top) regardless of which
+    // dots were grabbed, since a trunk has no in/out.
+    let finalSource = connection.source!;
+    let finalTarget = connection.target!;
+    let finalSourceHandle = resolvedSourceHandle;
+    let finalTargetHandle = resolvedTargetHandle;
+    const flowSwap =
+      (srcKind === 'zone' && tgtKind === 'equipment') || // canonical: equipment → zone
+      (srcKind === 'equipment' && tgtKind === 'actuator'); // canonical: actuator → equipment
+    if (flowSwap) {
+      [finalSource, finalTarget] = [finalTarget, finalSource];
+      [finalSourceHandle, finalTargetHandle] = [finalTargetHandle, finalSourceHandle];
+    }
+    if (isNetGesture) {
+      finalSourceHandle = 'net-out';
+      finalTargetHandle = 'net-in';
+    }
     const newEdge: Edge = {
-      id: `e-${connection.source}-${connection.target}-${Date.now()}`,
-      source: connection.source!,
-      target: connection.target!,
-      sourceHandle: resolvedSourceHandle,
-      targetHandle: resolvedTargetHandle,
+      id: `e-${finalSource}-${finalTarget}-${Date.now()}`,
+      source: finalSource,
+      target: finalTarget,
+      sourceHandle: finalSourceHandle,
+      targetHandle: finalTargetHandle,
       data: {
         wireKind: kind,
-        ...(refusal?.severity === 'fault' ? { miswire: refusal.reason } : {}),
+        ...(refusal?.severity === 'fault'
+          ? { miswire: refusal.reason }
+          : outputMiswire
+            ? { miswire: outputMiswire }
+            : {}),
       },
     };
     edges = addEdge(withStyle(newEdge), edges);
@@ -5099,6 +5428,12 @@
   const selectedActuator = $derived.by(() => {
     if (!selectedNode) return null;
     if (nodeKind(selectedNode) !== 'actuator') return null;
+    return selectedNode;
+  });
+
+  const selectedVahu = $derived.by(() => {
+    if (!selectedNode) return null;
+    if (nodeKind(selectedNode) !== 'vahu') return null;
     return selectedNode;
   });
 
@@ -5570,7 +5905,34 @@
           continue;
         }
         const senNode = nodes.find((n) => n.id === sensorEnd);
-        if (!senNode || nodeKind(senNode) !== 'sensor') continue;
+        if (!senNode) continue;
+        // Actuator feedback rows show pre-run too (position 0% → 2V), so
+        // the terminal + its programmed type are visible BEFORE ▶ Run.
+        if (nodeKind(senNode) === 'actuator') {
+          if (edge.target !== ctrl.id) continue;
+          const aData = senNode.data as {
+            actuatorModelId?: string;
+            actuatorState?: { actual: number };
+            label?: string;
+          };
+          const aModel = aData.actuatorModelId ? findActuatorModel(aData.actuatorModelId) : undefined;
+          if (!aModel?.hasPositionFeedback) continue;
+          if (!terminalHandle) terminalHandle = `auto:${aData.label ?? sensorEnd}`;
+          const fbPct = Math.max(0, Math.min(100, (aData.actuatorState?.actual ?? 0) * 100));
+          const fbRaw = engToSignal(fbPct, 'analog-2-10v', [0, 100]);
+          const fbDefaultCfg = defaultTerminalConfig('analog-2-10v', [0, 100]);
+          const fbTermCfg = resolveTerminalConfig(ctrl.id, terminalHandle, fbDefaultCfg);
+          perCtrl.set(terminalHandle, {
+            raw: fbRaw,
+            config: fbTermCfg,
+            scaled: signalToEng(fbRaw, fbTermCfg),
+            sensorNodeId: senNode.id,
+            isPrimary: false,
+            installedSignal: 'analog-2-10v',
+          });
+          continue;
+        }
+        if (nodeKind(senNode) !== 'sensor') continue;
         if (!terminalHandle) {
           const senLabel = (senNode.data as { label?: string } | undefined)?.label ?? sensorEnd;
           terminalHandle = `auto:${senLabel}`;
@@ -5627,6 +5989,17 @@
     nodes = nodes.map((n) =>
       n.id === controllerId
         ? { ...n, data: { ...(n.data as Record<string, unknown>), [key]: value } }
+        : n,
+    );
+  }
+
+  /** Flip a device's RS-485 EOL termination switch (G-topology / slice 2).
+   *  Stored on node data so it persists + serializes with scenarios; the
+   *  topology validator checks placement against the physical chain ends. */
+  function setNodeEol(nodeId: string, on: boolean): void {
+    nodes = nodes.map((n) =>
+      n.id === nodeId
+        ? { ...n, data: { ...(n.data as Record<string, unknown>), eolTerminated: on } }
         : n,
     );
   }
@@ -5726,6 +6099,27 @@
     );
     const sys = runningSystems.get(controllerId);
     if (sys) sys.manualOverride = clamped;
+  }
+
+  /** Inject / clear the actuator 'stuck' fault (G26). The dynamics pass
+   *  freezes `actual` while stuck — with position feedback wired, the
+   *  command-vs-feedback divergence is the diagnosable symptom. */
+  function setActuatorFault(actuatorId: string, fault: 'stuck' | undefined): void {
+    const actNode = nodes.find((n) => n.id === actuatorId);
+    const prev = (actNode?.data as { fault?: string } | undefined)?.fault;
+    nodes = nodes.map((n) =>
+      n.id === actuatorId ? { ...n, data: { ...(n.data as Record<string, unknown>), fault } } : n,
+    );
+    if (prev !== fault && actNode) {
+      logEvent(
+        tick,
+        'info',
+        'sim',
+        fault === 'stuck'
+          ? `Fault injected: ${nodeLabel(actNode)} is stuck — commands will no longer move it.`
+          : `Fault cleared: ${nodeLabel(actNode)} moves freely again.`,
+      );
+    }
   }
 
   /** Inject a fault on the sensor. Updates the node's data so it persists into
@@ -6531,6 +6925,7 @@
         bind:edges
         {nodeTypes}
         fitView
+        connectionMode={ConnectionMode.Loose}
         onnodeclick={onNodeClick}
         onnodecontextmenu={onNodeDoubleClick}
         ondblclick={(e) => {
@@ -6928,6 +7323,18 @@
                   {/if}
                 </div>
               {/if}
+              {#if edges.some((e) => (e.data as { wireKind?: string } | undefined)?.wireKind === 'mstp' && (e.source === selectedIpDevice.id || e.target === selectedIpDevice.id))}
+                {@const ipEolOn = (selectedIpDevice.data as { eolTerminated?: boolean } | undefined)?.eolTerminated === true}
+                <button
+                  type="button"
+                  class="eol-toggle"
+                  class:active={ipEolOn}
+                  title="RS-485 end-of-line termination (the EOL dip switch). An engine at the physical end of its MS/TP chain terminates the segment — flip ON here and at the far chain end, and only there."
+                  onclick={() => setNodeEol(selectedIpDevice.id, !ipEolOn)}
+                >
+                  EOL {ipEolOn ? 'on' : 'off'}
+                </button>
+              {/if}
               <span class="ip-divider"></span>
               <button
                 type="button"
@@ -7288,6 +7695,30 @@
                     {actModel.hasPositionFeedback ? 'position feedback' : 'no feedback'}
                   </span>
                 </div>
+                {@const actFault = (selectedActuator.data as { fault?: string } | undefined)?.fault}
+                <div class="sensor-row">
+                  <span class="sensor-sub">Fault</span>
+                  <div class="fault-chips">
+                    <button
+                      type="button"
+                      class="fault-chip"
+                      class:active={!actFault}
+                      title="Clear the fault — the actuator strokes normally"
+                      onclick={() => setActuatorFault(selectedActuator.id, undefined)}
+                    >
+                      normal
+                    </button>
+                    <button
+                      type="button"
+                      class="fault-chip danger"
+                      class:active={actFault === 'stuck'}
+                      title="Jam the actuator at its current position — the controller keeps commanding, nothing moves. With feedback wired to an AI, the divergence is visible; without it, the only tell is the zone."
+                      onclick={() => setActuatorFault(selectedActuator.id, 'stuck')}
+                    >
+                      stuck
+                    </button>
+                  </div>
+                </div>
                 <p class="actuator-note">
                   Drive it from a controller <strong>{actBinary ? 'BO (binary)' : 'AO (analog)'}</strong>
                   output — wiring it to the wrong output kind is a real miswire.
@@ -7301,6 +7732,98 @@
                   matching and stroke / fail-safe behavior.
                 </p>
               {/if}
+            </div>
+          </Panel>
+        {/if}
+
+        {#if selectedVahu}
+          {@const vahuCfg = { ...DEFAULT_VAHU_CONFIG, ...((selectedVahu.data as { vahuConfig?: Partial<VAhuConfig> } | undefined)?.vahuConfig ?? {}) }}
+          {@const vahuLive = vahuStates.get(selectedVahu.id)}
+          {@const vahuIn = vahuPrevInputs.get(selectedVahu.id)}
+          <Panel position="bottom-left">
+            <div class="actuator-panel inspector-panel">
+              <div class="inspector-head">
+                <span class="sensor-title">AHU —</span>
+                <input
+                  class="rename-input"
+                  type="text"
+                  value={nodeLabel(selectedVahu)}
+                  onblur={(e) => renameNode(selectedVahu.id, (e.currentTarget as HTMLInputElement).value)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                    if (e.key === 'Escape') {
+                      (e.currentTarget as HTMLInputElement).value = nodeLabel(selectedVahu);
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  title="Rename this AHU — e.g. AHU-1, RTU-2"
+                  aria-label="AHU name"
+                />
+                <button
+                  type="button"
+                  class="inspector-delete"
+                  title="Delete this AHU (also: select + press Delete or Backspace)"
+                  onclick={() => deleteNodeById(selectedVahu.id)}
+                >
+                  ✕ Delete
+                </button>
+              </div>
+              <p class="actuator-note">
+                ASHRAE G36 §5.18 single-zone AHU. Reads <strong>OAT</strong> (Weather
+                drive), <strong>occupancy</strong> (sim clock schedule), and
+                <strong>zone temp</strong> from a wired Zone (no Zone → assumes the
+                room sits at setpoint). Runs the economizer / heating / cooling
+                sequence and exposes 15 BACnet objects in the packet log.
+              </p>
+              {#if vahuLive}
+                <div class="sensor-row sensor-row-block">
+                  <span class="sensor-sub">Live sequence state</span>
+                  <div class="actuator-specs">
+                    <span class="spec-chip good" title="G36 §5.18.1 operating mode">
+                      {vahuLive.mode === 'heating' ? 'Heating'
+                        : vahuLive.mode === 'cooling' ? 'Cooling'
+                        : vahuLive.mode === 'economizer' ? 'Economizer'
+                        : vahuLive.mode === 'unoccupied' ? 'Unoccupied'
+                        : 'Off'}
+                    </span>
+                    <span class="spec-chip" title="Discharge-air-temp setpoint the valves drive toward">SAT sp {vahuLive.satSetpoint.toFixed(1)}°F</span>
+                    <span class="spec-chip" title="Outside-air damper position">OA damper {vahuLive.oaDamperPct.toFixed(0)}%</span>
+                    <span class="spec-chip" title="Heating valve position">heat valve {vahuLive.heatValvePct.toFixed(0)}%</span>
+                    <span class="spec-chip" title="Cooling valve position">cool valve {vahuLive.coolValvePct.toFixed(0)}%</span>
+                    <span class="spec-chip" title="Supply fan VFD command">fan {Math.round(vahuLive.fanSpeed * 100)}%</span>
+                  </div>
+                </div>
+                <div class="sensor-row sensor-row-block">
+                  <span class="sensor-sub">Air temps</span>
+                  <div class="actuator-specs">
+                    {#if vahuIn}
+                      <span class="spec-chip" title="Outside air temp (from the Weather drive)">OAT {vahuIn.oat.toFixed(1)}°F</span>
+                      <span class="spec-chip" title="Return air temp (≈ zone temp on a single-zone unit)">RAT {vahuIn.rat.toFixed(1)}°F</span>
+                    {/if}
+                    <span class="spec-chip" title="Mixed air temp (after the OA/RA mixing box)">MAT {vahuLive.mat.toFixed(1)}°F</span>
+                    <span class="spec-chip" title="Discharge air temp (after coils)">DAT {vahuLive.dat.toFixed(1)}°F</span>
+                    {#if vahuIn}
+                      <span class="spec-chip" class:good={vahuIn.occupied} title="From the sim-clock occupancy schedule">{vahuIn.occupied ? 'occupied' : 'unoccupied'}</span>
+                    {/if}
+                  </div>
+                </div>
+              {:else}
+                <p class="actuator-note">
+                  Press <strong>▶ Run</strong> to see the live sequence — mode,
+                  SAT setpoint, damper / valve positions, and air temps update
+                  every tick.
+                </p>
+              {/if}
+              <div class="sensor-row sensor-row-block">
+                <span class="sensor-sub">Sequence config (G36 defaults)</span>
+                <div class="actuator-specs">
+                  <span class="spec-chip" title="Occupied zone temp setpoint">zone sp {vahuCfg.zoneSetpoint}°F</span>
+                  <span class="spec-chip" title="SAT setpoint when cooling">SAT cool {vahuCfg.satCoolSetpoint}°F</span>
+                  <span class="spec-chip" title="SAT setpoint when heating">SAT heat {vahuCfg.satHeatSetpoint}°F</span>
+                  <span class="spec-chip" title="OAT above this locks out the economizer (§5.18.2 fixed dry-bulb)">econ limit {vahuCfg.econHighLimitOAT}°F</span>
+                  <span class="spec-chip" title="Minimum OA damper while occupied (ASHRAE 62.1 ventilation)">min OA {vahuCfg.minOaDamperPctOccupied}%</span>
+                </div>
+              </div>
             </div>
           </Panel>
         {/if}
@@ -7460,6 +7983,16 @@
                     oninput={(e) => setControllerDeviceInstance(selectedController.id, (e.currentTarget as HTMLInputElement).value)}
                   />
                 </label>
+                {@const eolOn = (selectedController.data as { eolTerminated?: boolean } | undefined)?.eolTerminated === true}
+                <button
+                  type="button"
+                  class="eol-toggle"
+                  class:active={eolOn}
+                  title="RS-485 end-of-line termination (the EOL dip switch). Flip it ON at the two physical ends of the MS/TP chain — and only there. Missing termination reflects the signal (intermittent token loss at speed); mid-chain termination overloads the bus."
+                  onclick={() => setNodeEol(selectedController.id, !eolOn)}
+                >
+                  EOL {eolOn ? 'on' : 'off'}
+                </button>
                 <span class="ctrl-divider"></span>
               {/if}
               <label class="ctrl-field">
@@ -8077,7 +8610,104 @@
                 >
               {/if}
             {/if}
+            <button
+              type="button"
+              class="cond-btn"
+              class:active={conditionsOpen}
+              onclick={() => (conditionsOpen = !conditionsOpen)}
+              title="The conditions the sim is running against — outside-air temp and time-of-day / occupancy, in one place"
+            >
+              🌤 Conditions
+            </button>
           </div>
+          {#if conditionsOpen}
+            {@const weatherLiveOat =
+              weatherStore.mode !== 'off' && weatherStore.status === 'ready'
+                ? (currentWeatherSample()?.T_F ?? null)
+                : null}
+            {@const condTotalSec = simStartHour * 3600 + simSecondsElapsed}
+            {@const condHour = (condTotalSec / 3600) % 24}
+            {@const condH = Math.floor(condHour)}
+            {@const condM = Math.floor((condTotalSec % 3600) / 60)}
+            {@const condOcc = defaultOccupancySchedule(condHour)}
+            <div class="conditions-panel">
+              <div class="cond-row">
+                <span class="cond-label">Outside air</span>
+                <div class="cond-toggle" role="group" aria-label="OAT source">
+                  <button
+                    type="button"
+                    class:active={manualOat === null}
+                    onclick={() => setManualOat(null)}
+                    title="Follow the Weather tab's live OAT (or the 60°F default when no city is loaded)"
+                  >
+                    From weather
+                  </button>
+                  <button
+                    type="button"
+                    class:active={manualOat !== null}
+                    onclick={() => {
+                      if (manualOat === null) setManualOat(Math.round(weatherLiveOat ?? 60));
+                    }}
+                    title="Set the OAT yourself — overrides weather everywhere (AHU, zones, physics targets)"
+                  >
+                    Manual
+                  </button>
+                </div>
+                {#if manualOat !== null}
+                  <input
+                    type="range"
+                    class="cond-slider"
+                    min="-20"
+                    max="110"
+                    step="1"
+                    value={manualOat}
+                    oninput={(e) => setManualOat(Number((e.currentTarget as HTMLInputElement).value))}
+                    aria-label="Manual outside-air temperature"
+                  />
+                  <span class="cond-value">{manualOat}°F</span>
+                {:else if weatherLiveOat !== null}
+                  <span class="cond-value">{weatherLiveOat.toFixed(1)}°F</span>
+                  <span class="cond-sub">live from the Weather tab</span>
+                {:else}
+                  <span class="cond-value">60°F</span>
+                  <span class="cond-sub">default — load a city in the Weather tab, or switch to Manual</span>
+                {/if}
+              </div>
+              <div class="cond-row">
+                <span class="cond-label">Time / occupancy</span>
+                <span class="cond-value"
+                  >{condH.toString().padStart(2, '0')}:{condM.toString().padStart(2, '0')}</span
+                >
+                <span class="cond-pill" class:occupied={condOcc > 0.5}>
+                  {condOcc > 0.5 ? `occupied ${(condOcc * 100).toFixed(0)}%` : 'unoccupied'}
+                </span>
+                <span class="cond-sub"
+                  >zones / AHUs · office schedule 06:00–19:00 — set <strong>start</strong> in the
+                  toolbar to jump the clock</span
+                >
+              </div>
+              <!-- Controllers with their OWN night-setback schedule can disagree
+                   with the global zone/AHU schedule above (e.g. a 06–22 office
+                   VAV is still "occupied" at 20:00 while the zones read
+                   unoccupied). Surface each one so the two sources are visible
+                   together instead of silently contradicting. -->
+              {#each wiredTargets.filter((t) => t.config.schedule?.enabled) as t (t.controllerId)}
+                {@const tNode = nodes.find((n) => n.id === t.controllerId)}
+                {@const sched = t.config.schedule!}
+                <div class="cond-row">
+                  <span class="cond-label cond-sub-label">{tNode ? nodeLabel(tNode) : t.controllerId}</span>
+                  <span class="cond-sub"
+                    >own schedule {String(Math.floor(sched.occStartHour)).padStart(2, '0')}:00–{String(Math.floor(sched.occEndHour)).padStart(2, '0')}:00</span
+                  >
+                  <span class="cond-pill" class:occupied={isOccupiedNow(sched, condHour)}>
+                    {isOccupiedNow(sched, condHour)
+                      ? `occupied · SP ${sched.occupiedSetpoint}°F`
+                      : `setback · SP ${sched.unoccupiedSetpoint}°F`}
+                  </span>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </Panel>
       </SvelteFlow>
     </div>
@@ -8883,6 +9513,99 @@
     font-size: 0.82rem;
   }
 
+  .cond-btn {
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    background: color-mix(in srgb, CanvasText 6%, transparent);
+    color: inherit;
+    border-radius: 4px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .cond-btn:hover {
+    background: color-mix(in srgb, CanvasText 12%, transparent);
+  }
+  .cond-btn.active {
+    background: color-mix(in srgb, #3b82f6 22%, transparent);
+    border-color: color-mix(in srgb, #3b82f6 60%, transparent);
+  }
+
+  .conditions-panel {
+    margin-top: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    max-width: 30rem;
+    background: color-mix(in srgb, Canvas 92%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+    border-radius: 6px;
+    font-size: 0.8rem;
+  }
+  .cond-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .cond-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    min-width: 7.5rem;
+  }
+  .cond-sub-label {
+    text-transform: none;
+    letter-spacing: 0;
+    padding-left: 0.8rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+  }
+  .cond-toggle {
+    display: inline-flex;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .cond-toggle button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .cond-toggle button.active {
+    background: color-mix(in srgb, #3b82f6 28%, transparent);
+  }
+  .cond-slider {
+    width: 8rem;
+    accent-color: #3b82f6;
+  }
+  .cond-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .cond-sub {
+    color: color-mix(in srgb, CanvasText 55%, transparent);
+    font-size: 0.74rem;
+  }
+  .cond-pill {
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  }
+  .cond-pill.occupied {
+    background: color-mix(in srgb, #2ecc71 18%, transparent);
+    border-color: color-mix(in srgb, #2ecc71 50%, transparent);
+  }
+
   .wire-refusal {
     display: flex;
     align-items: center;
@@ -9435,6 +10158,27 @@
     white-space: nowrap;
   }
 
+  .eol-toggle {
+    border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 70%, transparent);
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 10px;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .eol-toggle:hover {
+    background: color-mix(in srgb, CanvasText 10%, transparent);
+  }
+  .eol-toggle.active {
+    border-color: color-mix(in srgb, #2ecc71 55%, transparent);
+    background: color-mix(in srgb, #2ecc71 16%, transparent);
+    color: color-mix(in srgb, #2ecc71 90%, CanvasText);
+  }
+
   .override-toggle:hover {
     background: color-mix(in srgb, #f39c12 12%, transparent);
   }
@@ -9501,6 +10245,13 @@
   .wire-panel {
     display: flex;
     align-items: center;
+    justify-content: center;
+    /* Wrap + cap the width so the trunk chrome (wire kinds + baud + inspector
+       + Break + Delete) never slides its right edge under the top-right sim
+       panel — which used to clip the "✕ Delete wire" button (G33). On a
+       narrow viewport the row wraps instead of overflowing. */
+    flex-wrap: wrap;
+    max-width: min(42rem, calc(100% - 24rem));
     gap: 0.55rem;
     padding: 0.35rem 0.6rem;
     background: color-mix(in srgb, Canvas 92%, transparent);

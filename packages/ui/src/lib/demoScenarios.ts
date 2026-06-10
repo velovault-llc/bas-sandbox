@@ -272,10 +272,13 @@ export const DEMOS: readonly Demo[] = [
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-3', x: 420, y: 40 },
-        { id: 'fec', kind: 'controller', label: 'FEC-MAIN', x: 420, y: 180 },
-        { id: 'vav1', kind: 'controller', label: 'VAV-101', x: 200, y: 360 },
-        { id: 'vav2', kind: 'controller', label: 'VAV-102', x: 420, y: 360 },
-        { id: 'vav3', kind: 'controller', label: 'VAV-103', x: 640, y: 360 },
+        // FEC + chain ends carry the RS-485 EOL termination switch — the
+        // FC bus is a real daisy-chain now (fec → vav1 → vav2 → vav3), so
+        // the two physical ends (fec, vav3) terminate.
+        { id: 'fec', kind: 'controller', label: 'FEC-MAIN', x: 420, y: 180, data: { eolTerminated: true } },
+        { id: 'vav1', kind: 'controller', label: 'VAV-101', x: 200, y: 360, data: { eolTerminated: false } },
+        { id: 'vav2', kind: 'controller', label: 'VAV-102', x: 420, y: 360, data: { eolTerminated: false } },
+        { id: 'vav3', kind: 'controller', label: 'VAV-103', x: 640, y: 360, data: { eolTerminated: true } },
         {
           id: 's1',
           kind: 'sensor',
@@ -303,9 +306,12 @@ export const DEMOS: readonly Demo[] = [
       ],
       edges: [
         { source: 'sup', target: 'fec', wireKind: 'bacnet-ip' },
+        // Daisy-chained FC bus (was hub-spoke off the FEC — a T-tap/star,
+        // which the topology validator now flags as the real-world RS-485
+        // mistake it is).
         { source: 'fec', target: 'vav1', wireKind: 'mstp', baud: 38400 },
-        { source: 'fec', target: 'vav2', wireKind: 'mstp', baud: 38400 },
-        { source: 'fec', target: 'vav3', wireKind: 'mstp', baud: 38400 },
+        { source: 'vav1', target: 'vav2', wireKind: 'mstp', baud: 38400 },
+        { source: 'vav2', target: 'vav3', wireKind: 'mstp', baud: 38400 },
         { source: 'vav1', target: 's1', wireKind: 'hardwired' },
         { source: 'vav2', target: 's2', wireKind: 'hardwired' },
         { source: 'vav3', target: 's3', wireKind: 'hardwired' },

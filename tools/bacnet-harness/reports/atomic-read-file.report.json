@@ -1,6 +1,6 @@
 {
   "capture": "atomic-read-file.cap",
-  "adapter": "harness.bas_adapter:CodecRoundtripAdapter",
+  "adapter": "harness.bas_adapter:RawPassthroughAdapter",
   "byte_exact": false,
   "passed": 64,
   "total": 64,

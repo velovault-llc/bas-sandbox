@@ -150,6 +150,36 @@ describe('assignMstpAddressing — deterministic MAC assignment from topology', 
     expect(byNode.get('sup')?.deviceInstance).toBe(99001);
   });
 
+  it('field devices, zones and equipment NEVER take a MAC, even mis-wired onto the trunk', () => {
+    // A learner in Realistic mode can draw an MS/TP wire to an actuator,
+    // sensor, zone, or equipment box. None of those have an RS-485
+    // transceiver — they must stay invisible to addressing (G34): no MAC,
+    // no device instance, no bumping the real devices' MACs.
+    const mixed: MstpAddressingNode[] = [
+      { id: 'sup', label: 'NAE-1', kind: 'supervisor' },
+      { id: 'fa', label: 'FEC-A', kind: 'controller' },
+      { id: 'act', label: 'DMP-1', kind: 'actuator' },
+      { id: 'sen', label: 'ZN-T', kind: 'sensor' },
+      { id: 'saf', label: 'FRZ-1', kind: 'safety' },
+      { id: 'zn', label: 'ROOM-101', kind: 'zone' },
+      { id: 'eq', label: 'VAVBOX-1', kind: 'equipment' },
+    ];
+    const wires: MstpAddressingEdge[] = [
+      { id: 'e1', source: 'sup', target: 'fa', wireKind: 'mstp' },
+      { id: 'e2', source: 'fa', target: 'act', wireKind: 'mstp' },
+      { id: 'e3', source: 'fa', target: 'sen', wireKind: 'mstp' },
+      { id: 'e4', source: 'fa', target: 'saf', wireKind: 'mstp' },
+      { id: 'e5', source: 'fa', target: 'zn', wireKind: 'mstp' },
+      { id: 'e6', source: 'fa', target: 'eq', wireKind: 'mstp' },
+    ];
+    const { byNode } = assignMstpAddressing(mixed, wires);
+    expect(byNode.get('sup')?.mac).toBe(0);
+    expect(byNode.get('fa')?.mac).toBe(1);
+    for (const id of ['act', 'sen', 'saf', 'zn', 'eq']) {
+      expect(byNode.get(id)).toBeUndefined();
+    }
+  });
+
   it('leaves no MAC 0 when a trunk has no master role (known quirk)', () => {
     // No supervisor, no forced-0, no IP uplink → there is no master role,
     // so children simply number from MAC 1 and the segment has no MAC 0.

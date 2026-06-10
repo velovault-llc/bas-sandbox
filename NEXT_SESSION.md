@@ -1,8 +1,100 @@
 # Next Session — Prep Notes
 
-Last updated: 2026-06-09. Author: James + Claude.
+Last updated: 2026-06-10. Author: James + Claude.
 
-## 🔖 Resume here — 2026-06-09 (cold-build dogfooding)
+## 🔖 Resume here — 2026-06-10 (walkthrough leg 2 + solo demo audit, uncommitted)
+
+**Walkthrough findings (James driving, Realistic mode):** G33 trunk-panel
+Delete clipped under Run (✅ fixed, wraps now), G34 actuator wired onto MS/TP
+got a fake MAC + helper missed it (✅ fixed: field devices never take a MAC;
+network-wire-to-actuator is now a flagged miswire — *James: one manual
+wire-drag to confirm the flag*), G35 actuator picker grouped into
+Dampers/Valves/VFDs/Relays with "start with a damper" hint (✅ verified).
+
+**Solo demo-premise audit (all 13 demos):** found + fixed G37 (demo loads
+leaked COV subs/trunk state/log/start-hour across topologies — caused ghost
+packets AND silently killed Who-Is), G38 (validator called Annex-J
+foreign-device registration an error), G39 (**all BACnet/IP COV notifications
+were dead** — the firehose demo streamed zero; now 17 in the same window).
+G36 logged: two occupancy schedules (per-target vs global) can contradict —
+Conditions panel now shows both; unification is James's design call.
+Details in GAPS_FROM_COLD_BUILD.md Step 11.
+
+**Wiring revamp started (James's call: daisy-chain + rules, BOTH AHU
+patterns, build now).** Design doc: [WIRING_REVAMP_PLAN.md](WIRING_REVAMP_PLAN.md).
+- **Slice 1 ✅ code-complete** — `ConnectionMode.Loose` (wire net handles in
+  EITHER gesture direction), net-pair dedupe ("one cable per device pair"),
+  two-outputs/two-inputs terminal guard, and process-link direction
+  normalization (zone→equipment / equipment→actuator gestures auto-swap to
+  the flow-correct direction the thermal pass expects). *Needs James's manual
+  drag verification — the harness can't synthesize xyflow drags.*
+- **Slice 2 ✅ shipped + verified live** — the MS/TP bus is a real daisy-chain
+  now: (a) **T-tap/star detection** — 3+ wires on a non-repeater device is an
+  error in the standing topology validator (Check-my-work + Network pill,
+  verified: "VAV-102 T-taps the RS-485 bus (3 wires)") AND a wire-time
+  `fault` in validateWireCompat (Easy blocks the 3rd wire, Realistic lets it
+  through tagged); (b) **EOL termination** — per-device "EOL on/off" toggle in
+  the controller inspector, validated against the physical chain ends
+  (verified live: mid-chain + missing both flag correctly; un-modeled trunks
+  get one info-level hint, not a nag); (c) zones + equipment excluded from
+  MAC assignment; (d) "3 coupled VAVs" demo re-wired hub-spoke → true chain
+  with correct EOL flags (loads clean, MACs 0–3). Core: `mstpComponents()`
+  extracted + `validateMstpTopology()` (6 new tests, 358/358).
+  *Still TODO from slice 2:* repeater catalog device; **slice 2b (new):**
+  RS-485 RING detection — discovered while testing that closing the chain
+  into a loop isn't flagged (no degree-3 node, but a ring has no ends).
+- **Slice 2c ✅ (James's walkthrough finds, verified live):** (a) **one engine
+  per trunk** — two supervisors on one MS/TP segment is now
+  `mstp.multiple-engines` (error; names both engines + explains the silent
+  MAC-demotion) plus a wire-time fault that blocks/flags the wire that would
+  merge them; (b) **supervisors got the EOL toggle** in the Network panel —
+  James's chain ends were engines, which had no switch, so "EOL didn't seem
+  to matter." Verified: flipping SNE10500's EOL on immediately flagged
+  "Missing EOL termination at MACH-ProSys." EOL sim-consequence (frame
+  errors at speed) logged as slice 2d.
+- **New direction from James (in the plan doc):** slice 7 — capture-POINT
+  packet log (pick where you tap; per-segment visibility; meshing emerges
+  from BBMD/router forwarding, not a global firehose) + the
+  **real-network reference rig** (bacnet-stack demo exes + BACpypes3 on his
+  spare Windows boxes + Wireshark → conversation-level fixtures for the
+  harness; phase 2 = Node UDP relay so the sandbox joins the real LAN).
+
+**Validation:** 352/352 core tests · typecheck 0 errors · build clean.
+**Still pending:** COMMIT (three sessions of work in the tree now — do this
+first next session) + deploy + Netlify token rotation. Manual checks for
+James: (1) wire supervisor↔AHU in BOTH gesture directions; (2) try a second
+wire between the same pair → refused; (3) drag zone→equipment → edge lands
+equipment→zone; (4) G34: MS/TP wire to an actuator → Easy refuses /
+Realistic flags in Check-my-work. Walkthrough then resumes: close the
+thermal loop (AHU→zone duct + equipment chain), VAV-2/3 multi-drop.
+
+## 🔖 Resume here — 2026-06-09 session 2 (backlog burn-down, uncommitted)
+
+**Built this session (all in working tree, NOT yet committed):**
+- **G25-full** — Realistic mode lets a wrong-kind output wire (analog actuator →
+  BO etc.) land untagged-warned, stashed on `edge.data.miswire`; Easy keeps the
+  auto-shift. *Needs one manual wire-drag confirmation in the browser.*
+- **G26** — actuator position feedback end-to-end: actuator → AI emits 2–10 V
+  position (Terminals truth-table row + `env.inputs.fb_<label>`), "stuck" fault
+  injection on the actuator inspector, Check-my-work reports "commanded but
+  didn't move". Verified live.
+- **G27** — 🌤 Conditions panel on the run toolbar: OAT (From weather ↔ Manual
+  slider, persisted, overrides every consumer) + live time/occupancy. Verified
+  live (95 °F manual flipped the G36 demo to Cooling w/ econ lockout).
+- **G28** — AHU inspector: self-description + live sequence state (mode, SAT sp,
+  damper/valves/fan, OAT/RAT/MAT/DAT) + G36 config chips. Verified live.
+- **Bug fixes found while testing:** G30 `T_zone_init` ignored (economizer demo
+  premise never ran — now fixed + verified), G31 occupancy-schedule copy drift
+  (actual schedule is 06:00–19:00), `vahuPrevInputs` made reactive.
+- **New gap logged:** G32 — generic controllers render no terminal handles →
+  auto-shifted edges (AO-1 etc.) are invisible on canvas though the sim uses them.
+
+**Validation:** 351/351 core tests · UI typecheck 0 errors · prod build clean.
+**Still pending:** commit + deploy (actuator-parity `75379d7` is ALSO still
+undeployed — both go out together; rotate the Netlify token first). Remaining
+backlog: decision guidance (G1/G3/G10/G13), G11 polish, G32, AHU config editing.
+
+## 🔖 Previous resume point — 2026-06-09 (cold-build dogfooding)
 
 **How we're working:** James role-plays a *newbie BAS tech* building a site from
 an empty canvas; Claude guides step-by-step and logs every place the tool

@@ -241,7 +241,12 @@ describe('validateBacnetIpNetwork — BBMD bridging (Net.2)', () => {
     expect(f!.severity).toBe('error');
   });
 
-  it('cross-subnet trunk with only one BBMD: error (other side has no bridge)', () => {
+  it('cross-subnet trunk with only one BBMD: info (foreign-device registration, not an error)', () => {
+    // Annex-J foreign-device pattern: the non-BBMD registers with the BBMD
+    // and receives broadcasts as unicast Forwarded-NPDUs. This is how every
+    // commissioning laptop joins a remote site — the sim emits the
+    // Register-Foreign-Device flow for exactly this topology, so the
+    // validator must NOT call it an error (it used to).
     const devs: BacnetIpDevice[] = [
       dev({
         nodeId: 'a',
@@ -260,10 +265,14 @@ describe('validateBacnetIpNetwork — BBMD bridging (Net.2)', () => {
       }),
     ];
     const findings = validateBacnetIpNetwork(devs, [edge('a', 'b')]);
-    const f = findings.find(
-      (f) => f.id === 'ipv4.cross-subnet-no-bridge' && f.severity === 'error',
-    );
-    expect(f).toBeDefined();
+    const fd = findings.find((f) => f.id === 'ipv4.cross-subnet-foreign-device');
+    expect(fd).toBeDefined();
+    expect(fd!.severity).toBe('info');
+    expect(fd!.description).toContain('JACE-2');
+    // And no error-level finding should remain on this trunk.
+    expect(
+      findings.find((f) => f.severity === 'error' && f.edgeIds?.includes('a-b')),
+    ).toBeUndefined();
   });
 
   it('same-subnet trunk: BBMD flags do nothing (no bridge needed)', () => {

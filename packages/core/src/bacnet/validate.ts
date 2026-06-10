@@ -22,14 +22,20 @@
 // elsewhere in the package, so the same UI surface that renders
 // dbexport / brick findings can render these too.
 
-import type { MstpDevice } from './mstp.js';
+import type { MstpDevice, MstpAddressingNode, MstpAddressingEdge } from './mstp.js';
+import { mstpComponents } from './mstp.js';
 
 export type MstpFindingId =
   | 'mstp.duplicate-mac'
   | 'mstp.mac-out-of-range'
   | 'mstp.trunk-overloaded'
   | 'mstp.no-supervisor'
-  | 'mstp.multiple-supervisors';
+  | 'mstp.multiple-supervisors'
+  | 'mstp.t-tap'
+  | 'mstp.eol-missing'
+  | 'mstp.eol-mid-chain'
+  | 'mstp.eol-unset'
+  | 'mstp.multiple-engines';
 
 export interface MstpFinding {
   readonly id: MstpFindingId;
@@ -61,6 +67,136 @@ export function validateMstpTrunks(
     findings.push(...validateOneTrunk(t));
   }
   return findings;
+}
+
+/**
+ * MS/TP PHYSICAL topology validation — wiring-shape mistakes (vs the
+ * config mistakes validateMstpTrunks catches). RS-485 is a daisy-chained
+ * bus: every device has an IN and an OUT lug and the cable runs device to
+ * device, terminated at the two physical ends.
+ *
+ *   - T-tap / star: 3+ wires landing on one device means the bus branches.
+ *     Reflections off the un-terminated stub corrupt frames — the classic
+ *     "worked at 9600, dies at 38400" field failure. Only a repeater may
+ *     legitimately branch a segment.
+ *   - EOL termination: exactly the two chain-end devices should have their
+ *     termination switch on. Missing → reflections at speed; mid-chain →
+ *     bus loading. (Opt-in: silent until a device on the trunk has the
+ *     switch modeled, so legacy scenarios aren't nagged — an info-level
+ *     hint surfaces the feature in the trunk inspector.)
+ *
+ * Operates on the same node/edge shapes as `assignMstpAddressing` and the
+ * same component grouping, so trunk keys always match the addressing map.
+ */
+export function validateMstpTopology(
+  nodes: readonly MstpAddressingNode[],
+  edges: readonly MstpAddressingEdge[],
+): MstpFinding[] {
+  const out: MstpFinding[] = [];
+  const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+
+  for (const comp of mstpComponents(edges)) {
+    // Degree per member node, over this trunk's MS/TP edges only.
+    const degree = new Map<string, number>();
+    for (const e of comp.edges) {
+      degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+      degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+    }
+
+    // 1. T-tap / star.
+    for (const [nodeId, deg] of degree) {
+      if (deg < 3) continue;
+      const n = nodeById.get(nodeId);
+      if (!n || n.kind === 'repeater') continue;
+      out.push({
+        id: 'mstp.t-tap',
+        severity: 'error',
+        trunkId: comp.trunkKey,
+        title: `${n.label} T-taps the RS-485 bus (${deg} wires)`,
+        description:
+          `MS/TP is a daisy-chain: the cable lands on a device's IN lugs and continues from its OUT lugs — ` +
+          `${deg} wires on ${n.label} means the bus branches into a star. Reflections off the unterminated ` +
+          `stubs corrupt frames (works at 9600 baud, dies at 38400). Re-route the cable as a chain through ` +
+          `each device, or branch through an RS-485 repeater.`,
+        nodeIds: [nodeId],
+      });
+    }
+
+    // 2. EOL termination — only once someone on the trunk models the switch.
+    const members = comp.nodeIds
+      .map((id) => nodeById.get(id))
+      .filter((n): n is MstpAddressingNode => !!n);
+
+    // 1b. Multiple engines on one field bus. MS/TP is multi-master, so the
+    // token still passes — but in BAS practice ONE engine owns a trunk.
+    // Two supervisors on the same segment fight over the same field
+    // devices (conflicting polls/writes, overlapping site databases), and
+    // the addressing demotes one of them to a child MAC, which is exactly
+    // the silent weirdness a learner shouldn't have to decode.
+    const engines = members.filter((n) => n.kind === 'supervisor');
+    if (engines.length > 1) {
+      out.push({
+        id: 'mstp.multiple-engines',
+        severity: 'error',
+        trunkId: comp.trunkKey,
+        title: `${engines.length} engines on one MS/TP trunk`,
+        description:
+          `${engines.map((n) => n.label).join(' and ')} are both supervisors on the same field bus. ` +
+          `MS/TP physically allows it (multi-master token), but in practice one engine OWNS a trunk — ` +
+          `two engines fight over the same field devices with conflicting polls and overlapping site ` +
+          `databases, and only one gets MAC 0 (the other quietly becomes a child). ` +
+          `Move one engine to its own trunk, or connect the two over BACnet/IP instead.`,
+        nodeIds: engines.map((n) => n.id),
+      });
+    }
+    const anyEolModeled = members.some((n) => typeof n.eolTerminated === 'boolean');
+    const chainEnds = members.filter((n) => (degree.get(n.id) ?? 0) === 1);
+    if (!anyEolModeled) {
+      out.push({
+        id: 'mstp.eol-unset',
+        severity: 'info',
+        trunkId: comp.trunkKey,
+        title: 'EOL termination not set on this trunk',
+        description:
+          `A real RS-485 segment needs end-of-line termination at its two physical ends ` +
+          `(${chainEnds.map((n) => n.label).join(' and ') || 'the chain ends'}). ` +
+          `Flip the EOL switch in each end device's inspector to model it.`,
+        nodeIds: chainEnds.map((n) => n.id),
+      });
+    } else {
+      for (const n of chainEnds) {
+        if (n.eolTerminated !== true) {
+          out.push({
+            id: 'mstp.eol-missing',
+            severity: 'warning',
+            trunkId: comp.trunkKey,
+            title: `Missing EOL termination at ${n.label}`,
+            description:
+              `${n.label} sits at a physical end of the chain but its termination switch is off. ` +
+              `An unterminated end reflects the signal back down the bus — intermittent token loss ` +
+              `that gets worse with baud rate and cable length.`,
+            nodeIds: [n.id],
+          });
+        }
+      }
+      for (const n of members) {
+        if (n.eolTerminated === true && (degree.get(n.id) ?? 0) > 1) {
+          out.push({
+            id: 'mstp.eol-mid-chain',
+            severity: 'warning',
+            trunkId: comp.trunkKey,
+            title: `EOL termination set mid-chain at ${n.label}`,
+            description:
+              `${n.label} has its termination switch on but sits in the middle of the chain. ` +
+              `Extra termination loads the bus — drivers can't swing the line properly and ` +
+              `far devices drop off. Only the two physical ends terminate.`,
+            nodeIds: [n.id],
+          });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 function validateOneTrunk(t: MstpTrunkSnapshot): MstpFinding[] {
