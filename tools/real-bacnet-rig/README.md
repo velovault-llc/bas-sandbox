@@ -15,6 +15,32 @@ corpus pins byte encoding; it can't pin behavior. Real devices can.
 timing requires RS-485 hardware (USB-485 dongles + MS/TP devices). Until
 then, MS/TP stays spec+corpus validated.
 
+## James's fleet → lab topology (planned 2026-06-10)
+
+| Box | Role |
+|---|---|
+| Desktop (Win · Ryzen 7600 · 32 GB · RX 9070) | **Operator**: YABE + Wireshark + the sandbox, side-by-side sim-vs-real |
+| ThinkPad T15p Gen 3 (i7-12700H · 32 GB · 2 TB) | **Device farm**: 2–3 Hyper-V VMs, BRIDGED networking, one `bacserv` each (distinct IP/MAC per device — broadcasts behave honestly). ⚠ buy the 135 W slim-tip AC first |
+| Spare laptop (16 GB) | One bare-metal `bacserv` + the **sacrifice node** for the timeout/retry recipe (gets killed mid-poll) |
+| Mac mini | **Scripted device** home (BACpypes3 via pip) — the ramping sensor that forces COV cadence |
+| Desktop's Ubuntu drive | Reserve: **phase-B multi-subnet lab** via Linux network namespaces (two subnets + router + BBMD on one machine, real UDP stacks) |
+
+**Phase A (flat LAN, zero purchases):** everything on the home network →
+covers recipes 1–4. Expect 4–6 discoverable devices in YABE.
+**Phase B (two subnets, recipe 5 BBMD/FD):** either boot the Ubuntu drive
+(netns topology, desktop unavailable as Windows operator that session —
+drive from the T15p) or a ~$25 travel router for a live second subnet.
+Decide at phase-B time.
+
+Lab-night checklist (phase A):
+1. T15p: enable Hyper-V, 2 tiny Win/Linux VMs on an External (bridged)
+   vSwitch, `bacserv 1001` / `bacserv 1002`, UDP 47808 allowed in firewall.
+2. Spare laptop: `bacserv 1003`, firewall open.
+3. Mac mini: `pip install bacpypes3` (scripts written live that night).
+4. Desktop: YABE discovers all of them; Wireshark capture `udp port 47808`;
+   run the capture recipes below in order, save each pcap to `wireshark/`
+   with a README line.
+
 ## Tier 1 — zero-code (one evening): bacnet-stack demo binaries
 
 [bacnet-stack](https://github.com/bacnet-stack/bacnet-stack) ships prebuilt
