@@ -22,6 +22,22 @@ tested (361/361 · typecheck 0 · build clean), and live-verified in preview.
 - **Slice 2b (ring) + 2c (one-engine-per-trunk, supervisor EOL toggle)** —
   see WIRING_REVAMP_PLAN.md table for verification notes.
 
+**New arcs queued (James, 2026-06-10 evening):**
+- **Site Director** — supervisor GUI (point tree, WriteProperty commands
+  with PRIORITY ARRAYS, COV-increment editing, trends/alarms, program
+  download), every GUI action emitting real packets. Scoped in
+  [SITE_DIRECTOR_PLAN.md](SITE_DIRECTOR_PLAN.md); open questions for James
+  at the bottom of that doc.
+- **Real-BACnet rig** — playbook written at
+  [tools/real-bacnet-rig/README.md](tools/real-bacnet-rig/README.md):
+  tier 1 is zero-code (bacnet-stack demo exes + YABE + Wireshark on the
+  spare machines), 5 prioritized capture recipes (COV lifecycle first —
+  it's the behavior the sim got wrong silently), conversation fixtures
+  into the harness after. BACpypes3 scripts get written live against the
+  rig, not blind. Caveat: pins BACnet/IP only; MS/TP needs RS-485 hardware.
+- Still on deck from the walkthrough: **programming a controller**
+  (`>_ Programming` — ST/SpecLang/FBD, step 4, untested).
+
 **Remaining (the two big ones + stragglers):** slice 3 (IP port model:
 catalog `ethernetPorts`, 1-port daisy block, 2-port daisy lesson, L2 loop →
 broadcast storm), slice 5 (equipment AHU + controller split; G36 as
