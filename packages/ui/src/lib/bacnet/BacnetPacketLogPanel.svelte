@@ -123,6 +123,33 @@
     return c;
   });
 
+  // ── Capture-point semantics (wiring revamp slice 7) ─────────────────
+  // A real sniffer taps ONE segment — you see that wire, and you see
+  // cross-segment traffic only where it's genuinely forwarded onto your
+  // segment (a BBMD's Forwarded-NPDU exists on both wires). So when the
+  // first capture appears, default the tap to the first segment instead
+  // of the global "everything" view. The user can still pick "all
+  // segments" explicitly (the omniscient debug view) and it sticks.
+  let autoTapped = $state(false);
+  $effect(() => {
+    const opts = trunkOptions;
+    if (opts.length === 0) {
+      // Buffer cleared (topology swap / ⌫) — re-arm the auto-tap for the
+      // next network that comes up.
+      autoTapped = false;
+      return;
+    }
+    const cur = bacnetPacketLog.trunkFilter;
+    if (!autoTapped && cur === '') {
+      autoTapped = true;
+      setTrunkFilter(opts[0].id);
+    } else if (cur !== '' && !opts.some((o) => o.id === cur)) {
+      // Stale tap (that segment no longer exists in the buffer) — move
+      // the clip to the first live segment.
+      setTrunkFilter(opts[0].id);
+    }
+  });
+
   let scrollEl: HTMLDivElement | null = $state(null);
   let stickToBottom = $state(true);
 
@@ -341,6 +368,10 @@
   }
 </script>
 
+<!-- The capture window only exists when there's a network actually
+     producing traffic — no packets, no sniffer. (Hidden pre-run and on an
+     empty canvas; appears with the first captured frame.) -->
+{#if bacnetPacketLog.packets.length > 0}
 <aside
   bind:this={panelEl}
   class="bacnet-log"
@@ -387,17 +418,17 @@
           </button>
         {/each}
       </div>
-      {#if trunkOptions.length > 1}
+      {#if trunkOptions.length > 0}
         <select
           class="trunk-select"
           value={bacnetPacketLog.trunkFilter}
           onchange={(e) => setTrunkFilter((e.currentTarget as HTMLSelectElement).value)}
-          title="Filter packets by trunk"
+          title="Where your sniffer is clipped. A real capture sees ONE segment — cross-segment traffic appears only where a BBMD/router genuinely forwards it onto your wire. 'All segments' is the sandbox-omniscient debug view."
         >
-          <option value="">All trunks</option>
           {#each trunkOptions as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
+            <option value={opt.id}>📡 tap: {opt.label}</option>
           {/each}
+          <option value="">🌐 all segments (omniscient)</option>
         </select>
       {/if}
       <input
@@ -661,6 +692,7 @@
     </div>
   {/if}
 </aside>
+{/if}
 
 <style>
   .bacnet-log {
