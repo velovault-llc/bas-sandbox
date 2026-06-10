@@ -624,6 +624,28 @@ clean, build clean after.
   the name to ReadProperty/COV summaries (e.g. `AI:1 'Zone Temp' = 72.0`)
   — supervisor-style resolved display, flagged as sandbox nicety.
 
+## Step 12 — first REAL capture (lab1, 2026-06-10): services the sandbox doesn't model
+
+From `wireshark/lab1-first-contact.pcapng` (YABE ↔ bacserv 1.4.1 on James's
+LAN) — each of these is on a real wire and absent from the sim:
+
+- **G43 — ReadPropertyMultiple.** YABE's very first read is an RPM, not RP.
+  Real supervisors batch-read; the sandbox only ever emits single
+  ReadProperty. (Also the I-Am fix data is in this capture: Max APDU 1476,
+  Segmentation, Vendor ID, NPDU DNET-65535 global broadcast — feeds the
+  standing conformance ⚠ / structured-PDU migration.)
+- **G44 — unsubscribed COV broadcasts.** bacserv emitted an
+  `unconfirmedCOVNotification` for AV:1 with NO SubscribeCOV anywhere — the
+  spec's subscription-less broadcast COV. The sandbox models only
+  confirmed, subscription-based COV.
+- **G45 — timeSynchronization / utcTimeSynchronization.** Real devices and
+  supervisors sync clocks on the wire; unmodeled (and a fun teaching hook —
+  schedules drift when timeSync is missing).
+- **G46 — who-Has / i-Have.** Object-level discovery ("who has AI:1?") —
+  unmodeled; pairs naturally with the Site Director's point search.
+- (Open observation: bacserv's I-Am arrives ×2 ~150 µs apart per trigger —
+  multi-send or capture artifact; resolve on a wired-Ethernet capture.)
+
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
   drive only wrote `sample.T_F` into *physics-wired targets'* config; the
