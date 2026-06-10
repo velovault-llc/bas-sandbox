@@ -4109,6 +4109,19 @@
 
   function start() {
     if (running) return;
+
+    // Auto-bind (G41): anything wired sensibly just works when you Run.
+    // A controller with a sensor wired gets its thermal sim automatically —
+    // "physics target" is sandbox plumbing, not a concept a tech should
+    // need. Runs BEFORE the snapshot below so new bindings join this run.
+    for (const n of nodes) {
+      if (nodeKind(n) !== 'controller') continue;
+      if ((n.data as { poweredOff?: boolean } | undefined)?.poweredOff) continue;
+      if (wiredTargets.some((t) => t.controllerId === n.id)) continue;
+      if (!findConnectedSensor(n.id)) continue;
+      wireAsPhysicsTarget(n.id);
+    }
+
     running = true;
 
     // Snapshot the current wired targets so config/topology edits during a run
@@ -4945,16 +4958,37 @@
     const srcModel = srcVendorId ? findControllerModel(srcVendorId) : null;
     const tgtModel = tgtVendorId ? findControllerModel(tgtVendorId) : null;
 
+    // When the wire kind is wrong but the two boxes DO share a protocol,
+    // say so — "FEC2611 doesn't speak BACnet/IP" alone reads as "these
+    // devices can't talk," when the real fix is usually just a different
+    // wire (an SNE reaches its FECs over MS/TP, not IP).
+    const WIRE_FOR_PROTOCOL: Record<string, string> = {
+      'BACnet/IP': 'BACnet/IP',
+      'BACnet MS/TP': 'MS/TP',
+      'N2': 'N2',
+      'LON': 'LON',
+    };
+    const sharedWireTip = (): string => {
+      const a = srcModel?.protocols as readonly string[] | undefined;
+      const b = tgtModel?.protocols as readonly string[] | undefined;
+      // A generic (no-model) end speaks anything → the constraint is the
+      // modeled end's protocol list.
+      const common = a && b ? a.filter((p) => b.includes(p)) : (a ?? b ?? []);
+      const usable = common.find((p) => WIRE_FOR_PROTOCOL[p]);
+      return usable
+        ? ` These two CAN talk — both speak ${usable}. Switch WIRES to ${WIRE_FOR_PROTOCOL[usable]} and re-draw.`
+        : '';
+    };
     if (srcModel && !srcModel.protocols.includes(need as never)) {
       return {
         severity: 'fault',
-        reason: `${srcModel.vendor} ${srcModel.model} doesn't speak ${need} (it supports: ${srcModel.protocols.join(', ')}). On a ${need} trunk it has no matching port, so it'll never communicate.`,
+        reason: `${srcModel.vendor} ${srcModel.model} doesn't speak ${need} (it supports: ${srcModel.protocols.join(', ')}). On a ${need} trunk it has no matching port, so it'll never communicate.${sharedWireTip()}`,
       };
     }
     if (tgtModel && !tgtModel.protocols.includes(need as never)) {
       return {
         severity: 'fault',
-        reason: `${tgtModel.vendor} ${tgtModel.model} doesn't speak ${need} (it supports: ${tgtModel.protocols.join(', ')}). On a ${need} trunk it has no matching port, so it'll never communicate.`,
+        reason: `${tgtModel.vendor} ${tgtModel.model} doesn't speak ${need} (it supports: ${tgtModel.protocols.join(', ')}). On a ${need} trunk it has no matching port, so it'll never communicate.${sharedWireTip()}`,
       };
     }
     return null;
@@ -5304,6 +5338,15 @@
       },
     };
     edges = addEdge(withStyle(newEdge), edges);
+
+    // Auto-bind (G41): a sensor landing on a controller immediately gets a
+    // thermal zone behind it — no separate "wire as physics target" step.
+    // (Idempotent; the Run-start sweep covers loaded/imported canvases.)
+    const autoBindCtrl =
+      srcKind === 'sensor' && tgtKind === 'controller' ? tgt.id
+      : srcKind === 'controller' && tgtKind === 'sensor' ? src.id
+      : null;
+    if (autoBindCtrl) wireAsPhysicsTarget(autoBindCtrl);
   }
 
   /**
@@ -6489,6 +6532,32 @@
     }
     // No-op when the controller isn't wired yet — the inspector shows
     // a "→ Wire as physics target" button for that path.
+  }
+
+  /** Bind a sensor-wired controller to the thermal sim (creates its
+   *  wiredTarget). Idempotent. Works mid-run too — syncRunningState adds
+   *  the system at the current sim clock. This used to be a dead button:
+   *  the inspector's "→ Wire as physics target" pointed at onNodeClick,
+   *  which had lost its wiring path in a refactor and silently no-opped
+   *  (found by James — "not sure if the wire as physics target works?"). */
+  function wireAsPhysicsTarget(controllerId: string): boolean {
+    if (wiredTargets.some((t) => t.controllerId === controllerId)) return true;
+    const sensor = findConnectedSensor(controllerId);
+    if (!sensor) return false;
+    wiredTargets = [
+      ...wiredTargets,
+      { controllerId, sensorId: sensor.id, config: { ...DEFAULT_CONFIG } },
+    ];
+    if (!focusedTargetId) focusedTargetId = controllerId;
+    const ctrl = nodes.find((n) => n.id === controllerId);
+    logEvent(
+      simSecondsElapsed,
+      'info',
+      'sim',
+      `${ctrl ? nodeLabel(ctrl) : controllerId} bound as a physics target — its sensor pair now drives a thermal zone, and AI:1 publishes the live temp on the BACnet side.`,
+    );
+    syncRunningState();
+    return true;
   }
 
   /** Remove the focused target. Used by the sidebar ✕ button. */
@@ -8063,7 +8132,7 @@
                     type="button"
                     class="phys-action"
                     title="Wire this controller's sensor pair as a physics target"
-                    onclick={() => onNodeClick({ node: selectedController })}
+                    onclick={() => wireAsPhysicsTarget(selectedController.id)}
                   >
                     → Wire as physics target
                   </button>

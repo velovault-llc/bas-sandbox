@@ -604,6 +604,26 @@ clean, build clean after.
   in the slice-5 air-side pass (fan CFM × ΔT(DAT, zone) as coil heat on the
   zone, like equipment coils already do).
 
+- **G41 (P1) — ✅ MITIGATED — the ⚡ physics-target binding is an invisible
+  prerequisite; everything LOOKS alive while the BACnet layer reads 0.**
+  James wired a Pt1000 + damper actuator to an FEC2611, ran the sim, and
+  watched ReadProperty-ACKs return `AI:1 = 0` with zero COVs — while node
+  cards showed lively "Out %" values. Root cause: without the physics-target
+  binding there's no thermal sim behind the controller, so `defaultAiSeed`
+  has no sample and AI:1 synthesizes to 0 forever (verified: the SAME rig
+  WITH the binding publishes the live zone temp, 72.0, on every ACK).
+  **Mitigation shipped:** Run-start now emits a warning naming each
+  sensor-wired-but-unbound controller and the exact fix (verified live).
+  **Deeper fix to consider:** auto-bind on sensor wire in Easy mode, or fold
+  the binding into wiring itself — the "physics target" concept is sandbox
+  plumbing a real tech has no mental model for.
+- **G42 (P3) — packet summaries could carry point NAMES, not just object
+  ids.** James: differentiating "dampers modulating" from "temps changing"
+  in the capture. Real wires carry `analog-input,1`, not names — but the
+  sandbox knows them (BacnetObject.name: 'Zone Temp', 'OAD-POS'…). Append
+  the name to ReadProperty/COV summaries (e.g. `AI:1 'Zone Temp' = 72.0`)
+  — supervisor-style resolved display, flagged as sandbox nicety.
+
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
   drive only wrote `sample.T_F` into *physics-wired targets'* config; the
