@@ -15,6 +15,29 @@ corpus pins byte encoding; it can't pin behavior. Real devices can.
 timing requires RS-485 hardware (USB-485 dongles + MS/TP devices). Until
 then, MS/TP stays spec+corpus validated.
 
+## START HERE — the two-machine minimum lab (~20 min)
+
+What `bacserv` makes a laptop into: a real BACnet **device**, not a
+controller — perfect protocol behavior (discovery, points, COV, writes
+with priorities) with no HVAC brain behind the points. For pinning wire
+behavior, that's everything.
+
+1. **Laptop:** unzip bacnet-tools → Command Prompt in that folder →
+   `bacserv 1001` → leave running. *Gotcha:* Windows Firewall can silently
+   drop packets without prompting for console apps — if discovery fails,
+   add an inbound allow rule for UDP 47808.
+2. **Desktop:** Wireshark on the LAN interface, capture filter
+   `udp port 47808`, leave rolling.
+3. **Desktop:** YABE → add BACnet/IP channel → Who-Is goes out → device
+   1001 appears. You now have a real BACnet network.
+4. **YABE:** read points → right-click an AI → Subscribe → write a value
+   (the priority prompt = the priority array, live).
+5. **Wireshark:** save the capture to `wireshark/lab1-first-contact.pcapng`.
+   Ground truth #1.
+
+This covers recipes 1–4 below (for timeout/retry: kill bacserv mid-poll).
+Everything after this section is just MORE DEVICES — same method.
+
 ## James's fleet → lab topology (planned 2026-06-10)
 
 | Box | Role |
