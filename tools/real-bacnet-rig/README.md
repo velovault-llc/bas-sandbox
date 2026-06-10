@@ -53,6 +53,18 @@ Everything after this section is just MORE DEVICES — same method.
   which blocks wireless peers from each other — the classic "firewall's
   open but nothing appears" culprit. Ethernet sidesteps it.
 - Wireshark needs nothing — passive capture.
+- **CHECK THE PROFILE FIRST (learned the hard way, 2026-06-10):** run
+  `Get-NetConnectionProfile` on EVERY machine before anything else. Both
+  lab boxes turned out to be **Public** — meaning every `-Profile Private`
+  firewall rule above had silently applied to NOTHING, and the lab "worked"
+  only via fragile per-app prompts until it didn't. Fix (admin):
+  `Set-NetConnectionProfile -Name '<profile>' -NetworkCategory Private`.
+- **Ping is NOT a liveness test** between Windows boxes — ICMP echo is
+  dropped by default even on Private. Either add
+  `New-NetFirewallRule -DisplayName 'ICMPv4-In (lab)' -Protocol ICMPv4 -IcmpType 8 -Direction Inbound -Action Allow -Profile Private`
+  on every machine, or test liveness with actual BACnet traffic (a tshark
+  sniff beats ping). Several "the device is asleep" diagnoses were really
+  "nobody answers ping ever."
 
 ## James's fleet → lab topology (planned 2026-06-10)
 
