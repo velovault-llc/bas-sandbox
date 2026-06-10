@@ -594,6 +594,16 @@ clean, build clean after.
   (after G39), mid-rise 12 vVAVs, G36 cold-start + economizer (fixed
   yesterday, G30).
 
+- **G40 (P2, physics) — the AHU's supply air barely conditions its wired
+  zone.** Found during slice-4 verification: AHU in Economizer, OAD 100%,
+  DAT 60 °F — and the wired zone still climbed 80→123 °F from its internal
+  loads (the same slow climb is visible in the G36 demos: economizer demo
+  zone went 76→79.6 °F *up*). The vahu→zone edge feeds the AHU its zone
+  TEMP, but the supply-air heat removal back INTO the zone is weak/absent —
+  the zone's only strong physics are envelope + internal loads. Fix belongs
+  in the slice-5 air-side pass (fan CFM × ΔT(DAT, zone) as coil heat on the
+  zone, like equipment coils already do).
+
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
   drive only wrote `sample.T_F` into *physics-wired targets'* config; the

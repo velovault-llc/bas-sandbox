@@ -83,6 +83,8 @@
     assignMstpAddressing,
     validateMstpTrunks,
     validateMstpTopology,
+    VAHU_POINTS,
+    VAHU_TERMINAL_ROLES,
     validateBacnetIpNetwork,
     validateIpZones,
     parseIpv4 as parseIpv4FromUiCanvas,
@@ -463,8 +465,20 @@
    *  duct/pipe styling + a directional arrowhead — the one place an arrow
    *  MEANS something (network trunks have no direction). */
   function isProcessLink(e: Edge): boolean {
-    const s = nodes.find((n) => n.id === e.source);
-    const t = nodes.find((n) => n.id === e.target);
+    // TDZ guard: restoreOrDefaults() styles edges during component init,
+    // BEFORE the `nodes` $state below is declared — reading it there
+    // throws, and the restore try/catch would silently swallow it and
+    // return the EMPTY default canvas (i.e. wipe the user's work). Treat
+    // pre-init as "not a process link"; the post-init restyle pass fixes
+    // the arrows once nodes exist.
+    let nodeList: Node[];
+    try {
+      nodeList = nodes;
+    } catch {
+      return false;
+    }
+    const s = nodeList.find((n) => n.id === e.source);
+    const t = nodeList.find((n) => n.id === e.target);
     if (!s || !t) return false;
     const sk = nodeKind(s);
     const tk = nodeKind(t);
@@ -697,6 +711,10 @@
 
   let nodes = $state.raw<Node[]>(_initialState.nodes);
   let edges = $state.raw<Edge[]>(_initialState.edges);
+  // Restyle once now that `nodes` exists — restore-time styling can't see
+  // endpoint kinds (TDZ guard in isProcessLink), so process-link arrows
+  // would otherwise be missing until the first Run.
+  edges = edges.map((e) => withStyle(e));
 
   // Per-kind counter so default names auto-increment ("VAV-1", "VAV-2", ...).
   const counters: Record<string, number> = { ..._initialState.counters };
@@ -2196,25 +2214,49 @@
       const srcN = nodes.find((n) => n.id === edge.source);
       const tgtN = nodes.find((n) => n.id === edge.target);
       if (!srcN || !tgtN) continue;
-      if (nodeKind(srcN) !== 'controller' || nodeKind(tgtN) !== 'actuator') continue;
-
-      const sample = sampleByCtrl.get(srcN.id);
-      if (!sample) continue;
+      const srcKindAct = nodeKind(srcN);
+      if ((srcKindAct !== 'controller' && srcKindAct !== 'vahu') || nodeKind(tgtN) !== 'actuator') continue;
 
       // Multi-actuator routing: look up the binding for the source terminal
       // (the controller's AO-N / BO-N). If bound to a role, use that role's
       // envKey to pull the commanded value from the program's outputs.
       // Falls back to sample.actuator (the primary command) when no binding
       // exists — so a generic single-output controller still works.
-      const srcCtrlProgram = programStore.byId[srcN.id];
-      const srcOutputs = programOutputsByCtrl.get(srcN.id) ?? {};
-      const srcBinding = edge.sourceHandle
-        ? srcCtrlProgram?.bindings?.bindings.find((b) => b.terminalId === edge.sourceHandle)
-        : undefined;
-      const srcRoleTpl = srcBinding ? findTileTemplate(srcBinding.role) : undefined;
-      const routedKey = srcRoleTpl?.envKey;
-      const routedValue = routedKey && routedKey in srcOutputs ? srcOutputs[routedKey] : undefined;
-      const commanded = Math.max(0, Math.min(1, routedValue ?? sample.actuator));
+      // A packaged AHU drives its actuators straight from the G36 sequence
+      // state, routed by terminal: AO-1 fan VFD, AO-2 OA damper, AO-3
+      // heating valve, AO-4 cooling valve, BO-1 fan start/stop. (Uses last
+      // tick's state — the vAHU steps later in this tick; 1-tick lag is
+      // invisible next to a 90s actuator stroke.)
+      let commanded: number;
+      let srcRoleTpl: ReturnType<typeof findTileTemplate> | undefined;
+      let vahuRole: string | null = null;
+      if (srcKindAct === 'vahu') {
+        const vst = vahuStates.get(srcN.id);
+        if (!vst) continue;
+        const h = edge.sourceHandle ?? '';
+        const cmd =
+          h === 'AO-1' ? vst.fanSpeed
+          : h === 'AO-2' ? vst.oaDamperPct / 100
+          : h === 'AO-3' ? vst.heatValvePct / 100
+          : h === 'AO-4' ? vst.coolValvePct / 100
+          : h === 'BO-1' ? (vst.fanSpeed > 0.01 ? 1 : 0)
+          : null;
+        if (cmd === null) continue;
+        commanded = Math.max(0, Math.min(1, cmd));
+        vahuRole = (VAHU_TERMINAL_ROLES[h] ?? '').split(' ')[0] || null;
+      } else {
+        const sample = sampleByCtrl.get(srcN.id);
+        if (!sample) continue;
+        const srcCtrlProgram = programStore.byId[srcN.id];
+        const srcOutputs = programOutputsByCtrl.get(srcN.id) ?? {};
+        const srcBinding = edge.sourceHandle
+          ? srcCtrlProgram?.bindings?.bindings.find((b) => b.terminalId === edge.sourceHandle)
+          : undefined;
+        srcRoleTpl = srcBinding ? findTileTemplate(srcBinding.role) : undefined;
+        const routedKey = srcRoleTpl?.envKey;
+        const routedValue = routedKey && routedKey in srcOutputs ? srcOutputs[routedKey] : undefined;
+        commanded = Math.max(0, Math.min(1, routedValue ?? sample.actuator));
+      }
 
       const tgtData = tgtN.data as {
         actuatorState?: { actual: number };
@@ -2256,7 +2298,13 @@
         ? edge.sourceHandle
         : null;
       const roleSuffix = srcTerminal
-        ? ` · ${srcTerminal}${srcRoleTpl ? ` → ${srcRoleTpl.display}` : ' → (unbound role)'}`
+        ? ` · ${srcTerminal}${
+            vahuRole
+              ? ` → ${vahuRole}`
+              : srcRoleTpl
+                ? ` → ${srcRoleTpl.display}`
+                : ' → (unbound role)'
+          }`
         : '';
       // Easy mode names the stuck fault outright (omniscient hint);
       // Realistic just shows the symptom — commanded ≠ position, forever.
@@ -2649,7 +2697,18 @@
           if (zst) { zoneTemp = zst.T_zone; break; }
         }
 
-        const inputs: VAhuInputs = { oat, rat: zoneTemp, zoneTemp, occupied };
+        // Terminal block (slice 4): run the signal bridge over this AHU's
+        // wired terminals — sensors wired to AI-1 (OAT) / AI-4 (ZN-T)
+        // OVERRIDE the synthetic sources, raw+scaled included, so a wrong
+        // curve or an injected fault flows into the sequence exactly like
+        // it would on a real packaged unit. Unwired terminals keep the
+        // synthetic fallbacks (weather OAT, wired-Zone temp).
+        runBridgePass(node.id, undefined, simHourForZones, 0, zoneTemp, oat);
+        const vTerm = terminalScaledByCtrlThisTick.get(node.id);
+        const oatEff = vTerm?.get('AI-1')?.value ?? oat;
+        const znEff = vTerm?.get('AI-4')?.value ?? zoneTemp;
+
+        const inputs: VAhuInputs = { oat: oatEff, rat: znEff, zoneTemp: znEff, occupied };
         const prev = vahuStates.get(node.id) ?? initVAhuState(0, cfg);
         const next = stepVAhu(prev, inputs, simSecondsElapsed, cfg);
         vahuStateNext.set(node.id, next);
@@ -4971,14 +5030,17 @@
         if (direction === 'source' && e.source === node.id && e.sourceHandle) used.add(e.sourceHandle);
       }
       // Point counts live on the vendor catalog (looked up by vendorModelId),
-      // not on the node data itself. For a generic controller with no model
+      // not on the node data itself. The packaged AHU has a FIXED terminal
+      // block (its G36 sequence I/O). For a generic controller with no model
       // picked, fall back to a permissive 16-channel default so the user can
       // still wire things up.
       const data = node.data as { vendorModelId?: string } | undefined;
       const model = data?.vendorModelId ? findControllerModel(data.vendorModelId) : undefined;
       const points: Record<string, number> = model?.points
         ? { ...model.points }
-        : { UI: 16, AI: 8, BI: 8, UO: 8, AO: 4, BO: 4 };
+        : nodeKind(node) === 'vahu'
+          ? { ...VAHU_POINTS }
+          : { UI: 16, AI: 8, BI: 8, UO: 8, AO: 4, BO: 4 };
       for (const kind of kinds) {
         const count = points[kind] ?? 0;
         for (let i = 1; i <= count; i++) {
@@ -5053,7 +5115,10 @@
     // is the position-feedback path (an AF24-MFT's 2-10V feedback line wires
     // from the actuator back to a UI/AI on the controller) — same auto-shift
     // semantics as sensors.
-    if ((srcKind === 'sensor' || srcKind === 'safety' || srcKind === 'actuator') && tgtKind === 'controller') {
+    if (
+      (srcKind === 'sensor' || srcKind === 'safety' || srcKind === 'actuator') &&
+      (tgtKind === 'controller' || tgtKind === 'vahu')
+    ) {
       const tgtTermKind = termKindOf(resolvedTargetHandle);
       const targetIsOutput = !!tgtTermKind && OUTPUTS.has(tgtTermKind as 'UO' | 'AO' | 'BO');
       const targetIsTaken = !!resolvedTargetHandle && edges.some(
@@ -5083,7 +5148,7 @@
     // teachable field mistake (G25): the wire lands, tagged as a miswire,
     // with zero warning — Check-my-work / the AI reveal it on demand.
     let outputMiswire: string | null = null;
-    if (srcKind === 'controller' && tgtKind === 'actuator') {
+    if ((srcKind === 'controller' || srcKind === 'vahu') && tgtKind === 'actuator') {
       const actuatorModelId = (tgt.data as { actuatorModelId?: string } | undefined)?.actuatorModelId;
       const actuatorModel = actuatorModelId ? findActuatorModel(actuatorModelId) : undefined;
       const wantsAnalog = actuatorModel?.signal === 'analog-0-10v' ||
@@ -5141,7 +5206,7 @@
     }
 
     // Mirror case: controller → sensor/safety (user dragged backwards).
-    if (srcKind === 'controller' && (tgtKind === 'sensor' || tgtKind === 'safety')) {
+    if ((srcKind === 'controller' || srcKind === 'vahu') && (tgtKind === 'sensor' || tgtKind === 'safety')) {
       const srcTermKind = termKindOf(resolvedSourceHandle);
       const sourceIsOutput = !!srcTermKind && OUTPUTS.has(srcTermKind as 'UO' | 'AO' | 'BO');
       const sourceIsTaken = !!resolvedSourceHandle && edges.some(
@@ -7818,6 +7883,18 @@
                 room sits at setpoint). Runs the economizer / heating / cooling
                 sequence and exposes 15 BACnet objects in the packet log.
               </p>
+              <div class="sensor-row sensor-row-block">
+                <span class="sensor-sub">Terminal block (wire sensors / actuators here)</span>
+                <div class="actuator-specs">
+                  {#each Object.entries(VAHU_TERMINAL_ROLES) as [term, role] (term)}
+                    <span class="spec-chip" title={role}>{term} · {role.split(' ')[0]}</span>
+                  {/each}
+                </div>
+                <span class="cond-sub"
+                  >Wiring a sensor to AI-1 / AI-4 overrides the synthetic OAT / zone temp; AO/BO
+                  terminals drive wired actuators from the live sequence.</span
+                >
+              </div>
               {#if vahuLive}
                 <div class="sensor-row sensor-row-block">
                   <span class="sensor-sub">Live sequence state</span>

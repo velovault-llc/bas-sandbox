@@ -7,6 +7,7 @@
     findExpansionModule,
     generateTerminals,
     fixedOnboardPoints,
+    VAHU_POINTS,
     type TerminalLabel,
   } from '@bas/core';
 
@@ -136,6 +137,13 @@
       points = findControllerModel(data.vendorModelId)?.points;
     } else if (data.kind === 'expansion' && data.expansionModelId) {
       points = findExpansionModule(data.expansionModelId)?.addedPoints;
+    } else if ((data.kind as string) === 'vahu') {
+      // Packaged AHU exposes its G36 sequence I/O as a real terminal
+      // block (AI-1 OAT … AO-2 OA-DMPR …) so sensors and actuators wire
+      // to it like any controller. Role map in the AHU inspector.
+      // ('vahu' isn't in the narrow BasNodeKind union — it rides the same
+      // component with looser data typing, hence the cast.)
+      points = VAHU_POINTS;
     }
     if (!points) return null;
     if (fixedOnboardPoints(points) === 0) return null;

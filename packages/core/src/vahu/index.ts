@@ -1,7 +1,7 @@
 // vAHU barrel.
 
 export { stepVAhu } from './step.js';
-export { initVAhuState, DEFAULT_VAHU_CONFIG } from './types.js';
+export { initVAhuState, DEFAULT_VAHU_CONFIG, VAHU_POINTS, VAHU_TERMINAL_ROLES } from './types.js';
 export type {
   VAhuMode,
   VAhuConfig,

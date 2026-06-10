@@ -155,6 +155,8 @@ export {
   stepVAhu,
   initVAhuState,
   DEFAULT_VAHU_CONFIG,
+  VAHU_POINTS,
+  VAHU_TERMINAL_ROLES,
   synthesizeVAhuObjects,
   vAhuCovDeltas,
 } from './vahu/index.js';

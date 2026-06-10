@@ -104,6 +104,29 @@ export interface VAhuState {
   readonly lastStepSec: number;
 }
 
+/** The packaged AHU's physical terminal block — the G36 sequence's I/O
+ *  exposed as wireable terminals, exactly like a controller's point list.
+ *  Inputs are the temps the sequence reads; outputs are what it drives.
+ *  Unwired terminals fall back to the sandbox's synthetic sources (weather
+ *  OAT, sim-clock occupancy, wired-Zone temp), so a bare AHU still runs —
+ *  wiring a terminal OVERRIDES the synthetic source with the real signal. */
+export const VAHU_POINTS = { AI: 4, AO: 4, BO: 1 } as const;
+
+/** What each terminal means to the sequence. AI-2/AI-3 (MAT/DAT) are
+ *  computed internally by the v1 sequence — wiring sensors there is
+ *  display-only for now; AI-1/AI-4 actively override. */
+export const VAHU_TERMINAL_ROLES: Readonly<Record<string, string>> = {
+  'AI-1': 'OAT (outside air temp)',
+  'AI-2': 'MAT (mixed air temp — display only, sequence computes it)',
+  'AI-3': 'DAT (discharge air temp — display only, sequence computes it)',
+  'AI-4': 'ZN-T (zone temp)',
+  'AO-1': 'SF-SPD (supply fan VFD speed)',
+  'AO-2': 'OA-DMPR (outside air damper)',
+  'AO-3': 'HTG-VLV (heating valve)',
+  'AO-4': 'CLG-VLV (cooling valve)',
+  'BO-1': 'SF-S/S (supply fan start/stop)',
+};
+
 export function initVAhuState(simSec: number, config: VAhuConfig = DEFAULT_VAHU_CONFIG): VAhuState {
   return {
     mode: 'off',
