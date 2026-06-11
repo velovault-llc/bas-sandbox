@@ -34,6 +34,14 @@ SHIPPED at 0.35 ACH, interior conductance queued for slice 5), G55
 typo fixed). The EOL validator caught the demo author terminating
 mid-chain. 372/372 tests.
 
+**Multi-object COV (James: the log was all AI:1):** supervisors now
+subscribe to a representative point SET per child — AI(s), AV, AO, and a
+binary point (BI, falling back to BO on BI-less hardware like the ECY-VAV).
+Wire layer learned AO/BI/BO type codes + ENUMERATED present-value for
+binary; binary subscribes read "(on change)" and notifications render
+active/inactive. Per-tick renewal/emit caps now round-robin (move-to-tail)
+so big sites don't starve insertion-order tails. 375/375. Deployed.
+
 **Still open from the COV chapter:** G44 (unconfirmed/subscription-less COV
 broadcasts — wire encoder exists, behavior unmodeled), G50 (duplicate
 subscriptions multiplying traffic — wants Site Director's manual subscribe
