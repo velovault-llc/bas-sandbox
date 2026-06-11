@@ -394,11 +394,14 @@ export function emitSubscribeCov(opts: {
   const unitsPart = opts.deadbandUnits ?? '';
   const lifetimeS = opts.lifetimeSeconds ?? 0;
   const leasePart = lifetimeS > 0
-    ? `, lifetime ${lifetimeS}s${opts.renewal ? ' · renewal' : ''}`
+    ? `${opts.renewal ? '' : ''}lifetime ${lifetimeS}s${opts.renewal ? ' · renewal' : ''}`
     : '';
+  // Binary objects have no covIncrement — any state change notifies.
+  const isBinaryObj = /^b[iov][,:]/i.test(opts.objectId);
+  const triggerPart = isBinaryObj ? 'on change' : `deadband ${opts.deadband}${unitsPart}`;
+  const detail = [triggerPart, leasePart].filter(Boolean).join(', ');
   const summary =
-    `${opts.srcLabel}${dstPart}: SubscribeCOV ${opts.objectId} ` +
-    `(deadband ${opts.deadband}${unitsPart}${leasePart})`;
+    `${opts.srcLabel}${dstPart}: SubscribeCOV ${opts.objectId} (${detail})`;
   let wireBytes: string | undefined;
   try {
     wireBytes = bytesToHex(wireEncodeSubscribeCov({
@@ -472,9 +475,15 @@ export function emitCovNotification(opts: {
 }): BuiltPacket {
   const dstPart = opts.dstLabel ? ` → ${opts.dstLabel}` : '';
   const sf = opts.statusFlags ?? 'F,F,F,F';
+  // Binary objects read active/inactive like a real client renders the
+  // Enumerated present-value; analog ones read as numbers.
+  const isBinaryObj = /^b[iov][,:]/i.test(opts.objectId);
+  const valueDisplay = isBinaryObj
+    ? ((typeof opts.value === 'number' ? opts.value >= 0.5 : opts.value) ? 'active' : 'inactive')
+    : `${opts.value}`;
   const summary =
     `${opts.srcLabel}${dstPart}: ConfirmedCOVNotification ${opts.objectId} ` +
-    `present-value=${opts.value} · statusFlags ${sf}`;
+    `present-value=${valueDisplay} · statusFlags ${sf}`;
   let wireBytes: string | undefined;
   if (typeof opts.value === 'number') {
     try {

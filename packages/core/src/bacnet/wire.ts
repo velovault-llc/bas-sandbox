@@ -79,7 +79,10 @@ const APP_TAG_OBJECT_ID = 12;
 
 // ── BACnetObjectType enumeration (subset — see §21) ──────────────────
 const OBJECT_TYPE_ANALOG_INPUT = 0;
+const OBJECT_TYPE_ANALOG_OUTPUT = 1;
 const OBJECT_TYPE_ANALOG_VALUE = 2;
+const OBJECT_TYPE_BINARY_INPUT = 3;
+const OBJECT_TYPE_BINARY_OUTPUT = 4;
 const OBJECT_TYPE_BINARY_VALUE = 5;
 const OBJECT_TYPE_DEVICE = 8;
 
@@ -89,14 +92,25 @@ const OBJECT_TYPE_DEVICE = 8;
 function objectTypeFromString(s: string): number | null {
   // Two formats in the codebase: "AI:1" (panel display) and
   // "device,1234" (bacpypes3-style). Both supported.
-  const m = /^([a-z]+)[,:](\d+)$/i.exec(s);
+  const m = /^([a-z-]+)[,:](\d+)$/i.exec(s);
   if (!m) return null;
   const t = m[1].toLowerCase();
   if (t === 'ai' || t === 'analog-input') return OBJECT_TYPE_ANALOG_INPUT;
+  if (t === 'ao' || t === 'analog-output') return OBJECT_TYPE_ANALOG_OUTPUT;
   if (t === 'av' || t === 'analog-value') return OBJECT_TYPE_ANALOG_VALUE;
+  if (t === 'bi' || t === 'binary-input') return OBJECT_TYPE_BINARY_INPUT;
+  if (t === 'bo' || t === 'binary-output') return OBJECT_TYPE_BINARY_OUTPUT;
   if (t === 'bv' || t === 'binary-value') return OBJECT_TYPE_BINARY_VALUE;
   if (t === 'device') return OBJECT_TYPE_DEVICE;
   return null;
+}
+
+/** Binary object types carry an ENUMERATED present-value on the wire
+ *  (inactive=0 / active=1, §12.6–12.8) — analog types carry Real. */
+function isBinaryObjectType(typeCode: number): boolean {
+  return typeCode === OBJECT_TYPE_BINARY_INPUT
+    || typeCode === OBJECT_TYPE_BINARY_OUTPUT
+    || typeCode === OBJECT_TYPE_BINARY_VALUE;
 }
 
 function objectInstanceFromString(s: string): number {
@@ -443,16 +457,22 @@ export interface StatusFlagsBits {
  *  layout is: ctx0=propId, ctx1=arrayIdx (optional, skipped),
  *  ctx2=opening tag wrapping the Any value, closing tag 2, ctx3=
  *  priority (optional, skipped). We emit two entries:
- *     present-value (85, Real)
+ *     present-value (85, Real — or Enumerated for binary objects)
  *     status-flags (111, BitString)
  *  Wrapped in opening/closing tag 4. */
-function buildCovListOfValues(presentValue: number, flags: StatusFlagsBits): number[] {
+function buildCovListOfValues(
+  presentValue: number,
+  flags: StatusFlagsBits,
+  binary: boolean,
+): number[] {
   return [
     openingTag(4),
       // ── property[0] present-value ──
       ...ctxTagBytes(0, encodeUnsignedBytes(85)),
       openingTag(2),
-        ...encodeReal(presentValue),
+        ...(binary
+          ? encodeEnumerated(presentValue >= 0.5 ? 1 : 0)
+          : encodeReal(presentValue)),
       closingTag(2),
       // ── property[1] status-flags ──
       ...ctxTagBytes(0, encodeUnsignedBytes(111)),
@@ -467,8 +487,8 @@ function buildCovListOfValues(presentValue: number, flags: StatusFlagsBits): num
  *  Carries the standard payload shape used by every real BACnet
  *  device: process-id, initiating-device, monitored-object,
  *  time-remaining, and a listOfValues of (present-value, status-
- *  flags). Real-only present-value for now; Boolean/Enumerated for
- *  binary objects when we need them. */
+ *  flags). Present-value is Real for analog objects, Enumerated
+ *  (inactive/active) for binary ones — matching real stacks. */
 export function encodeConfirmedCovNotification(opts: {
   readonly invokeId: number;
   readonly subscriberProcessId: number;
@@ -498,7 +518,7 @@ export function encodeConfirmedCovNotification(opts: {
     ...ctxTagBytes(1, objectIdRawBytes(OBJECT_TYPE_DEVICE, opts.initiatingDeviceId)),
     ...ctxTagBytes(2, objectIdRawBytes(typeCode, instance)),
     ...ctxTagBytes(3, encodeUnsignedBytes(opts.timeRemainingSec)),
-    ...buildCovListOfValues(opts.presentValue, opts.statusFlags),
+    ...buildCovListOfValues(opts.presentValue, opts.statusFlags, isBinaryObjectType(typeCode)),
   ];
   const npdu = buildNpdu({ expectingReply: true });
   return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);
@@ -530,7 +550,7 @@ export function encodeUnconfirmedCovNotification(opts: {
     ...ctxTagBytes(1, objectIdRawBytes(OBJECT_TYPE_DEVICE, opts.initiatingDeviceId)),
     ...ctxTagBytes(2, objectIdRawBytes(typeCode, instance)),
     ...ctxTagBytes(3, encodeUnsignedBytes(opts.timeRemainingSec)),
-    ...buildCovListOfValues(opts.presentValue, opts.statusFlags),
+    ...buildCovListOfValues(opts.presentValue, opts.statusFlags, isBinaryObjectType(typeCode)),
   ];
   const npdu = buildNpdu({});
   return buildBvlc(BVLC_FN_ORIGINAL_UNICAST_NPDU, [...npdu, ...apduHeader, ...body]);

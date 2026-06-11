@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   emitSubscribeCov,
+  emitCovNotification,
   COV_LIFETIME_DEFAULT_S,
   COV_SCAN_MIN_S,
   COV_SCAN_MAX_S,
@@ -88,5 +89,57 @@ describe('emitSubscribeCov lease threading (G48)', () => {
     const indefinite = emitSubscribeCov(base);
     expect(indefinite.summary).not.toContain('lifetime');
     expect(indefinite.bytes?.toLowerCase().endsWith('3900')).toBe(true);
+  });
+});
+
+describe('binary-object COV (BI/BO/BV on the wire)', () => {
+  it('SubscribeCOV on a binary object reads "on change" — covIncrement is numeric-only (§13.1)', () => {
+    const p = emitSubscribeCov({
+      simSec: 10,
+      srcLabel: 'NAE-1',
+      dstLabel: 'VAV-1',
+      objectId: 'BI:1',
+      deadband: 0,
+      lifetimeSeconds: 120,
+    });
+    expect(p.summary).toContain('(on change, lifetime 120s)');
+    expect(p.summary).not.toContain('deadband');
+    expect(p.bytes).toBeDefined(); // BI type code now known to the encoder
+  });
+
+  it('binary notification carries ENUMERATED present-value and renders active/inactive', () => {
+    const active = emitCovNotification({
+      simSec: 10,
+      srcLabel: 'VAV-1',
+      dstLabel: 'NAE-1',
+      objectId: 'BV:2',
+      value: 1,
+    });
+    expect(active.summary).toContain('present-value=active');
+    // listOfValues PV wrapped in ctx tag 2: opening 0x2e, Enumerated
+    // tag+len 0x91, value 0x01, closing 0x2f.
+    expect(active.bytes?.toLowerCase()).toContain('2e91012f');
+
+    const inactive = emitCovNotification({
+      simSec: 10,
+      srcLabel: 'VAV-1',
+      dstLabel: 'NAE-1',
+      objectId: 'BI:1',
+      value: 0,
+    });
+    expect(inactive.summary).toContain('present-value=inactive');
+    expect(inactive.bytes?.toLowerCase()).toContain('2e91002f');
+  });
+
+  it('analog notification still encodes Real (tag 0x44)', () => {
+    const p = emitCovNotification({
+      simSec: 10,
+      srcLabel: 'VAV-1',
+      dstLabel: 'NAE-1',
+      objectId: 'AO:1',
+      value: 42.5,
+    });
+    expect(p.summary).toContain('present-value=42.5');
+    expect(p.bytes?.toLowerCase()).toContain('2e44'); // ctx-2 open + Real tag
   });
 });

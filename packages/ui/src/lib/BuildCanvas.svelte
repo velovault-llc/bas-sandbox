@@ -1364,6 +1364,8 @@
     objectId: string;
     /** Deadband in the object's native units (°F for AI, etc.). */
     deadband: number;
+    /** Display units for the deadband ('°F', '%'). Binary subs ignore. */
+    deadbandUnits: string;
     /** Lease state (G48): sim-time of the last (re)subscribe. */
     subscribedAtSimSec: number;
     lifetimeSeconds: number;
@@ -1388,6 +1390,48 @@
   // Default deadband: 0.5°F is the industry-standard zone-temp deadband.
   // For non-temperature objects we fall back to a relative 1% movement.
   const COV_DEADBAND_DEFAULT = 0.5;
+
+  /** The covIncrement a supervisor configures per point: temp AIs get
+   *  the 0.5°F zone deadband, percent-valued points (AO/AV commands)
+   *  get 1%, binary points have NO increment — any state change
+   *  notifies (§13.1: covIncrement applies to numeric PVs only). */
+  function covDeadbandFor(obj: import('@bas/core').BacnetObject): number {
+    if (obj.type.startsWith('binary')) return 0;
+    if (obj.units === '%') return 1;
+    return COV_DEADBAND_DEFAULT;
+  }
+
+  /** Pick the point set a supervisor subscribes to on a child device.
+   *  Real supervisors subscribe to every MAPPED point — the sandbox
+   *  picks the points that carry meaning so the log stays legible:
+   *  primary AI, a second named/live AI, the first AV (PI command /
+   *  setpoint readback), the first named/live AO, and the first binary
+   *  point. Unprogrammed controllers naturally collapse to AI + BI —
+   *  exactly what their object table actually offers a supervisor. */
+  function pickCovSubscriptionSet(
+    objs: import('@bas/core').BacnetObject[],
+  ): import('@bas/core').BacnetObject[] {
+    const picks: import('@bas/core').BacnetObject[] = [];
+    const meaningful = (o: import('@bas/core').BacnetObject) =>
+      !/unassigned/i.test(o.name) ||
+      (typeof o.presentValue === 'number' && o.presentValue !== 0);
+    const ais = objs.filter((o) => o.type === 'analog-input');
+    if (ais[0]) picks.push(ais[0]);
+    const secondAi = ais.slice(1).find(meaningful);
+    if (secondAi) picks.push(secondAi);
+    const av = objs.find((o) => o.type === 'analog-value');
+    if (av) picks.push(av);
+    const ao = objs.find((o) => o.type === 'analog-output' && meaningful(o));
+    if (ao) picks.push(ao);
+    const binary =
+      objs.find((o) => o.type.startsWith('binary') && !/unassigned/i.test(o.name)) ??
+      objs.find((o) => o.type === 'binary-input') ??
+      // Some hardware has no BIs at all (Distech ECY-VAV: UI/AO/BO
+      // only) — surface its first BO so binary traffic still exists.
+      objs.find((o) => o.type === 'binary-output');
+    if (binary) picks.push(binary);
+    return picks.slice(0, 5);
+  }
 
   // ── Retry-on-timeout state ──────────────────────────────────────────
   // When a confirmed service (ReadProperty / WriteProperty / CoV) goes
@@ -2879,10 +2923,9 @@
             iAmOffsetS += iAmStaggerS;
           }
           // After discovery, the supervisor subscribes to each child's
-          // first AI for change-of-value notifications. One SubscribeCOV
-          // per child + an ACK. Real supervisors subscribe to multiple
-          // objects per device; we pick AI:1 as a representative for
-          // demo legibility, but the mechanism scales.
+          // representative point set (primary AI, live AV/AO, first
+          // binary) — one SubscribeCOV + ACK per point, the way a real
+          // supervisor subscribes to every mapped point.
           for (const d of devices) {
             if (d.nodeId === initiator.nodeId) continue;
             const childNode = nodes.find((n) => n.id === d.nodeId);
@@ -2899,63 +2942,69 @@
               envOutputs: controllerBridge.envOutputsByCtrl.get(d.nodeId),
               terminalFaults: terminalFaultsFor(d.nodeId),
             });
-            const aiObj = childObjects.find((o) => o.type === 'analog-input');
-            if (!aiObj) continue;
-            // Subscribe-COV request.
-            logBacnetPacket({
-              simSec: simSecondsElapsed,
-              trunkId: trunkEdgeId,
-              trunkLabel: trunkLabelStr,
-              srcMac: initiator.mac,
-              dstMac: d.mac,
-              service: 'SubscribeCOV',
-              objectId: aiObj.id,
-              summary: `${initiator.label} → ${d.label}: SubscribeCOV ${aiObj.id} (deadband ${COV_DEADBAND_DEFAULT}°F, lifetime ${COV_LIFETIME_DEFAULT_S}s)`,
-              layer: 'app',
-            });
-            // ACK from the controller — confirms it'll start pushing.
-            // Delayed by one round-trip from the matching request.
-            logBacnetPacket({
-              simSec: simSecondsElapsed + trunkLatencyS,
-              trunkId: trunkEdgeId,
-              trunkLabel: trunkLabelStr,
-              srcMac: d.mac,
-              dstMac: initiator.mac,
-              service: 'SubscribeCOV-ACK',
-              objectId: aiObj.id,
-              summary: `${d.label} → ${initiator.label}: SubscribeCOV-ACK ${aiObj.id} accepted`,
-              layer: 'app',
-            });
-            // Seed the subscription with the current value so the next
-            // tick doesn't fire a spurious notification. The subscriber
-            // still learns the starting value on the wire: every
-            // (re)subscribe schedules an initial notification 0.2–7 s
-            // out (G47, lab3 ground truth).
-            const seedValue = typeof aiObj.presentValue === 'boolean'
-              ? aiObj.presentValue
-              : aiObj.presentValue;
-            const subKey = `${trunkEdgeId}|${d.nodeId}|${aiObj.id}`;
-            covSubscriptions.set(subKey, {
-              trunkId: trunkEdgeId,
-              trunkLabel: trunkLabelStr,
-              childNodeId: d.nodeId,
-              childLabel: d.label,
-              childMac: d.mac,
-              supNodeId: initiator.nodeId,
-              supLabel: initiator.label,
-              supMac: initiator.mac,
-              ackLatencyS: trunkLatencyS,
-              objectId: aiObj.id,
-              deadband: COV_DEADBAND_DEFAULT,
-              subscribedAtSimSec: simSecondsElapsed,
-              lifetimeSeconds: COV_LIFETIME_DEFAULT_S,
-              renewals: 0,
-              initialNotifyAtSimSec:
-                simSecondsElapsed + trunkLatencyS + covScanDelay(subKey, 0),
-              nextScanAtSimSec: simSecondsElapsed + covScanDelay(`${subKey}|scan`, 0),
-              scans: 0,
-              lastReportedValue: seedValue,
-            });
+            const subObjs = pickCovSubscriptionSet(childObjects);
+            let subOffsetS = 0;
+            for (const subObj of subObjs) {
+              const db = covDeadbandFor(subObj);
+              const trigger = subObj.type.startsWith('binary')
+                ? 'on change'
+                : `deadband ${db}${subObj.units === '%' ? '%' : '°F'}`;
+              // Subscribe-COV request. Pairs stagger slightly so the log
+              // reads as a burst of distinct exchanges, not one instant.
+              logBacnetPacket({
+                simSec: simSecondsElapsed + subOffsetS,
+                trunkId: trunkEdgeId,
+                trunkLabel: trunkLabelStr,
+                srcMac: initiator.mac,
+                dstMac: d.mac,
+                service: 'SubscribeCOV',
+                objectId: subObj.id,
+                summary: `${initiator.label} → ${d.label}: SubscribeCOV ${subObj.id} '${subObj.name}' (${trigger}, lifetime ${COV_LIFETIME_DEFAULT_S}s)`,
+                layer: 'app',
+              });
+              // ACK from the controller — confirms it'll start pushing.
+              // Delayed by one round-trip from the matching request.
+              logBacnetPacket({
+                simSec: simSecondsElapsed + subOffsetS + trunkLatencyS,
+                trunkId: trunkEdgeId,
+                trunkLabel: trunkLabelStr,
+                srcMac: d.mac,
+                dstMac: initiator.mac,
+                service: 'SubscribeCOV-ACK',
+                objectId: subObj.id,
+                summary: `${d.label} → ${initiator.label}: SubscribeCOV-ACK ${subObj.id} accepted`,
+                layer: 'app',
+              });
+              // Seed the subscription with the current value so the next
+              // tick doesn't fire a spurious notification. The subscriber
+              // still learns the starting value on the wire: every
+              // (re)subscribe schedules an initial notification 0.2–7 s
+              // out (G47, lab3 ground truth).
+              const subKey = `${trunkEdgeId}|${d.nodeId}|${subObj.id}`;
+              covSubscriptions.set(subKey, {
+                trunkId: trunkEdgeId,
+                trunkLabel: trunkLabelStr,
+                childNodeId: d.nodeId,
+                childLabel: d.label,
+                childMac: d.mac,
+                supNodeId: initiator.nodeId,
+                supLabel: initiator.label,
+                supMac: initiator.mac,
+                ackLatencyS: trunkLatencyS,
+                objectId: subObj.id,
+                deadband: db,
+                deadbandUnits: subObj.units === '%' ? '%' : '°F',
+                subscribedAtSimSec: simSecondsElapsed,
+                lifetimeSeconds: COV_LIFETIME_DEFAULT_S,
+                renewals: 0,
+                initialNotifyAtSimSec:
+                  simSecondsElapsed + subOffsetS + trunkLatencyS + covScanDelay(subKey, 0),
+                nextScanAtSimSec: simSecondsElapsed + covScanDelay(`${subKey}|scan`, 0),
+                scans: 0,
+                lastReportedValue: subObj.presentValue,
+              });
+              subOffsetS += trunkLatencyS * 2;
+            }
           }
         }
 
@@ -3265,53 +3314,61 @@
           const aiObj = childObjects.find((o) => o.type === 'analog-input');
           if (!aiObj) continue;
 
-          // ── One-time pair announcement: SubscribeCOV + ACK ──────
+          // ── One-time pair announcement: SubscribeCOV + ACK per
+          // point in the representative set ────────────────────────
           if (!announcedIpPairs.has(pairKey)) {
             announcedIpPairs.add(pairKey);
-            const subReq = emitSubscribeCov({
-              simSec: simSecondsElapsed,
-              trunkId: child.trunkId,
-              srcLabel: supLabel,
-              dstLabel: child.label,
-              objectId: aiObj.id,
-              deadband: COV_DEADBAND_DEFAULT,
-              deadbandUnits: '°F',
-              lifetimeSeconds: COV_LIFETIME_DEFAULT_S,
-            });
-            logBacnetPacket({ ...subReq, trunkLabel: child.trunkLabel });
-            const subAck = emitSubscribeCovAck({
-              simSec: simSecondsElapsed + BACNET_IP_RTT_SECONDS,
-              trunkId: child.trunkId,
-              srcLabel: child.label,
-              dstLabel: supLabel,
-              objectId: aiObj.id,
-            });
-            logBacnetPacket({ ...subAck, trunkLabel: child.trunkLabel });
-            const ipSubKey = `${child.trunkId}|${child.nodeId}|${aiObj.id}`;
-            covSubscriptions.set(ipSubKey, {
-              trunkId: child.trunkId,
-              trunkLabel: child.trunkLabel,
-              childNodeId: child.nodeId,
-              childLabel: child.label,
-              // IP doesn't use MS/TP MACs. Use 0 for the supervisor /
-              // 1 for the child as a display sentinel; the conformance
-              // checker doesn't rely on MAC for COV packets.
-              childMac: 1,
-              supNodeId: sup.id,
-              supLabel,
-              supMac: 0,
-              ackLatencyS: BACNET_IP_RTT_SECONDS,
-              objectId: aiObj.id,
-              deadband: COV_DEADBAND_DEFAULT,
-              subscribedAtSimSec: simSecondsElapsed,
-              lifetimeSeconds: COV_LIFETIME_DEFAULT_S,
-              renewals: 0,
-              initialNotifyAtSimSec:
-                simSecondsElapsed + BACNET_IP_RTT_SECONDS + covScanDelay(ipSubKey, 0),
-              nextScanAtSimSec: simSecondsElapsed + covScanDelay(`${ipSubKey}|scan`, 0),
-              scans: 0,
-              lastReportedValue: aiObj.presentValue,
-            });
+            const ipSubObjs = pickCovSubscriptionSet(childObjects);
+            let ipSubOffsetS = 0;
+            for (const subObj of ipSubObjs) {
+              const db = covDeadbandFor(subObj);
+              const subReq = emitSubscribeCov({
+                simSec: simSecondsElapsed + ipSubOffsetS,
+                trunkId: child.trunkId,
+                srcLabel: supLabel,
+                dstLabel: child.label,
+                objectId: subObj.id,
+                deadband: db,
+                deadbandUnits: subObj.units === '%' ? '%' : '°F',
+                lifetimeSeconds: COV_LIFETIME_DEFAULT_S,
+              });
+              logBacnetPacket({ ...subReq, trunkLabel: child.trunkLabel });
+              const subAck = emitSubscribeCovAck({
+                simSec: simSecondsElapsed + ipSubOffsetS + BACNET_IP_RTT_SECONDS,
+                trunkId: child.trunkId,
+                srcLabel: child.label,
+                dstLabel: supLabel,
+                objectId: subObj.id,
+              });
+              logBacnetPacket({ ...subAck, trunkLabel: child.trunkLabel });
+              const ipSubKey = `${child.trunkId}|${child.nodeId}|${subObj.id}`;
+              covSubscriptions.set(ipSubKey, {
+                trunkId: child.trunkId,
+                trunkLabel: child.trunkLabel,
+                childNodeId: child.nodeId,
+                childLabel: child.label,
+                // IP doesn't use MS/TP MACs. Use 0 for the supervisor /
+                // 1 for the child as a display sentinel; the conformance
+                // checker doesn't rely on MAC for COV packets.
+                childMac: 1,
+                supNodeId: sup.id,
+                supLabel,
+                supMac: 0,
+                ackLatencyS: BACNET_IP_RTT_SECONDS,
+                objectId: subObj.id,
+                deadband: db,
+                deadbandUnits: subObj.units === '%' ? '%' : '°F',
+                subscribedAtSimSec: simSecondsElapsed,
+                lifetimeSeconds: COV_LIFETIME_DEFAULT_S,
+                renewals: 0,
+                initialNotifyAtSimSec:
+                  simSecondsElapsed + ipSubOffsetS + BACNET_IP_RTT_SECONDS + covScanDelay(ipSubKey, 0),
+                nextScanAtSimSec: simSecondsElapsed + covScanDelay(`${ipSubKey}|scan`, 0),
+                scans: 0,
+                lastReportedValue: subObj.presentValue,
+              });
+              ipSubOffsetS += BACNET_IP_RTT_SECONDS * 2;
+            }
           }
 
           // ── Periodic ReadProperty poll ──────────────────────────
@@ -3494,7 +3551,7 @@
       // delta exceeds the deadband. Cap notifications per tick so a
       // 300×-speed run doesn't flood the log.
       let covEmitsThisTick = 0;
-      const MAX_COV_EMITS_PER_TICK = 8;
+      const MAX_COV_EMITS_PER_TICK = 12;
       // Membership index: every "trunkId|childNodeId" still on a trunk.
       const liveChildKeys = new Set<string>();
       for (const [trunkId, ts] of nextStates) {
@@ -3527,8 +3584,13 @@
       // Every (re)subscribe also schedules a fresh initial notification
       // (G47) — real devices re-announce the current value on renewal.
       let covRenewalsThisTick = 0;
-      const MAX_COV_RENEWALS_PER_TICK = 8;
-      for (const [subKey, sub] of covSubscriptions) {
+      const MAX_COV_RENEWALS_PER_TICK = 12;
+      // Snapshot: renewed subscriptions move to the map tail (below) so
+      // the per-tick cap round-robins across the population instead of
+      // letting the first N insertion-order subs hog every tick at high
+      // sim speed. Iterating the live map while re-inserting would
+      // revisit moved entries.
+      for (const [subKey, sub] of [...covSubscriptions]) {
         const lease = {
           subscribedAtSimSec: sub.subscribedAtSimSec,
           lifetimeSeconds: sub.lifetimeSeconds,
@@ -3548,7 +3610,7 @@
               dstLabel: sub.childLabel,
               objectId: sub.objectId,
               deadband: sub.deadband,
-              deadbandUnits: '°F',
+              deadbandUnits: sub.deadbandUnits,
               lifetimeSeconds: sub.lifetimeSeconds,
               renewal: true,
             });
@@ -3562,6 +3624,9 @@
             });
             logBacnetPacket({ ...renewAck, trunkLabel: sub.trunkLabel });
           } else {
+            const renewTrigger = /^b[iov][,:]/i.test(sub.objectId)
+              ? 'on change'
+              : `deadband ${sub.deadband}${sub.deadbandUnits}`;
             logBacnetPacket({
               simSec: simSecondsElapsed,
               trunkId: sub.trunkId,
@@ -3570,7 +3635,7 @@
               dstMac: sub.childMac,
               service: 'SubscribeCOV',
               objectId: sub.objectId,
-              summary: `${sub.supLabel} → ${sub.childLabel}: SubscribeCOV ${sub.objectId} (deadband ${sub.deadband}°F, lifetime ${sub.lifetimeSeconds}s · renewal)`,
+              summary: `${sub.supLabel} → ${sub.childLabel}: SubscribeCOV ${sub.objectId} (${renewTrigger}, lifetime ${sub.lifetimeSeconds}s · renewal)`,
               layer: 'app',
             });
             logBacnetPacket({
@@ -3594,6 +3659,9 @@
           sub.initialNotifyAtSimSec =
             sub.initialNotifyAtSimSec ??
             (simSecondsElapsed + sub.ackLatencyS + covScanDelay(subKey, sub.renewals));
+          // Move to map tail — next tick's capped pass starts elsewhere.
+          covSubscriptions.delete(subKey);
+          covSubscriptions.set(subKey, sub);
         } else if (!supAlive && isCovLeaseExpired(lease, simSecondsElapsed)) {
           // Un-renewed lease lapsed — the device drops the subscription and
           // goes silent. Nothing errors on the wire; updates just stop.
@@ -3610,8 +3678,11 @@
           announcedIpPairs.delete(`${sub.supNodeId}|${sub.childNodeId}`);
         }
       }
-      // Now evaluate each live subscription.
-      for (const sub of covSubscriptions.values()) {
+      // Now evaluate each live subscription. Snapshot for the same
+      // round-robin reason as the lease pass: emitting subs move to the
+      // map tail so the per-tick emit cap rotates across the population.
+      for (const [subKeyEval, sub] of [...covSubscriptions]) {
+        void subKeyEval;
         if (covEmitsThisTick >= MAX_COV_EMITS_PER_TICK) break;
         // Offline children physically can't push to the supervisor —
         // suppress notifications. The heartbeat-poll path is the one
@@ -3710,6 +3781,8 @@
           sub.lastReportedValue = cur;
           sub.lastReportedReliability = curReliability;
           covEmitsThisTick += 1;
+          covSubscriptions.delete(subKey);
+          covSubscriptions.set(subKey, sub);
           continue;
         }
         const reliabilityChanged = curReliability !== lastReliability;
@@ -3755,6 +3828,8 @@
         sub.lastReportedValue = cur;
         sub.lastReportedReliability = curReliability;
         covEmitsThisTick += 1;
+        covSubscriptions.delete(subKey);
+        covSubscriptions.set(subKey, sub);
       }
       void covEmitsThisTick;
 
