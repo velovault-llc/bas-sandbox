@@ -54,9 +54,11 @@ async def main() -> None:
     while True:
         await asyncio.sleep(2.0)
         el = time.time() - t0
-        # Zone: 72 +/- 4 over ~6 min, plus a fast 0.3-degree wiggle so COV
-        # crossings happen every handful of seconds.
-        zn.presentValue = 72.0 + 4.0 * math.sin(el / 60.0) + 0.3 * math.sin(el / 7.0)
+        # Zone: 72 +/- 4 over ~6 min, plus a fast wiggle. The wiggle
+        # amplitude (1.2) deliberately EXCEEDS covIncrement (0.5) so COV
+        # crossings never pause — a flat-topped sine once stalled a ghost
+        # test 40s before lease expiry and confounded the reading (lab7b).
+        zn.presentValue = 72.0 + 4.0 * math.sin(el / 60.0) + 1.2 * math.sin(el / 7.0)
         # OAT: 60 +/- 8 over ~30 min.
         oat.presentValue = 60.0 + 8.0 * math.sin(el / 300.0)
 
