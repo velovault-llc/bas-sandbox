@@ -163,14 +163,25 @@ Setup:
 3. Wireshark on any of them: capture filter `udp port 47808`, display
    filter `bacnet || bvlc`. The BACnet dissector decodes everything.
 
-## Tier 2 — scriptable devices: BACpypes3 (Python)
+## Tier 2 — scriptable devices: BACpypes3 (Python) — ✅ LIVE (2026-06-10)
 
-`pip install bacpypes3` — scriptable real devices for behaviors Tier 1
-can't stage on demand: a sensor that ramps (forces COV cadence), a device
-that ignores re-subscription (TTL expiry behavior), a BBMD + a foreign
-device registering through it. Scripts live in this folder as they're
-written (next session, iterated live against the LAN — BACpypes3's API
-moves; write them with the rig running, not blind).
+`pip install bacpypes3` (verified 0.0.106, Python 3.12/3.13). Two scripts
+in this folder, both conformant (anchored on UDP 47808, fixed instances —
+none of the .NET stack's ephemeral-port quirks):
+
+- **`vctrl.py`** — virtual controller with scripted ("B.S.'d") sensors:
+  ZN-T (AI:0) drifts on a sine + wiggle, OAT (AI:1) on a slow sine, both
+  covIncrement 0.5. Deployed to the laptop at `C:\baslab\vctrl.py`, run:
+  `python vctrl.py --name BAS-VCTRL-1 --instance 9001 --address <ip>/24`
+- **`vclient.py`** — the YABE bypass: one-shot discover → read → hold a
+  COV subscription and print notifications.
+  `python vclient.py --name BAS-CLIENT --instance 9100 --address <ip>/24 --device-address <device-ip> --seconds 90`
+
+Verified end-to-end: who-Is/i-Am, ReadProperty, SubscribeCOV → clean
+~0.5° COV steps as the scripted sine descends. **Remote ops pattern:** the
+device runs under a long-lived SSH session from the desktop (process lives
+as long as the session; output streams back for live debugging) — Windows
+scheduled tasks proved unreliable for GUI/console spawning post-reboot.
 
 ## Capture recipes — the behaviors we actually want pinned
 
