@@ -53,6 +53,15 @@ Everything after this section is just MORE DEVICES — same method.
   which blocks wireless peers from each other — the classic "firewall's
   open but nothing appears" culprit. Ethernet sidesteps it.
 - Wireshark needs nothing — passive capture.
+- **G51 refined (late-night finding):** even with clean bindings — both
+  apps holding 47808, no squatters — the .NET (YABE/RoomSim) stack runs its
+  ESTABLISHED sessions on each app's secondary ephemeral socket
+  (observed: 64353↔51844 carrying all notifications/renewals while both
+  47808 sockets idle). Broadcasts ride 47808; conversations don't. So:
+  **capture by HOST, not port** (`host <device-ip>` capture filter, no
+  port), watch live with `udp && ip.addr == <ip>`, and use Decode As → BVLC
+  (or tshark `-d udp.port==NNAS,bvlc`) at analysis time. The `bacnet`
+  display filter alone will always lie to you with this stack.
 - **Instance roulette (2026-06-10's recurring trap):** YABE's Room Simulator
   rolls a RANDOM device instance every launch. Subscriptions bind to an
   instance → every sim restart orphans every subscription row, which then
