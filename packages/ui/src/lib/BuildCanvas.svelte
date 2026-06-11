@@ -39,6 +39,7 @@
     openBacnet,
     openTerminals,
     programStore,
+    setProgramSource,
   } from './cli/programStore.svelte';
   import { scenarioStore } from './scenarios/scenarioStore.svelte';
   import { validateScenario } from './scenarios/validator';
@@ -4849,6 +4850,16 @@
           focusedTargetId = null;
         }
       }
+    }
+
+    // Scenario-shipped controller programs (mirrors a site backup carrying
+    // the controller database, not just the network layout). Applied AFTER
+    // wiredTargets so the program runner finds its physics target on the
+    // first tick. setProgramSource compiles + persists; a scenario program
+    // intentionally REPLACES whatever localStorage had for that id —
+    // loading a demo means loading ITS controllers' logic.
+    for (const p of parsed.programs ?? []) {
+      setProgramSource(p.controllerId, p.source);
     }
 
     // "defaults" link snaps to whatever the focused target loaded.

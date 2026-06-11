@@ -738,6 +738,25 @@ it, and shook out four real findings in one session:
   AUTHOR putting termination mid-chain on the plant trunk — first-draft
   mega site shipped FEC-BLR terminated in the middle. Exactly the
   mistake it exists to catch.)
+- **G56 — ✅ FIXED — hydronic ambient-drift term diverged at fast-forward
+  dt.** James spotted CH-1 reading CHWS 1.6e+41 °F. The idle-loop drift
+  used explicit-Euler `+= (OAT−T)×k×dt`; at dt=1800 s the gain is 3.06 →
+  alternating-sign exponential blowup. Replaced with exact exponential
+  relaxation (stable at any dt) + regression tests.
+- **G57 — ✅ FIXED — plant output had no operating envelope.** Once the
+  chiller actually RAN (scenario programs), a 150-ton machine against a
+  15% idle load integrated CHWS to −1287 °F. Real chillers floor at the
+  evaporator freeze limit; boilers cap at the high-limit aquastat.
+  stepLoop now derates plant output approaching 36 °F CHW / 210 °F HW
+  and substeps large dt like stepZone. Verified live: running chiller
+  settles CHWS/CHWR 37.2/38.7 °F.
+- **NEW CAPABILITY — scenarios ship controller PROGRAMS.** `programs[]`
+  on BasScenarioV1: raw ST applied via setProgramSource on load (like a
+  site backup carrying the controller database). Mega site now ships
+  three: FEC-BLR outdoor-reset firing, FEC-CHW chiller enable w/
+  hysteresis, VAV-101 custom cooling override. Constraint: single-output
+  programs only until G32 lands (no terminal handles on generic
+  controllers → no multi-output role bindings in demo data).
 
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather

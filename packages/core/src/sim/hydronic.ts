@@ -103,8 +103,27 @@ export function computeOaLockout(
 /**
  * Advance a hydronic loop by `dt` seconds. Pure function — no side
  * effects, deterministic. The caller carries `state` across ticks.
+ * Substeps internally when `dt` is large (fast-forward modes) so one
+ * 1800 s tick can't integrate straight through the operating envelope.
  */
 export function stepLoop(
+  state: LoopState,
+  config: LoopConfig,
+  inputs: LoopInputs,
+  dt: number,
+): LoopState {
+  const MAX_SUBSTEP_S = 60;
+  if (dt > MAX_SUBSTEP_S) {
+    const steps = Math.ceil(dt / MAX_SUBSTEP_S);
+    const sub_dt = dt / steps;
+    let s = state;
+    for (let i = 0; i < steps; i++) s = stepLoopInner(s, config, inputs, sub_dt);
+    return s;
+  }
+  return stepLoopInner(state, config, inputs, dt);
+}
+
+function stepLoopInner(
   state: LoopState,
   config: LoopConfig,
   inputs: LoopInputs,
@@ -121,9 +140,21 @@ export function stepLoop(
   const lockout = computeOaLockout(config.kind, inputs.outsideTemp);
   const effectivePlantCmd = lockout?.active ? 0 : inputs.plantCommand;
 
+  // Operating envelope — plant output derates approaching its physical
+  // limit, so the loop ASYMPTOTES to the limit instead of integrating
+  // through it. A chiller's evaporator freeze protection floors CHW
+  // around 36 °F (a 150-ton machine vs a 15% idle load sent CHWS to
+  // −1287 °F before this existed); a boiler's high-limit aquastat caps
+  // HW around 210 °F. Linear derate inside an approach band.
+  const envelope = isCooling
+    ? Math.max(0, Math.min(1, (state.T_supply - 36) / 8))
+    : config.kind === 'hot-water'
+      ? Math.max(0, Math.min(1, (210 - state.T_supply) / 10))
+      : 1;
+
   // Heat being added (HW) or removed (CHW) by the plant this tick.
   // BTU/hr at the plant heat exchanger.
-  const plant_btu = effectivePlantCmd * config.capacityBtu * (isCooling ? -1 : 1);
+  const plant_btu = effectivePlantCmd * envelope * config.capacityBtu * (isCooling ? -1 : 1);
 
   // Load draw. HW: loads pull heat OUT (cooling the return water).
   //            CHW: loads dump heat IN (warming the return water).
@@ -144,11 +175,15 @@ export function stepLoop(
   const dT_avg = dQ_btu / Math.max(1, config.loopMassLbs);
   let T_avg = T_avg_prev + dT_avg;
 
-  // Mild reversion toward design when plant + load are zero — accounts
+  // Mild reversion toward ambient when plant + load are zero — accounts
   // for jacket losses and ambient interaction. Slow drift, ~0.1 °F/min.
+  // Exact exponential relaxation, NOT explicit Euler: the linear form
+  // `+= (target − T) × k × dt` diverges once k×dt > 1 (at 30× sim speed
+  // dt = 1800 s → factor 3.06), which sent an idle chiller's CHWS to
+  // 1.6e+41 °F in the mega-site demo. exp form is stable at any dt.
   if (inputs.plantCommand < 0.02 && Math.abs(load_btu) < config.capacityBtu * 0.02) {
     const driftTarget = inputs.outsideTemp;
-    T_avg += (driftTarget - T_avg) * 0.0017 * dt; // ~0.1 °F/min toward OAT
+    T_avg += (driftTarget - T_avg) * (1 - Math.exp(-0.0017 * dt));
   }
 
   // Distribute the loop's average temp across supply/return based on the

@@ -42,6 +42,18 @@ binary; binary subscribes read "(on change)" and notifications render
 active/inactive. Per-tick renewal/emit caps now round-robin (move-to-tail)
 so big sites don't starve insertion-order tails. 375/375. Deployed.
 
+**Plant physics + scenario-shipped programs (James found CH-1 at
+1.6e+41 °F):** G56 (hydronic drift term diverged at dt≥~600 s — exact-exp
+fix) and G57 (no plant operating envelope — running chiller hit −1287 °F;
+now floors at the 36 °F evap limit / 210 °F high limit, substepped).
+Scenarios can now ship ST programs (`programs[]` on BasScenarioV1); the
+mega site's plant RUNS: FEC-BLR outdoor-reset, FEC-CHW enable hysteresis,
+VAV-101 custom override — verified live, chiller at CHWS 37.2 °F under a
+92 °F day. Single-output programs only until G32 (terminal handles).
+⚠ Tooling note: a PowerShell `-Encoding utf8` rewrite double-encoded
+demoScenarios.ts (committed briefly as mojibake) — repaired via cp1252
+reverse-decode; avoid Set-Content rewrites on UTF-8 sources.
+
 **Still open from the COV chapter:** G44 (unconfirmed/subscription-less COV
 broadcasts — wire encoder exists, behavior unmodeled), G50 (duplicate
 subscriptions multiplying traffic — wants Site Director's manual subscribe

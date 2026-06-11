@@ -119,3 +119,52 @@ describe('Loop ΔT scales with load', () => {
     expect(dThi).toBeGreaterThan(dTlo);
   });
 });
+
+describe('Numerical stability at fast-forward tick sizes', () => {
+  it('an IDLE loop stays bounded at dt=1800 s (regression: CHWS hit 1.6e+41 °F)', () => {
+    // 30× sim speed × 60 s base dt = 1800 s ticks. The old linear
+    // ambient-drift term had gain 0.0017×1800 = 3.06 → alternating-sign
+    // exponential divergence on any idle plant. Exact exp relaxation
+    // must converge toward OAT instead.
+    let s = initLoopState(CHW_LOOP_DEFAULTS, 44);
+    for (let i = 0; i < 500; i++) {
+      s = stepLoop(s, CHW_LOOP_DEFAULTS, { plantCommand: 0, pumpCommand: 0, loadCommand: 0, outsideTemp: 92 }, 1800);
+    }
+    expect(Number.isFinite(s.T_supply)).toBe(true);
+    expect(s.T_supply).toBeGreaterThan(40);
+    expect(s.T_supply).toBeLessThan(100); // drifted toward OAT, not Andromeda
+    // And it actually converges to ambient, not just stays finite.
+    expect(Math.abs(((s.T_supply + s.T_return) / 2) - 92)).toBeLessThan(2);
+  });
+
+  it('a RUNNING chiller against an idle load floors at the freeze limit, not -1287 °F', () => {
+    // Regression: full chiller command + 15% idle load at dt=1800 s
+    // integrated the loop to -1287 °F. The evaporator envelope must
+    // asymptote CHWS near its 36 °F freeze-protect floor.
+    let s = initLoopState(CHW_LOOP_DEFAULTS, 70);
+    for (let i = 0; i < 200; i++) {
+      s = stepLoop(s, CHW_LOOP_DEFAULTS, { plantCommand: 1, pumpCommand: 1, loadCommand: 0.15, outsideTemp: 92 }, 1800);
+    }
+    expect(Number.isFinite(s.T_supply)).toBe(true);
+    expect(s.T_supply).toBeGreaterThan(30);
+    expect(s.T_supply).toBeLessThan(50);
+  });
+
+  it('a full-fire boiler with no load caps at the high limit, not past it', () => {
+    let s = initLoopState(HW_LOOP_DEFAULTS, 70);
+    for (let i = 0; i < 200; i++) {
+      s = stepLoop(s, HW_LOOP_DEFAULTS, { plantCommand: 1, pumpCommand: 1, loadCommand: 0, outsideTemp: 30 }, 1800);
+    }
+    expect(s.T_supply).toBeLessThan(215);
+    expect(s.T_supply).toBeGreaterThan(180);
+  });
+
+  it('idle HW loop at dt=1800 s converges the same way', () => {
+    let s = initLoopState(HW_LOOP_DEFAULTS, 180);
+    for (let i = 0; i < 500; i++) {
+      s = stepLoop(s, HW_LOOP_DEFAULTS, { plantCommand: 0, pumpCommand: 0, loadCommand: 0, outsideTemp: 30 }, 1800);
+    }
+    expect(Number.isFinite(s.T_supply)).toBe(true);
+    expect(Math.abs(((s.T_supply + s.T_return) / 2) - 30)).toBeLessThan(2);
+  });
+});
