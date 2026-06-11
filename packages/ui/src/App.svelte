@@ -91,16 +91,25 @@
   const DOCK_HEIGHT_KEY = 'bas-sandbox:dock-height-px';
   const DOCK_HEIGHT_MIN = 120; // collapse threshold (don't go below useful)
   const DOCK_HEIGHT_DEFAULT = 272; // 17rem at 16px base
+  // On short laptop viewports a 272px dock leaves too little canvas —
+  // start at one palette row instead. Drag-resize still persists.
+  const DOCK_HEIGHT_DEFAULT_SHORT = 190;
+  function defaultDockHeight(): number {
+    if (typeof window !== 'undefined' && window.innerHeight < 900) {
+      return DOCK_HEIGHT_DEFAULT_SHORT;
+    }
+    return DOCK_HEIGHT_DEFAULT;
+  }
   function loadDockHeight(): number {
-    if (typeof localStorage === 'undefined') return DOCK_HEIGHT_DEFAULT;
+    if (typeof localStorage === 'undefined') return defaultDockHeight();
     try {
       const raw = localStorage.getItem(DOCK_HEIGHT_KEY);
-      if (!raw) return DOCK_HEIGHT_DEFAULT;
+      if (!raw) return defaultDockHeight();
       const n = Number(raw);
-      if (!Number.isFinite(n)) return DOCK_HEIGHT_DEFAULT;
+      if (!Number.isFinite(n)) return defaultDockHeight();
       return clampDockHeight(n);
     } catch {
-      return DOCK_HEIGHT_DEFAULT;
+      return defaultDockHeight();
     }
   }
   function clampDockHeight(px: number): number {
@@ -605,7 +614,7 @@
     </main>
   {/if}
 
-  <footer>
+  <footer class:in-build={mode === 'build'}>
     <a href="https://github.com/velovault-llc/bas-sandbox">github.com/velovault-llc/bas-sandbox</a>
   </footer>
 </div>
@@ -1052,6 +1061,36 @@
     }
     .left-drawer.open {
       width: 18rem;
+    }
+  }
+
+  /* On laptop-width screens the 22rem drawer leaves too little canvas. */
+  @media (max-width: 1500px) {
+    .left-drawer.open {
+      width: 18rem;
+    }
+  }
+
+  /* ── Compact chrome for short laptop viewports ──
+     On ~768px-tall screens the brand header + footer eat canvas space
+     the floating panels badly need. Shrink the chrome in build mode and
+     give every reclaimed pixel to the shell. */
+  @media (max-height: 900px) {
+    .layout.full-bleed {
+      margin: 0.5rem auto;
+    }
+    .layout.full-bleed .app-header {
+      margin-bottom: 0.5rem;
+    }
+    .layout.full-bleed h1 {
+      font-size: 1.15rem;
+    }
+    .layout.full-bleed .build-shell {
+      height: calc(100vh - 4.25rem);
+      min-height: 24rem;
+    }
+    footer.in-build {
+      display: none;
     }
   }
 

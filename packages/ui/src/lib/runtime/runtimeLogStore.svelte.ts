@@ -25,6 +25,7 @@ const MAX_ENTRIES = 500;
 // top of the viewport. Loading from the OLD key falls through to the
 // default (0, 0) = bottom-right corner.
 const LS_POSITION = 'bas-sandbox.runtime-log.position.v2';
+const LS_OPEN = 'bas-sandbox.runtime-log.open.v1';
 
 interface RuntimeLogStore {
   entries: LogEntry[];
@@ -50,11 +51,25 @@ function loadStoredPosition(): { x: number; y: number } {
   return { x: 0, y: 0 };
 }
 
+function loadStoredOpen(): boolean {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LS_OPEN);
+      if (raw !== null) return raw === '1';
+    } catch {
+      // ignore
+    }
+  }
+  // No saved preference: open on roomy screens, collapsed on short
+  // laptop viewports where the panel covers half the canvas.
+  return typeof window === 'undefined' || window.innerHeight >= 900;
+}
+
 const _initialPos = loadStoredPosition();
 
 export const runtimeLog = $state<RuntimeLogStore>({
   entries: [],
-  panelOpen: true,
+  panelOpen: loadStoredOpen(),
   filter: 'all',
   paused: false,
   offsetX: _initialPos.x,
@@ -144,6 +159,12 @@ export function clearLog(): void {
 
 export function togglePanel(): void {
   runtimeLog.panelOpen = !runtimeLog.panelOpen;
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_OPEN, runtimeLog.panelOpen ? '1' : '0');
+  } catch {
+    // ignore
+  }
 }
 
 export function togglePaused(): void {

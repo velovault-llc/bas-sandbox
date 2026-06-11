@@ -1460,6 +1460,47 @@
 
   let showAdvanced = $state(false);
 
+  // Chart + tune panels can swallow a small laptop screen. Collapse state
+  // persists per panel; with no saved preference, start collapsed on short
+  // viewports so the canvas wins by default.
+  const CHART_COLLAPSED_KEY = 'bas-sandbox.chart-panel.collapsed.v1';
+  const TUNE_COLLAPSED_KEY = 'bas-sandbox.tune-panel.collapsed.v1';
+  const SHORT_VIEWPORT_PX = 900;
+
+  function loadPanelCollapsed(key: string): boolean {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw !== null) return raw === '1';
+      } catch {
+        // ignore
+      }
+    }
+    return typeof window !== 'undefined' && window.innerHeight < SHORT_VIEWPORT_PX;
+  }
+
+  function savePanelCollapsed(key: string, collapsed: boolean): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(key, collapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }
+
+  let chartCollapsed = $state(loadPanelCollapsed(CHART_COLLAPSED_KEY));
+  let tuneCollapsed = $state(loadPanelCollapsed(TUNE_COLLAPSED_KEY));
+
+  function toggleChartCollapsed(): void {
+    chartCollapsed = !chartCollapsed;
+    savePanelCollapsed(CHART_COLLAPSED_KEY, chartCollapsed);
+  }
+
+  function toggleTuneCollapsed(): void {
+    tuneCollapsed = !tuneCollapsed;
+    savePanelCollapsed(TUNE_COLLAPSED_KEY, tuneCollapsed);
+  }
+
   // Bundled demo scenarios. Picking one snaps config to its values and
   // sets it as the "baseline" — the `defaults` link in the tune panel
   // resets to this, not to DEFAULT_CONFIG. So you can pick a preset,
@@ -8569,52 +8610,77 @@
             })
             .filter((s) => s.samples.length > 0)}
           <Panel position="top-left">
-            <div class="chart-panel">
+            <div class="chart-panel" class:collapsed={chartCollapsed}>
               <div class="chart-head">
+                <button
+                  type="button"
+                  class="panel-collapse"
+                  onclick={toggleChartCollapsed}
+                  title={chartCollapsed ? 'Expand the zone response chart' : 'Collapse the chart to its header — more room for the canvas'}
+                  aria-expanded={!chartCollapsed}
+                >
+                  {chartCollapsed ? '▸' : '▾'}
+                </button>
                 <span class="chart-title"
                   >Zone response{wiredTargets.length > 1
                     ? ` — ${wiredTargets.length} zones`
                     : ` — ${primarySeries.label}`}</span
                 >
-                <span class="chart-sub"
-                  >{focusedTarget.config.dt}s/tick · τ={(focusedTarget.config.tau / 60).toFixed(
-                    0,
-                  )}min</span
-                >
-                <button
-                  type="button"
-                  class="chart-csv"
-                  title="Download every running target's sample history as a CSV trend log"
-                  onclick={exportSamplesCsv}
-                >
-                  ↓ CSV
-                </button>
+                {#if !chartCollapsed}
+                  <span class="chart-sub"
+                    >{focusedTarget.config.dt}s/tick · τ={(focusedTarget.config.tau / 60).toFixed(
+                      0,
+                    )}min</span
+                  >
+                  <button
+                    type="button"
+                    class="chart-csv"
+                    title="Download every running target's sample history as a CSV trend log"
+                    onclick={exportSamplesCsv}
+                  >
+                    ↓ CSV
+                  </button>
+                {/if}
               </div>
-              <MiniChart primary={primarySeries} ghosts={ghostSeries} />
+              {#if !chartCollapsed}
+                <MiniChart primary={primarySeries} ghosts={ghostSeries} />
+              {/if}
             </div>
           </Panel>
         {/if}
 
         {#if focusedTarget && physicsTarget}
           <Panel position="bottom-left">
-            <div class="tune-panel">
+            <div class="tune-panel" class:collapsed={tuneCollapsed}>
               <div class="tune-head">
+                <button
+                  type="button"
+                  class="panel-collapse"
+                  onclick={toggleTuneCollapsed}
+                  title={tuneCollapsed ? 'Expand the tune panel' : 'Collapse the tune panel to its header — more room for the canvas'}
+                  aria-expanded={!tuneCollapsed}
+                >
+                  {tuneCollapsed ? '▸' : '▾'}
+                </button>
                 <span class="tune-title"
                   >Tune — {physicsTarget.controllerLabel}{wiredTargets.length > 1
                     ? ` (${wiredTargets.findIndex((t) => t.controllerId === focusedTargetId) + 1}/${wiredTargets.length})`
                     : ''}</span
                 >
-                <button
-                  type="button"
-                  class="reset-cfg"
-                  onclick={resetConfig}
-                  title={activePresetId === 'custom'
-                    ? 'Reset to last loaded scenario'
-                    : `Reset to preset "${PRESETS.find((p) => p.id === activePresetId)?.name ?? 'Default'}"`}
-                >
-                  defaults
-                </button>
+                {#if !tuneCollapsed}
+                  <button
+                    type="button"
+                    class="reset-cfg"
+                    onclick={resetConfig}
+                    title={activePresetId === 'custom'
+                      ? 'Reset to last loaded scenario'
+                      : `Reset to preset "${PRESETS.find((p) => p.id === activePresetId)?.name ?? 'Default'}"`}
+                  >
+                    defaults
+                  </button>
+                {/if}
               </div>
+              {#if !tuneCollapsed}
               <div class="preset-row">
                 {#each PRESETS as preset (preset.id)}
                   <button
@@ -8859,6 +8925,7 @@
                   ? '− Hide advanced (τ, Ki, cooling)'
                   : '+ Show advanced (τ, Ki, cooling)'}
               </button>
+              {/if}
             </div>
           </Panel>
         {/if}
@@ -10704,6 +10771,32 @@
     align-items: baseline;
     gap: 0.5rem;
     margin-bottom: 0.3rem;
+  }
+
+  .chart-panel.collapsed .chart-head,
+  .tune-panel.collapsed .tune-head {
+    margin-bottom: 0;
+  }
+
+  .tune-panel.collapsed {
+    width: auto;
+  }
+
+  /* Shared collapse chevron for the chart + tune floating panels. */
+  .panel-collapse {
+    border: 0;
+    background: transparent;
+    color: color-mix(in srgb, CanvasText 60%, transparent);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .panel-collapse:hover {
+    color: inherit;
   }
 
   .chart-csv {
