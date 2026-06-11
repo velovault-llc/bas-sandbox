@@ -5724,6 +5724,12 @@
       if (nodeKind(n) === 'supervisor') continue;
       // Subnet zones are visual containers, not devices — never offline.
       if (isSubnetZone(n)) continue;
+      // Thermal zones are physical SPACES, not network devices. A room
+      // with no BAS path to a supervisor is unmonitored, not "offline" —
+      // its physics keeps running and no stale-comm badge applies.
+      // (Found 2026-06-11: mega-site demo's wall-coupled zone row all
+      // wore ⌀ OFFLINE because reachability radiates over every edge.)
+      if (nodeKind(n) === 'zone') continue;
       // Virtual controllers: handled in the first pass above (host-
       // driven). Skip the wire-based reachability check; they live
       // inside their host, not on a wire.
@@ -6563,18 +6569,25 @@
       }
     }
 
-    // 2. Hardwired wires should terminate at a sensor or safety
+    // 2. Hardwired wires should terminate at a field device. The leaf
+    // set grew as the sim did: sensors/safeties (original), then
+    // actuators + equipment + zones (process chain: controller → actuator
+    // → equipment → zone, plus zone↔zone shared walls and actuator
+    // position-feedback wired back into a controller). Found stale
+    // 2026-06-11 when the mega-site demo lit 14 false warnings on
+    // perfectly legitimate process wiring.
+    const HARDWIRED_LEAF_KINDS = new Set(['sensor', 'safety', 'actuator', 'equipment', 'zone', 'vahu']);
     for (const e of edges) {
       const wk = (e.data?.wireKind as WireKind) ?? undefined;
       if (wk !== 'hardwired') continue;
       const sk = nodeKind(nodeById.get(e.source)!);
       const tk = nodeKind(nodeById.get(e.target)!);
-      const leaf = sk === 'sensor' || sk === 'safety' || tk === 'sensor' || tk === 'safety';
+      const leaf = HARDWIRED_LEAF_KINDS.has(sk ?? '') || HARDWIRED_LEAF_KINDS.has(tk ?? '');
       if (!leaf) {
         findings.push({
           level: 'warning',
           ruleId: 'hardwired-no-leaf',
-          message: `Hardwired wire ${labelOf(e.source)} → ${labelOf(e.target)} doesn't end at a sensor or safety`,
+          message: `Hardwired wire ${labelOf(e.source)} → ${labelOf(e.target)} doesn't end at a field device (sensor, safety, actuator, equipment, or zone)`,
           subjectId: e.id,
         });
       }

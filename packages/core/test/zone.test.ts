@@ -81,6 +81,44 @@ describe('Zone envelope physics', () => {
   });
 });
 
+describe('Infiltration (envelope leakage)', () => {
+  it('an unconditioned occupied zone settles WELL below the sealed-box equilibrium', () => {
+    // Regression for the mega-site runaway (2026-06-11): with no
+    // infiltration term, default office loads against one R-13 wall
+    // settled at +150°F over OAT and the demo zones cooked past 240°F.
+    // With 0.35 ACH leakage the equilibrium must stay in the "hot
+    // unconditioned room" band, not the "oven" band.
+    let s = initZoneState(DEFAULT_ZONE_CONFIG, 75);
+    for (let i = 0; i < 24 * 60; i++) { // 24 sim-hours of 60 s steps
+      s = stepZone(s, DEFAULT_ZONE_CONFIG, {
+        outsideTemp: 92,
+        hour: 12,
+        occupancy_frac: 1,
+        supplyAir_btu_per_hr: 0,
+      }, 60);
+    }
+    // Still hotter than OAT — the loads are real. Bounded ~177°F by
+    // leakage vs the sealed-box ~278°F. The residual excess is the
+    // missing interior-partition/ceiling loss (logged for the slice-5
+    // physics pass) — tighten this bound when that term lands.
+    expect(s.T_zone).toBeGreaterThan(92);
+    expect(s.T_zone).toBeLessThan(200);
+  });
+
+  it('more leakage pulls the equilibrium toward OAT', () => {
+    const leaky = { ...DEFAULT_ZONE_CONFIG, infiltration_ach: 1.5 };
+    const tight = { ...DEFAULT_ZONE_CONFIG, infiltration_ach: 0.1 };
+    let sl = initZoneState(leaky, 75);
+    let st = initZoneState(tight, 75);
+    for (let i = 0; i < 24 * 60; i++) {
+      const inputs = { outsideTemp: 92, hour: 12, occupancy_frac: 1, supplyAir_btu_per_hr: 0 };
+      sl = stepZone(sl, leaky, inputs, 60);
+      st = stepZone(st, tight, inputs, 60);
+    }
+    expect(sl.T_zone).toBeLessThan(st.T_zone);
+  });
+});
+
 describe('Occupancy schedule', () => {
   it('returns 0 outside work hours', () => {
     expect(defaultOccupancySchedule(2)).toBe(0);

@@ -698,6 +698,47 @@ From `wireshark/lab3-cov-lifecycle.pcapng` (the COV-lifecycle ground truth):
   (name/units/reliability/…). The spec permits both — fixture for the
   structured-PDU work and a nice "vendors differ" teaching beat.
 
+## Step 13 — mega-site stress build (2026-06-11): 47 nodes, 3 engines, 17 field MACs
+
+James asked for a flurry — a stress-scale demo (`mega-site` in the demo
+list) with three engines, two MS/TP trunks, a G36 AHU driving four
+actuators, plant equipment, and eight wall-coupled zones. Built it, ran
+it, and shook out four real findings in one session:
+
+- **G52 — ✅ FIXED — thermal zones inherited NETWORK reachability.** The
+  offline derivation radiates from supervisors over every edge, so a
+  zone row coupled only by shared walls wore "⌀ OFFLINE · stale" badges.
+  A room is a physical space, not a network device — zone kind is now
+  excluded from offlineNodes (same reasoning that excluded zones from
+  MAC assignment in slice 2).
+- **G53 — ✅ FIXED — the hardwired-wire topology check predated the
+  process chain.** It accepted only sensor/safety endpoints, so the mega
+  site lit 14 false warnings on legitimate wiring (AHU→actuator,
+  controller→equipment, equipment→zone, zone↔zone walls, actuator
+  position feedback). Leaf set now includes actuator/equipment/zone/vahu.
+- **G54 (P2, slice-5 physics pass) — unconditioned zones equilibrate WAY
+  too hot: the model loses heat through ONE exterior wall only.** Mega
+  site zones ran away past 240 °F (sealed-box equilibrium ≈ OAT+150 °F
+  at default office loads). Root cause: no infiltration and no interior
+  partition/ceiling/slab losses. **Infiltration SHIPPED** (0.35 ACH
+  default, `infiltration_ach` config, 2 tests) — equilibrium now ~OAT+85
+  at full loads, lawful but still high. The interior-conductance term
+  belongs in the slice-5 air-side pass; tighten the zone test bound
+  (currently <200 °F) when it lands.
+- **G55 — zoneConfig silently ignores unknown keys.** Both shipped G36
+  demos set `volume_ft3: 18000` but the config key is `volume_cu_ft` —
+  their "18 000 ft³" zones ran at the 1 500 ft³ default since the day
+  they shipped (fixed). A scenario-load warning for unrecognized
+  zoneConfig keys would have caught it.
+- (Confirmed in the wild: **G32** — a demo edge with `targetHandle:
+  'UI-3'` onto a generic controller gets silently DROPPED by xyflow,
+  with a per-render console warning. The mega site's VFD feedback wire
+  now lands handle-less until G32 ships terminal handles.)
+- (Validators earning their keep: the slice-2 EOL check caught the demo
+  AUTHOR putting termination mid-chain on the plant trunk — first-draft
+  mega site shipped FEC-BLR terminated in the middle. Exactly the
+  mistake it exists to catch.)
+
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
   drive only wrote `sample.T_F` into *physics-wired targets'* config; the

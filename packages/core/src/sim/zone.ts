@@ -42,6 +42,13 @@ export interface ZoneConfig {
   /** Occupancy schedule + headcount (peak occupants). Sim derives current
    *  occupants from the schedule × peak. */
   readonly peak_occupants: number;
+  /** Envelope leakage in air changes per hour. Typical commercial
+   *  construction is 0.25–0.5 ACH; leaky older buildings 1.0+. This is
+   *  the loss term that keeps an UNCONDITIONED zone from cooking to its
+   *  internal-load equilibrium — without it, default office plug loads
+   *  against one R-13 wall settle at +150°F over OAT (observed in the
+   *  mega-site demo, 2026-06-11: zones ran away past 240°F). */
+  readonly infiltration_ach: number;
 }
 
 export interface ZoneState {
@@ -70,6 +77,7 @@ export const DEFAULT_ZONE_CONFIG: ZoneConfig = {
   lighting_w_per_sqft: 0.5,
   equipment_w_per_sqft: 1.0,
   peak_occupants: 2,
+  infiltration_ach: 0.35,
 };
 
 const BTU_PER_WATT = 3.412;
@@ -110,6 +118,13 @@ function stepZoneInner(state: ZoneState, config: ZoneConfig, inputs: ZoneInputs,
   // 1. Envelope loss (BTU/hr). Positive Q means heat IN.
   const envelope_btu = -config.exterior_u_value * config.exterior_wall_area_sqft * (state.T_zone - inputs.outsideTemp);
 
+  // 1b. Infiltration — envelope leakage exchanges zone air with outside
+  // air. Q = (ACH·V/60) cfm × 1.08 × (OAT − T_zone); the 1.08 factor is
+  // 60 min/hr × 0.075 lb/ft³ × 0.24 BTU/lb·°F. Pulls toward OAT in both
+  // directions. Older configs persisted without the field default to 0.35.
+  const infil_cfm = ((config.infiltration_ach ?? 0.35) * Math.max(50, config.volume_cu_ft)) / 60;
+  const infiltration_btu = infil_cfm * 1.08 * (inputs.outsideTemp - state.T_zone);
+
   // 2. Internal loads. Lighting + equipment scale with occupancy (most
   // commercial buildings drop to ~10% baseline overnight for security
   // lighting + always-on equipment, then ramp to full at occupied).
@@ -131,7 +146,7 @@ function stepZoneInner(state: ZoneState, config: ZoneConfig, inputs: ZoneInputs,
   const supply_btu = inputs.supplyAir_btu_per_hr;
 
   // Total net heat into the zone (BTU/hr).
-  const net_btu = envelope_btu + internal_btu + solar_btu + supply_btu;
+  const net_btu = envelope_btu + infiltration_btu + internal_btu + solar_btu + supply_btu;
 
   // Apply over dt to compute ΔT.
   // Air mass = volume × 0.075 lb/ft³; effective mass = air × multiplier.

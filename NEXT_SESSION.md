@@ -23,6 +23,17 @@ the real-stack captures:
 - Lease/scan math is pure + tested in `@bas/core` → `bacnet/cov.ts`
   (370/370 core tests · typecheck 0 · verified live in the firehose demo).
 
+**Mega-site stress build (same day, James's "flurry" request):** new
+`mega-site` demo — 47 nodes / 3 engines / 17 field MACs / G36 AHU driving
+4 actuators / plant equipment / 8 wall-coupled zones / 2 planted faults
+(ZN-103 drift + a CO₂-on-temp miswire). Shook out G52 (zones wore network
+OFFLINE badges — fixed), G53 (hardwired validator predated actuators —
+fixed), G54 (zone model has no infiltration/interior losses — infiltration
+SHIPPED at 0.35 ACH, interior conductance queued for slice 5), G55
+(zoneConfig silently ignores unknown keys — both G36 demos' volume_ft3
+typo fixed). The EOL validator caught the demo author terminating
+mid-chain. 372/372 tests.
+
 **Still open from the COV chapter:** G44 (unconfirmed/subscription-less COV
 broadcasts — wire encoder exists, behavior unmodeled), G50 (duplicate
 subscriptions multiplying traffic — wants Site Director's manual subscribe

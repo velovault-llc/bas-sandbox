@@ -1,10 +1,10 @@
-// Pre-built scenarios bundled with bas-sandbox. They show up in the left
+﻿// Pre-built scenarios bundled with bas-sandbox. They show up in the left
 // sidebar's DEMOS section so a first-time visitor (or a commercial contact
 // landing on bas-sandbox.netlify.app) can one-click load something
 // interesting instead of staring at an empty canvas.
 //
 // Each scenario is constructed via `buildScenario()` from a compact spec so
-// the data here stays readable. The output is a full BasScenarioV1 — the
+// the data here stays readable. The output is a full BasScenarioV1 â€” the
 // same shape produced by saving the canvas state to disk.
 
 import type { Edge, Node } from '@xyflow/svelte';
@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG, type SingleZoneConfig } from './sim/thermal';
 import type { BasScenarioV1, WiredTargetSpec } from './scenario';
 
 type WireKind = 'mstp' | 'n2' | 'bacnet-ip' | 'lon' | 'hardwired';
-type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller' | 'vahu' | 'zone';
+type NodeKind = 'supervisor' | 'controller' | 'sensor' | 'safety' | 'subnet-zone' | 'router' | 'virtual-controller' | 'vahu' | 'zone' | 'actuator' | 'equipment' | 'switch';
 
 type SpecNode = {
   id: string;
@@ -107,8 +107,8 @@ function buildScenario(spec: ScenarioSpec): BasScenarioV1 {
     config: { ...DEFAULT_CONFIG, ...(w.config ?? {}) },
   }));
   const focusedTargetId = spec.focused ?? wiredTargets[0]?.controllerId ?? null;
-  // Counters are a presentational concern (used for autonaming) — seed them
-  // empty so user drops after loading get fresh n1, n2, … names.
+  // Counters are a presentational concern (used for autonaming) â€” seed them
+  // empty so user drops after loading get fresh n1, n2, â€¦ names.
   return {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -132,9 +132,9 @@ export type Demo = {
 export const DEMOS: readonly Demo[] = [
   {
     id: 'signal-fidelity',
-    name: 'Signal fidelity (📐 Terminals)',
+    name: 'Signal fidelity (ðŸ“ Terminals)',
     blurb:
-      'VAV-1 with a primary Pt1000 zone-temp sensor (drives the thermal loop) PLUS a secondary 4-20mA CO₂ sensor and a 2-10V damper-feedback sensor wired into UI-2 and UI-3. Hit Run, click VAV-1, then click 📐 Terminals — you\'ll see the raw signal at each terminal (~11.2 mA at 900 ppm, ~6 V at 50% damper) and the engineering value the controller decoded. Change a terminal\'s input type to the wrong kind and watch the MISMATCH badge appear with a wrong-but-plausible reading. Inject \'open\' fault on a sensor and watch the OPEN badge with the controller pegged at the fault rail.',
+      'VAV-1 with a primary Pt1000 zone-temp sensor (drives the thermal loop) PLUS a secondary 4-20mA COâ‚‚ sensor and a 2-10V damper-feedback sensor wired into UI-2 and UI-3. Hit Run, click VAV-1, then click ðŸ“ Terminals â€” you\'ll see the raw signal at each terminal (~11.2 mA at 900 ppm, ~6 V at 50% damper) and the engineering value the controller decoded. Change a terminal\'s input type to the wrong kind and watch the MISMATCH badge appear with a wrong-but-plausible reading. Inject \'open\' fault on a sensor and watch the OPEN badge with the controller pegged at the fault rail.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-SF', x: 240, y: 40 },
@@ -144,12 +144,12 @@ export const DEMOS: readonly Demo[] = [
           label: 'VAV-SF',
           x: 240,
           y: 220,
-          // Distech ECY-VAV — 5 UI / 2 AO / 3 BO. Per-terminal handles
-          // become real (UI-1, UI-2, UI-3, …) so the wires below land on
+          // Distech ECY-VAV â€” 5 UI / 2 AO / 3 BO. Per-terminal handles
+          // become real (UI-1, UI-2, UI-3, â€¦) so the wires below land on
           // specific terminals and the Terminals inspector can label them.
           data: { vendorModelId: 'distech-ecy-vav' },
         },
-        // Primary zone-temp sensor — drives the thermal sim. Pt1000 RTD.
+        // Primary zone-temp sensor â€” drives the thermal sim. Pt1000 RTD.
         {
           id: 'zn',
           kind: 'sensor',
@@ -158,7 +158,7 @@ export const DEMOS: readonly Demo[] = [
           y: 400,
           data: { signal: 'rtd-pt1000' },
         },
-        // Secondary: CO₂ sensor, 4-20mA. At 900 ppm reads ~11.2 mA.
+        // Secondary: COâ‚‚ sensor, 4-20mA. At 900 ppm reads ~11.2 mA.
         {
           id: 'co2',
           kind: 'sensor',
@@ -192,7 +192,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'quickstart',
     name: 'Quick start: 1 VAV',
     blurb:
-      'Single VAV + zone temp sensor on a BACnet MS/TP trunk under an NAE-1 supervisor. Hit Run to watch a PI cool from 76→72°F. Also fires Who-Is / I-Am broadcasts so the BACnet packet log + conformance panel populate.',
+      'Single VAV + zone temp sensor on a BACnet MS/TP trunk under an NAE-1 supervisor. Hit Run to watch a PI cool from 76â†’72Â°F. Also fires Who-Is / I-Am broadcasts so the BACnet packet log + conformance panel populate.',
     scenario: buildScenario({
       nodes: [
         {
@@ -235,7 +235,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'sensor-drift',
     name: 'Sensor drift fault',
     blurb:
-      'Zone temp sensor drifting +1°F per 10 sim-min. Controller chases a phantom, real zone overcools.',
+      'Zone temp sensor drifting +1Â°F per 10 sim-min. Controller chases a phantom, real zone overcools.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-2', x: 240, y: 60 },
@@ -268,12 +268,12 @@ export const DEMOS: readonly Demo[] = [
     id: 'multi-zone',
     name: '3 coupled VAVs',
     blurb:
-      'AHU + 3 VAVs on one FC bus. 30% neighbor pull on each — start them at different temps to see them average.',
+      'AHU + 3 VAVs on one FC bus. 30% neighbor pull on each â€” start them at different temps to see them average.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-3', x: 420, y: 40 },
-        // FEC + chain ends carry the RS-485 EOL termination switch — the
-        // FC bus is a real daisy-chain now (fec → vav1 → vav2 → vav3), so
+        // FEC + chain ends carry the RS-485 EOL termination switch â€” the
+        // FC bus is a real daisy-chain now (fec â†’ vav1 â†’ vav2 â†’ vav3), so
         // the two physical ends (fec, vav3) terminate.
         { id: 'fec', kind: 'controller', label: 'FEC-MAIN', x: 420, y: 180, data: { eolTerminated: true } },
         { id: 'vav1', kind: 'controller', label: 'VAV-101', x: 200, y: 360, data: { eolTerminated: false } },
@@ -306,7 +306,7 @@ export const DEMOS: readonly Demo[] = [
       ],
       edges: [
         { source: 'sup', target: 'fec', wireKind: 'bacnet-ip' },
-        // Daisy-chained FC bus (was hub-spoke off the FEC — a T-tap/star,
+        // Daisy-chained FC bus (was hub-spoke off the FEC â€” a T-tap/star,
         // which the topology validator now flags as the real-world RS-485
         // mistake it is).
         { source: 'fec', target: 'vav1', wireKind: 'mstp', baud: 38400 },
@@ -341,7 +341,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'trunk-break',
     name: 'MS/TP trunk break',
     blurb:
-      'Engine → FEC → VAV. Click the MS/TP wire and hit "✂ Break trunk" to watch the VAV go offline.',
+      'Engine â†’ FEC â†’ VAV. Click the MS/TP wire and hit "âœ‚ Break trunk" to watch the VAV go offline.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-4', x: 320, y: 60 },
@@ -376,7 +376,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'night-setback',
     name: 'Occupancy schedule',
     blurb:
-      'Schedule 6:00–22:00 occupied (72°F) / unocc 78°F. Set Sim Clock start = 21:55, hit Run, watch the transition.',
+      'Schedule 6:00â€“22:00 occupied (72Â°F) / unocc 78Â°F. Set Sim Clock start = 21:55, hit Run, watch the transition.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-5', x: 240, y: 60 },
@@ -420,7 +420,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'subnet-misconfig',
     name: 'BACnet/IP subnet mismatch',
     blurb:
-      'Two NAEs supposed to talk over BACnet/IP — one configured for 192.168.1.x, the other for 192.168.2.x. Watch the validator flag the subnet mismatch and the bad gateway.',
+      'Two NAEs supposed to talk over BACnet/IP â€” one configured for 192.168.1.x, the other for 192.168.2.x. Watch the validator flag the subnet mismatch and the bad gateway.',
     scenario: buildScenario({
       nodes: [
         {
@@ -443,7 +443,7 @@ export const DEMOS: readonly Demo[] = [
           x: 600,
           y: 120,
           // Different subnet (someone typed 1 vs 2 on the IP), AND
-          // gateway points back to the OTHER subnet — classic
+          // gateway points back to the OTHER subnet â€” classic
           // "I copied the config from the other NAE but only changed
           // the host octet" mistake.
           data: {
@@ -469,7 +469,7 @@ export const DEMOS: readonly Demo[] = [
         },
       ],
       edges: [
-        // The bad link — NAE-A ↔ NAE-B over BACnet/IP, but they're in
+        // The bad link â€” NAE-A â†” NAE-B over BACnet/IP, but they're in
         // different subnets per their masks. Validator should fire
         // ipv4.subnet-mismatch + ipv4.gateway-not-in-subnet.
         { source: 'nae1', target: 'nae2', wireKind: 'bacnet-ip' },
@@ -492,12 +492,12 @@ export const DEMOS: readonly Demo[] = [
     id: 'mstp-commissioning',
     name: 'MS/TP commissioning fault',
     blurb:
-      '1 NAE + 4 FECs on one BACnet MS/TP trunk — but VAV-103 and VAV-104 ship with dip switches both set to MAC 5. Open the trunk inspector to spot the duplicate.',
+      '1 NAE + 4 FECs on one BACnet MS/TP trunk â€” but VAV-103 and VAV-104 ship with dip switches both set to MAC 5. Open the trunk inspector to spot the duplicate.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-X', x: 420, y: 40 },
         // FECs daisy-chained off the supervisor on one MS/TP trunk.
-        // First three get clean MACs; last two share MAC 5 — the bug
+        // First three get clean MACs; last two share MAC 5 â€” the bug
         // a tech would otherwise spend an hour chasing in the field.
         { id: 'fec1', kind: 'controller', label: 'VAV-101', x: 140, y: 220, forcedMac: 1 },
         { id: 'fec2', kind: 'controller', label: 'VAV-102', x: 280, y: 220, forcedMac: 2 },
@@ -514,7 +514,7 @@ export const DEMOS: readonly Demo[] = [
         },
       ],
       edges: [
-        // Bus topology: NAE → FEC1 → FEC2 → … last FEC, modeled as a
+        // Bus topology: NAE â†’ FEC1 â†’ FEC2 â†’ â€¦ last FEC, modeled as a
         // chain of MS/TP edges (BFS will collapse them into one trunk).
         { source: 'sup', target: 'fec1', wireKind: 'mstp', baud: 38400 },
         { source: 'fec1', target: 'fec2', wireKind: 'mstp', baud: 38400 },
@@ -540,7 +540,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'bbmd-bridged',
     name: 'BBMD bridge: cross-subnet done right',
     blurb:
-      'Two NAEs on different /24s, but both configured as BBMDs with each other in their BDT. Validator should mark this as info-only — healthy cross-subnet BACnet.',
+      'Two NAEs on different /24s, but both configured as BBMDs with each other in their BDT. Validator should mark this as info-only â€” healthy cross-subnet BACnet.',
     scenario: buildScenario({
       nodes: [
         {
@@ -612,7 +612,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '192.168.2.1',
             isBBMD: true,
-            // Empty BDT — the integrator forgot to populate this side.
+            // Empty BDT â€” the integrator forgot to populate this side.
             bdtPeers: [],
           },
         },
@@ -627,7 +627,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'bbmd-foreign-device',
     name: 'BACnet/IP: BBMD bridge + foreign device',
     blurb:
-      'Two NAEs run BBMD on different /24s and bridge broadcasts to each other. A laptop tool on a THIRD subnet registers as a foreign device with NAE-A. Hit Run and open the BACnet packet log to watch the full Annex-J dance: Register-Foreign-Device → BVLC-Result → Distribute-Broadcast → Forwarded-NPDU across the BDT. Every packet carries real wire bytes (click one to inspect).',
+      'Two NAEs run BBMD on different /24s and bridge broadcasts to each other. A laptop tool on a THIRD subnet registers as a foreign device with NAE-A. Hit Run and open the BACnet packet log to watch the full Annex-J dance: Register-Foreign-Device â†’ BVLC-Result â†’ Distribute-Broadcast â†’ Forwarded-NPDU across the BDT. Every packet carries real wire bytes (click one to inspect).',
     scenario: buildScenario({
       nodes: [
         {
@@ -642,7 +642,7 @@ export const DEMOS: readonly Demo[] = [
             gateway: '192.168.1.1',
             isBBMD: true,
             bdtPeers: ['192.168.2.10'],
-            subtitle: 'BBMD · subnet 192.168.1.0/24',
+            subtitle: 'BBMD Â· subnet 192.168.1.0/24',
           },
         },
         {
@@ -657,7 +657,7 @@ export const DEMOS: readonly Demo[] = [
             gateway: '192.168.2.1',
             isBBMD: true,
             bdtPeers: ['192.168.1.10'],
-            subtitle: 'BBMD · subnet 192.168.2.0/24',
+            subtitle: 'BBMD Â· subnet 192.168.2.0/24',
           },
         },
         {
@@ -670,14 +670,14 @@ export const DEMOS: readonly Demo[] = [
             ipAddress: '192.168.3.50',
             subnetMask: '255.255.255.0',
             gateway: '192.168.3.1',
-            subtitle: 'Foreign device · subnet 192.168.3.0/24',
+            subtitle: 'Foreign device Â· subnet 192.168.3.0/24',
           },
         },
       ],
       edges: [
         // The two BBMDs bridge across subnets via their BDTs.
         { source: 'nae-a', target: 'nae-b', wireKind: 'bacnet-ip' },
-        // The laptop is on a remote subnet — it can't broadcast across the
+        // The laptop is on a remote subnet â€” it can't broadcast across the
         // routers, so it registers as a foreign device with NAE-A.
         { source: 'laptop', target: 'nae-a', wireKind: 'bacnet-ip' },
       ],
@@ -688,7 +688,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'soft-controllers',
     name: 'JACE hosts 5 virtual VAVs',
     blurb:
-      'One Tridium JACE hosts five soft VAV controllers — no dedicated hardware. Power-off the JACE and watch ALL FIVE go offline together: the "all eggs in one basket" lesson of soft controllers.',
+      'One Tridium JACE hosts five soft VAV controllers â€” no dedicated hardware. Power-off the JACE and watch ALL FIVE go offline together: the "all eggs in one basket" lesson of soft controllers.',
     scenario: buildScenario({
       nodes: [
         {
@@ -702,7 +702,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.1.1',
             vendorModelId: 'tridium-jace-8000',
-            subtitle: 'Tridium · Niagara · BACnet/IP + Niagara Fox',
+            subtitle: 'Tridium Â· Niagara Â· BACnet/IP + Niagara Fox',
           },
         },
         {
@@ -754,7 +754,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'router-bridge',
     name: 'L3 router bridging two subnets',
     blurb:
-      'Two NAEs on different /24s wired to each other, plus a virtual router with interfaces on BOTH subnets. Validator reports the cross-subnet path as routed (info) — unicast works without BBMDs.',
+      'Two NAEs on different /24s wired to each other, plus a virtual router with interfaces on BOTH subnets. Validator reports the cross-subnet path as routed (info) â€” unicast works without BBMDs.',
     scenario: buildScenario({
       nodes: [
         {
@@ -780,7 +780,7 @@ export const DEMOS: readonly Demo[] = [
               { ip: '10.0.1.1', cidr: '10.0.1.0/24' },
               { ip: '10.0.2.1', cidr: '10.0.2.0/24' },
             ],
-            subtitle: '2 interfaces · 10.0.1.0/24 + 10.0.2.0/24',
+            subtitle: '2 interfaces Â· 10.0.1.0/24 + 10.0.2.0/24',
           },
         },
         {
@@ -806,9 +806,9 @@ export const DEMOS: readonly Demo[] = [
 
   {
     id: 'subnet-zones-walkthrough',
-    name: 'Subnet zones — IP vs VLAN visibility',
+    name: 'Subnet zones â€” IP vs VLAN visibility',
     blurb:
-      `Two subnet-zone containers (BMS VLAN 10.0.1.0/24 + Corp 10.0.2.0/24) with NAE-Corp dropped in the wrong zone — its IP doesn't match the VLAN it's drawn in. Net.1 zone validator flags it.`,
+      `Two subnet-zone containers (BMS VLAN 10.0.1.0/24 + Corp 10.0.2.0/24) with NAE-Corp dropped in the wrong zone â€” its IP doesn't match the VLAN it's drawn in. Net.1 zone validator flags it.`,
     scenario: buildScenario({
       nodes: [
         // Two zones side by side.
@@ -832,7 +832,7 @@ export const DEMOS: readonly Demo[] = [
           height: 240,
           data: { cidr: '10.0.2.0/24', color: '#fb923c' },
         },
-        // NAE in BMS zone, properly IP'd — should be silent.
+        // NAE in BMS zone, properly IP'd â€” should be silent.
         {
           id: 'nae-bms',
           kind: 'supervisor',
@@ -844,7 +844,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
           },
         },
-        // NAE in Corp zone, but mis-IP'd to BMS subnet — fires the
+        // NAE in Corp zone, but mis-IP'd to BMS subnet â€” fires the
         // zone-cidr-mismatch finding.
         {
           id: 'nae-corp',
@@ -866,7 +866,7 @@ export const DEMOS: readonly Demo[] = [
     id: 'heat-winter',
     name: 'Winter heating',
     blurb:
-      'AHU in heat mode, OAT 25°F, zone starts cold at 60°F. Watch the heating actuator drive zone to 70°F setpoint.',
+      'AHU in heat mode, OAT 25Â°F, zone starts cold at 60Â°F. Watch the heating actuator drive zone to 70Â°F setpoint.',
     scenario: buildScenario({
       nodes: [
         { id: 'sup', kind: 'supervisor', label: 'NAE-6', x: 240, y: 60 },
@@ -893,7 +893,7 @@ export const DEMOS: readonly Demo[] = [
             setpoint: 70,
             initialZone: 60,
             outdoorAir: 25,
-            // Larger τ for a building envelope losing heat to cold OAT.
+            // Larger Ï„ for a building envelope losing heat to cold OAT.
             tau: 900,
           },
         },
@@ -902,17 +902,17 @@ export const DEMOS: readonly Demo[] = [
     }),
   },
 
-  // ═══════════════════════════════════════════════════════════════════
-  // Richer virtual-controller topologies — see "all eggs in one basket"
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // Richer virtual-controller topologies â€” see "all eggs in one basket"
   // at scale, watch what happens when the basket is replicated across
   // subnets or vendors. These are the "real-building" demos.
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   {
     id: 'cov-firehose',
     name: 'BACnet/IP traffic showcase (COV firehose)',
     blurb:
-      "Watch-the-bus demo. One JACE polling four IP-attached VAVs, each with a zone sensor configured to drift, overshoot, or just settle in from a far-off start temp. Every deadband crossing fires a ConfirmedCOVNotification. Packet log (bottom-right) is the star of the show — open it, hit Run, watch the SubscribeCOV / ReadProperty / ConfirmedCOVNotification stream.",
+      "Watch-the-bus demo. One JACE polling four IP-attached VAVs, each with a zone sensor configured to drift, overshoot, or just settle in from a far-off start temp. Every deadband crossing fires a ConfirmedCOVNotification. Packet log (bottom-right) is the star of the show â€” open it, hit Run, watch the SubscribeCOV / ReadProperty / ConfirmedCOVNotification stream.",
     scenario: buildScenario({
       nodes: [
         {
@@ -929,7 +929,7 @@ export const DEMOS: readonly Demo[] = [
             subtitle: 'Polls all 4 VAVs over BACnet/IP',
           },
         },
-        // VAV-1 — cold start, heating ramps up (steady COV stream as
+        // VAV-1 â€” cold start, heating ramps up (steady COV stream as
         // zone climbs through deadband).
         {
           id: 'vav1',
@@ -947,7 +947,7 @@ export const DEMOS: readonly Demo[] = [
           y: 400,
           data: { signal: 'rtd-pt1000' },
         },
-        // VAV-2 — hot start, cooling ramps down.
+        // VAV-2 â€” hot start, cooling ramps down.
         {
           id: 'vav2',
           kind: 'controller',
@@ -964,8 +964,8 @@ export const DEMOS: readonly Demo[] = [
           y: 400,
           data: { signal: 'rtd-pt1000' },
         },
-        // VAV-3 — sensor DRIFT fault: walks ~1°F per 10 sim-min so it
-        // crosses the 0.5°F deadband every ~5 sim-min reliably even
+        // VAV-3 â€” sensor DRIFT fault: walks ~1Â°F per 10 sim-min so it
+        // crosses the 0.5Â°F deadband every ~5 sim-min reliably even
         // after the loop settles.
         {
           id: 'vav3',
@@ -983,7 +983,7 @@ export const DEMOS: readonly Demo[] = [
           y: 400,
           data: { signal: 'thermistor-10k-t2', fault: 'drift' },
         },
-        // VAV-4 — large coupling factor: overshoots setpoint, oscillates.
+        // VAV-4 â€” large coupling factor: overshoots setpoint, oscillates.
         {
           id: 'vav4',
           kind: 'controller',
@@ -1018,13 +1018,13 @@ export const DEMOS: readonly Demo[] = [
         {
           controllerId: 'vav1',
           sensorId: 's1',
-          // Cold start — heating loop drives zone up through deadband.
+          // Cold start â€” heating loop drives zone up through deadband.
           config: { initialZone: 62, setpoint: 72, mode: 'heat', outdoorAir: 30 },
         },
         {
           controllerId: 'vav2',
           sensorId: 's2',
-          // Hot start — cooling loop drives zone down through deadband.
+          // Hot start â€” cooling loop drives zone down through deadband.
           config: { initialZone: 85, setpoint: 72, mode: 'cool', outdoorAir: 90 },
         },
         {
@@ -1062,10 +1062,10 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.1.1',
             vendorModelId: 'tridium-jace-8000',
-            subtitle: 'Tridium · Niagara · hosts 12 soft VAVs',
+            subtitle: 'Tridium Â· Niagara Â· hosts 12 soft VAVs',
           },
         },
-        // ── Floor 3 (top) ──────────────────────────────────────
+        // â”€â”€ Floor 3 (top) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ...['vvav-301', 'vvav-302', 'vvav-303', 'vvav-304'].map((id, i) => ({
           id,
           kind: 'virtual-controller' as const,
@@ -1074,7 +1074,7 @@ export const DEMOS: readonly Demo[] = [
           y: 220,
           data: { hostId: 'jace', hostLabel: 'JACE-MAIN', subtitle: 'Floor 3' },
         })),
-        // ── Floor 2 (middle) ───────────────────────────────────
+        // â”€â”€ Floor 2 (middle) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ...['vvav-201', 'vvav-202', 'vvav-203', 'vvav-204'].map((id, i) => ({
           id,
           kind: 'virtual-controller' as const,
@@ -1083,7 +1083,7 @@ export const DEMOS: readonly Demo[] = [
           y: 400,
           data: { hostId: 'jace', hostLabel: 'JACE-MAIN', subtitle: 'Floor 2' },
         })),
-        // ── Floor 1 (ground) ───────────────────────────────────
+        // â”€â”€ Floor 1 (ground) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ...['vvav-101', 'vvav-102', 'vvav-103', 'vvav-104'].map((id, i) => ({
           id,
           kind: 'virtual-controller' as const,
@@ -1101,10 +1101,10 @@ export const DEMOS: readonly Demo[] = [
     id: 'campus-bbmd-bridge',
     name: 'Campus: 2 BBMDs bridge 2 JACEs (10 vVAVs total)',
     blurb:
-      "Two-subnet campus. Operations VLAN (10.0.1.0/24) hosts JACE-OPS + 5 virtual VAVs; Tenant VLAN (10.0.2.0/24) hosts JACE-TENANT + 5 virtual VAVs. Each JACE runs BBMD service with the OTHER JACE in its BDT — cross-subnet Who-Is broadcasts get forwarded. The conformance panel + broadcast trace show the forwarded packets.",
+      "Two-subnet campus. Operations VLAN (10.0.1.0/24) hosts JACE-OPS + 5 virtual VAVs; Tenant VLAN (10.0.2.0/24) hosts JACE-TENANT + 5 virtual VAVs. Each JACE runs BBMD service with the OTHER JACE in its BDT â€” cross-subnet Who-Is broadcasts get forwarded. The conformance panel + broadcast trace show the forwarded packets.",
     scenario: buildScenario({
       nodes: [
-        // ── Subnet zone backgrounds ────────────────────────────
+        // â”€â”€ Subnet zone backgrounds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         {
           id: 'zone-ops',
           kind: 'subnet-zone',
@@ -1125,7 +1125,7 @@ export const DEMOS: readonly Demo[] = [
           height: 540,
           data: { cidr: '10.0.2.0/24', color: '#a855f7' },
         },
-        // ── Operations JACE + fleet ───────────────────────────
+        // â”€â”€ Operations JACE + fleet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         {
           id: 'jace-ops',
           kind: 'supervisor',
@@ -1137,7 +1137,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.1.1',
             vendorModelId: 'tridium-jace-8000',
-            subtitle: 'BBMD · BDT → 10.0.2.10',
+            subtitle: 'BBMD Â· BDT â†’ 10.0.2.10',
             isBBMD: true,
             bdtPeers: ['10.0.2.10'],
           },
@@ -1150,7 +1150,7 @@ export const DEMOS: readonly Demo[] = [
           y: 280 + (i % 2) * 140,
           data: { hostId: 'jace-ops', hostLabel: 'JACE-OPS' },
         })),
-        // ── Tenant JACE + fleet ───────────────────────────────
+        // â”€â”€ Tenant JACE + fleet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         {
           id: 'jace-tenant',
           kind: 'supervisor',
@@ -1162,7 +1162,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.2.1',
             vendorModelId: 'tridium-jace-8000',
-            subtitle: 'BBMD · BDT → 10.0.1.10',
+            subtitle: 'BBMD Â· BDT â†’ 10.0.1.10',
             isBBMD: true,
             bdtPeers: ['10.0.1.10'],
           },
@@ -1177,7 +1177,7 @@ export const DEMOS: readonly Demo[] = [
         })),
       ],
       edges: [
-        // The two JACEs are wired BACnet/IP to each other — the BBMD
+        // The two JACEs are wired BACnet/IP to each other â€” the BBMD
         // service rides this physical link.
         { source: 'jace-ops', target: 'jace-tenant', wireKind: 'bacnet-ip' },
       ],
@@ -1188,10 +1188,10 @@ export const DEMOS: readonly Demo[] = [
     id: 'mixed-vendor-hosts',
     name: 'Mixed vendor: Tridium + JCI side-by-side',
     blurb:
-      "Tridium JACE and JCI NAE on the same subnet, each hosting their own fleet of soft controllers. Teaches the multi-vendor coexistence pattern most retrofit jobs end up with — the supervisors run different programming languages internally (Niagara wiresheet vs JCI CCT block-graph) but speak BACnet/IP to each other.",
+      "Tridium JACE and JCI NAE on the same subnet, each hosting their own fleet of soft controllers. Teaches the multi-vendor coexistence pattern most retrofit jobs end up with â€” the supervisors run different programming languages internally (Niagara wiresheet vs JCI CCT block-graph) but speak BACnet/IP to each other.",
     scenario: buildScenario({
       nodes: [
-        // ── Tridium side (left) ────────────────────────────────
+        // â”€â”€ Tridium side (left) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         {
           id: 'jace',
           kind: 'supervisor',
@@ -1203,7 +1203,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.1.1',
             vendorModelId: 'tridium-jace-8000',
-            subtitle: 'Tridium · Niagara wiresheet',
+            subtitle: 'Tridium Â· Niagara wiresheet',
           },
         },
         {
@@ -1230,7 +1230,7 @@ export const DEMOS: readonly Demo[] = [
           y: 280,
           data: { hostId: 'jace', hostLabel: 'JACE-MAIN' },
         },
-        // ── JCI side (right) ───────────────────────────────────
+        // â”€â”€ JCI side (right) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         {
           id: 'nae',
           kind: 'supervisor',
@@ -1242,7 +1242,7 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.1.1',
             vendorModelId: 'jci-sne10500',
-            subtitle: 'JCI Metasys · CCT block-graph',
+            subtitle: 'JCI Metasys Â· CCT block-graph',
           },
         },
         {
@@ -1277,15 +1277,15 @@ export const DEMOS: readonly Demo[] = [
     }),
   },
 
-  // ═══════════════════════════════════════════════════════════════════
-  // vAHU G36 §5.18 — live single-zone AHU sequence
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // vAHU G36 Â§5.18 â€” live single-zone AHU sequence
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   {
     id: 'g36-ahu-sequence',
-    name: 'G36 §5.18 AHU — live sequence',
+    name: 'G36 Â§5.18 AHU â€” live sequence',
     blurb:
-      'Single-zone VAV AHU running ASHRAE Guideline 36 §5.18. Cold-start: OAT 28°F, zone at 62°F — watch the AHU enter heating mode, ramp the hot-water valve, and climb toward setpoint. Open the BACnet packet log to see SubscribeCOV for DAT, ZN-T, CV-POS + periodic ReadProperty polls from the JACE.',
+      'Single-zone VAV AHU running ASHRAE Guideline 36 Â§5.18. Cold-start: OAT 28Â°F, zone at 62Â°F â€” watch the AHU enter heating mode, ramp the hot-water valve, and climb toward setpoint. Open the BACnet packet log to see SubscribeCOV for DAT, ZN-T, CV-POS + periodic ReadProperty polls from the JACE.',
     scenario: buildScenario({
       nodes: [
         // Supervisor: Tridium JACE polling the AHU over BACnet/IP.
@@ -1303,7 +1303,7 @@ export const DEMOS: readonly Demo[] = [
             subtitle: 'Polls AHU-1 over BACnet/IP',
           },
         },
-        // vAHU — G36 §5.18 sequence, cold-start conditions.
+        // vAHU â€” G36 Â§5.18 sequence, cold-start conditions.
         // OAT and zone temp come from the sim clock; vahuConfig
         // overrides here push the AHU into heating mode immediately.
         {
@@ -1315,13 +1315,13 @@ export const DEMOS: readonly Demo[] = [
           data: {
             ipAddress: '10.0.1.30',
             subnetMask: '255.255.255.0',
-            subtitle: 'G36 §5.18 · heat mode on cold start',
+            subtitle: 'G36 Â§5.18 Â· heat mode on cold start',
             // Drive OAT below econ lockout and zone below setpoint so
-            // the unit starts in heating mode — the most interesting
+            // the unit starts in heating mode â€” the most interesting
             // sequence to watch on first load.
           },
         },
-        // Zone node — couples to the AHU so zone temp reflects the
+        // Zone node â€” couples to the AHU so zone temp reflects the
         // AHU's discharge air warming the room over time.
         {
           id: 'zone',
@@ -1331,21 +1331,21 @@ export const DEMOS: readonly Demo[] = [
           y: 430,
           data: {
             zoneConfig: {
-              // Cold morning start: zone is 62°F, building lost heat
-              // overnight. The AHU will heat it back to 72°F setpoint.
+              // Cold morning start: zone is 62Â°F, building lost heat
+              // overnight. The AHU will heat it back to 72Â°F setpoint.
               T_zone_init: 62,
               // Medium thermal mass (conference room / open office).
-              volume_ft3: 18000,
+              volume_cu_ft: 18000,
               peak_occupants: 20,
             },
-            subtitle: '18 000 ft³ · cold start 62°F',
+            subtitle: '18 000 ftÂ³ Â· cold start 62Â°F',
           },
         },
       ],
       edges: [
-        // Supervisor ↔ AHU: BACnet/IP (triggers SubscribeCOV + polls).
+        // Supervisor â†” AHU: BACnet/IP (triggers SubscribeCOV + polls).
         { source: 'jace', target: 'ahu', wireKind: 'bacnet-ip' },
-        // AHU ↔ Zone: the AHU's supply air warms the zone each tick.
+        // AHU â†” Zone: the AHU's supply air warms the zone each tick.
         { source: 'ahu', target: 'zone', wireKind: 'hardwired' },
       ],
     }),
@@ -1353,9 +1353,9 @@ export const DEMOS: readonly Demo[] = [
 
   {
     id: 'g36-ahu-economizer',
-    name: 'G36 §5.18 AHU — economizer mode',
+    name: 'G36 Â§5.18 AHU â€” economizer mode',
     blurb:
-      'Same AHU, warm spring morning: OAT 58°F, zone at 76°F (too warm). Economizer kicks in — outside air damper opens above minimum ventilation, mechanical cooling stays off. Watch the packet log for OAD-POS and CV-POS COVs.',
+      'Same AHU, warm spring morning: OAT 58Â°F, zone at 76Â°F (too warm). Economizer kicks in â€” outside air damper opens above minimum ventilation, mechanical cooling stays off. Watch the packet log for OAD-POS and CV-POS COVs.',
     scenario: buildScenario({
       nodes: [
         {
@@ -1380,7 +1380,7 @@ export const DEMOS: readonly Demo[] = [
           data: {
             ipAddress: '10.0.1.30',
             subnetMask: '255.255.255.0',
-            subtitle: 'G36 §5.18 · economizer on warm spring day',
+            subtitle: 'G36 Â§5.18 Â· economizer on warm spring day',
           },
         },
         {
@@ -1393,10 +1393,10 @@ export const DEMOS: readonly Demo[] = [
             zoneConfig: {
               // Warm start: afternoon sun loaded the room.
               T_zone_init: 76,
-              volume_ft3: 18000,
+              volume_cu_ft: 18000,
               peak_occupants: 20,
             },
-            subtitle: '18 000 ft³ · warm start 76°F',
+            subtitle: '18 000 ftÂ³ Â· warm start 76Â°F',
           },
         },
       ],
@@ -1404,6 +1404,339 @@ export const DEMOS: readonly Demo[] = [
         { source: 'jace', target: 'ahu', wireKind: 'bacnet-ip' },
         { source: 'ahu', target: 'zone', wireKind: 'hardwired' },
       ],
+    }),
+  },
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // THE MEGA SITE â€” stress-test scale. Three engines, two MS/TP trunks
+  // (17 field MACs), a G36 AHU driving four real actuators, plant
+  // equipment, eight thermally-coupled zones, every sensor signal type
+  // in the catalog, and two deliberate faults hiding in the flurry.
+  // Built 2026-06-11 to shake bugs out at scale. If something's going
+  // to fall over at 40+ nodes, better here than at a customer demo.
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  {
+    id: 'mega-site',
+    name: 'MEGA SITE: 3 engines, 17 MACs, full plant',
+    blurb:
+      "Stress-test building. JACE-AHU runs a G36 AHU (driving fan VFD + OA damper + heat/cool valve actuators) plus an 8-VAV MS/TP trunk with mixed sensor types â€” Pt1000, Ni1000, 10k thermistor, COâ‚‚. NAE-EAST runs 6 more VAVs on its own trunk. SNE-PLANT polls the boiler/chiller controllers; plant equipment feeds the coil capacity model. Eight zones share walls and drift together. Two faults are hiding in the noise: one drifting sensor and one zone sensor wired to the wrong-kind input. Open the packet log, hit Run at 30Ã—, and watch the MAC flurry, COV stream, and lease renewals. Diagnose at your leisure.",
+    scenario: buildScenario({
+      nodes: [
+        // â”€â”€ IP backbone: three engines + L2 switch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        {
+          id: 'sw-core',
+          kind: 'switch',
+          label: 'SW-CORE',
+          x: 640,
+          y: 40,
+          data: { subtitle: 'Building core switch' },
+        },
+        {
+          id: 'jace-ahu',
+          kind: 'supervisor',
+          label: 'JACE-AHU',
+          x: 240,
+          y: 130,
+          data: {
+            ipAddress: '10.0.1.10',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'tridium-jace-8000',
+            subtitle: 'AHU + west trunk Â· 8 VAVs',
+            eolTerminated: true,
+          },
+        },
+        {
+          id: 'nae-east',
+          kind: 'supervisor',
+          label: 'NAE-EAST',
+          x: 1060,
+          y: 130,
+          data: {
+            ipAddress: '10.0.1.11',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'jci-sne10500',
+            subtitle: 'East trunk Â· 6 VAVs',
+            eolTerminated: true,
+          },
+        },
+        {
+          id: 'sne-plant',
+          kind: 'supervisor',
+          label: 'SNE-PLANT',
+          x: 640,
+          y: 220,
+          data: {
+            ipAddress: '10.0.1.12',
+            subnetMask: '255.255.255.0',
+            gateway: '10.0.1.1',
+            vendorModelId: 'jci-sne10500',
+            subtitle: 'Central plant trunk',
+            eolTerminated: true,
+          },
+        },
+        // â”€â”€ G36 AHU + its actuator rack â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        {
+          id: 'ahu1',
+          kind: 'vahu',
+          label: 'AHU-1',
+          x: 60,
+          y: 250,
+          data: {
+            ipAddress: '10.0.1.30',
+            subnetMask: '255.255.255.0',
+            subtitle: 'G36 Â§5.18 Â· serves west zones',
+          },
+        },
+        {
+          id: 'act-sf-vfd',
+          kind: 'actuator',
+          label: 'SF-VFD',
+          x: 20,
+          y: 420,
+          data: { actuatorModelId: 'abb-acs320', subtitle: 'Supply fan drive' },
+        },
+        {
+          id: 'act-oad',
+          kind: 'actuator',
+          label: 'OAD-ACT',
+          x: 150,
+          y: 420,
+          data: { actuatorModelId: 'belimo-af24-mft', subtitle: 'OA damper' },
+        },
+        {
+          id: 'act-hv',
+          kind: 'actuator',
+          label: 'HV-ACT',
+          x: 280,
+          y: 420,
+          data: { actuatorModelId: 'belimo-b2-fr', subtitle: 'Heating valve' },
+        },
+        {
+          id: 'act-cv',
+          kind: 'actuator',
+          label: 'CV-ACT',
+          x: 410,
+          y: 420,
+          data: { actuatorModelId: 'belimo-lr24-3', subtitle: 'Cooling valve' },
+        },
+        // â”€â”€ West trunk: 8 VAVs, true daisy chain, EOL at both ends â”€â”€
+        ...Array.from({ length: 8 }, (_, i) => ({
+          id: `wvav-${i + 1}`,
+          kind: 'controller' as const,
+          label: `VAV-1${String(i + 1).padStart(2, '0')}`,
+          x: 60 + i * 150,
+          y: 560,
+          data: {
+            vendorModelId: 'distech-ecy-vav',
+            subtitle: 'West wing',
+            // Chain ends terminate; middles must not.
+            eolTerminated: i === 7,
+          },
+        })),
+        // West-trunk zone sensors â€” one of each signal type in the
+        // catalog, plus two deliberate faults for the hunt:
+        //   ZN-103: drift fault (reads plausible, slowly walks away)
+        //   ZN-106: COâ‚‚ on a temp role â€” wrong-kind teaching beat
+        { id: 'ws-1', kind: 'sensor', label: 'ZN-101', x: 60, y: 700, data: { signal: 'rtd-pt1000' } },
+        { id: 'ws-2', kind: 'sensor', label: 'ZN-102', x: 210, y: 700, data: { signal: 'rtd-ni1000' } },
+        { id: 'ws-3', kind: 'sensor', label: 'ZN-103', x: 360, y: 700, data: { signal: 'thermistor-10k-t2', fault: 'drift' } },
+        { id: 'ws-4', kind: 'sensor', label: 'ZN-104', x: 510, y: 700, data: { signal: 'rtd-pt1000' } },
+        { id: 'ws-5', kind: 'sensor', label: 'ZN-105', x: 660, y: 700, data: { signal: 'rtd-ni1000' } },
+        { id: 'ws-6', kind: 'sensor', label: 'CO2-106', x: 810, y: 700, data: { signal: 'analog-4-20ma', sensorModelId: 'veris-cwe' } },
+        { id: 'ws-7', kind: 'sensor', label: 'ZN-107', x: 960, y: 700, data: { signal: 'thermistor-10k-t2' } },
+        { id: 'ws-8', kind: 'sensor', label: 'ZN-108', x: 1110, y: 700, data: { signal: 'rtd-pt1000' } },
+        // â”€â”€ East trunk: 6 VAVs, chain, EOL at both ends â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        ...Array.from({ length: 6 }, (_, i) => ({
+          id: `evav-${i + 1}`,
+          kind: 'controller' as const,
+          label: `VAV-2${String(i + 1).padStart(2, '0')}`,
+          x: 700 + i * 150,
+          y: 340,
+          data: {
+            vendorModelId: 'distech-ecy-vav',
+            subtitle: 'East wing',
+            eolTerminated: i === 5,
+          },
+        })),
+        { id: 'es-1', kind: 'sensor', label: 'ZN-201', x: 700, y: 470, data: { signal: 'rtd-pt1000' } },
+        { id: 'es-2', kind: 'sensor', label: 'ZN-202', x: 850, y: 470, data: { signal: 'rtd-ni1000' } },
+        { id: 'es-3', kind: 'sensor', label: 'ZN-203', x: 1000, y: 470, data: { signal: 'thermistor-10k-t2' } },
+        // â”€â”€ Central plant: controllers + equipment + VFD w/ feedback â”€
+        {
+          id: 'fec-blr',
+          kind: 'controller',
+          label: 'FEC-BLR',
+          x: 460,
+          y: 330,
+          // Mid-chain on SNE-PLANT → FEC-BLR → FEC-CHW: NO termination.
+          // (The EOL validator caught the demo author getting this wrong
+          // on the first draft — exactly the mistake it exists to catch.)
+          data: { subtitle: 'Boiler controller', eolTerminated: false },
+        },
+        {
+          id: 'fec-chw',
+          kind: 'controller',
+          label: 'FEC-CHW',
+          x: 590,
+          y: 330,
+          data: { subtitle: 'Chiller controller', eolTerminated: true },
+        },
+        {
+          id: 'eq-boiler',
+          kind: 'equipment',
+          label: 'BLR-1',
+          x: 460,
+          y: 460,
+          data: { equipmentModelId: 'cleaver-brooks-clearfire-h', subtitle: 'Condensing boiler' },
+        },
+        {
+          id: 'eq-chiller',
+          kind: 'equipment',
+          label: 'CH-1',
+          x: 590,
+          y: 460,
+          data: { equipmentModelId: 'carrier-30xa', subtitle: 'Air-cooled chiller' },
+        },
+        {
+          id: 'act-hwp-vfd',
+          kind: 'actuator',
+          label: 'HWP-VFD',
+          x: 330,
+          y: 460,
+          data: { actuatorModelId: 'danfoss-fc101', subtitle: 'HW pump drive' },
+        },
+        // â”€â”€ Zones: a west row sharing walls + an east pair â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        ...Array.from({ length: 5 }, (_, i) => ({
+          id: `zone-w${i + 1}`,
+          kind: 'zone' as const,
+          label: `WEST-${i + 1}`,
+          x: 60 + i * 230,
+          y: 840,
+          data: {
+            zoneConfig: {
+              T_zone_init: [58, 65, 71, 77, 84][i],
+              peak_occupants: [2, 4, 12, 2, 1][i],
+              // Size rooms to their use — the 12'×14' default packs a
+              // conference room's load into a closet.
+              volume_cu_ft: [4000, 4000, 9000, 4000, 2000][i],
+              floor_area_sqft: [440, 440, 1000, 440, 220][i],
+              // Zone 5 is the server room: high plug load, no people.
+              equipment_w_per_sqft: i === 4 ? 6 : 1,
+            },
+            subtitle: ['cold start', 'cool', 'conference', 'warm', 'server room'][i],
+          },
+        })),
+        {
+          id: 'zone-e1',
+          kind: 'zone',
+          label: 'EAST-1',
+          x: 760,
+          y: 840,
+          data: { zoneConfig: { T_zone_init: 69, peak_occupants: 6, volume_cu_ft: 9000, floor_area_sqft: 1000 }, subtitle: 'open office' },
+        },
+        {
+          id: 'zone-e2',
+          kind: 'zone',
+          label: 'EAST-2',
+          x: 990,
+          y: 840,
+          data: { zoneConfig: { T_zone_init: 74, peak_occupants: 3, volume_cu_ft: 4500, floor_area_sqft: 500 }, subtitle: 'corner office' },
+        },
+        {
+          id: 'zone-ahu',
+          kind: 'zone',
+          label: 'AHU-SERVED',
+          x: 1220,
+          y: 840,
+          data: { zoneConfig: { T_zone_init: 63, peak_occupants: 20, volume_cu_ft: 18000, floor_area_sqft: 2000 }, subtitle: 'AHU-1 main zone' },
+        },
+      ],
+      edges: [
+        // IP backbone through the core switch + engines' pair traffic.
+        { source: 'jace-ahu', target: 'sw-core', wireKind: 'bacnet-ip' },
+        { source: 'nae-east', target: 'sw-core', wireKind: 'bacnet-ip' },
+        { source: 'sne-plant', target: 'sw-core', wireKind: 'bacnet-ip' },
+        // JACE â†” AHU direct pair (SubscribeCOV + polls on the wire).
+        { source: 'jace-ahu', target: 'ahu1', wireKind: 'bacnet-ip' },
+        // AHU drives its actuator rack from live G36 sequence state.
+        { source: 'ahu1', target: 'act-sf-vfd', wireKind: 'hardwired', sourceHandle: 'AO-1' },
+        { source: 'ahu1', target: 'act-oad', wireKind: 'hardwired', sourceHandle: 'AO-2' },
+        { source: 'ahu1', target: 'act-hv', wireKind: 'hardwired', sourceHandle: 'AO-3' },
+        { source: 'ahu1', target: 'act-cv', wireKind: 'hardwired', sourceHandle: 'AO-4' },
+        { source: 'ahu1', target: 'zone-ahu', wireKind: 'hardwired' },
+        // West MS/TP trunk â€” TRUE daisy chain (no hub-spoke!).
+        { source: 'jace-ahu', target: 'wvav-1', wireKind: 'mstp', baud: 38400 },
+        ...Array.from({ length: 7 }, (_, i) => ({
+          source: `wvav-${i + 1}`,
+          target: `wvav-${i + 2}`,
+          wireKind: 'mstp' as const,
+          baud: 38400,
+        })),
+        // West zone sensors into their VAVs.
+        ...Array.from({ length: 8 }, (_, i) => ({
+          source: `wvav-${i + 1}`,
+          target: `ws-${i + 1}`,
+          wireKind: 'hardwired' as const,
+        })),
+        // East MS/TP trunk â€” chain at 76800 baud.
+        { source: 'nae-east', target: 'evav-1', wireKind: 'mstp', baud: 76800 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          source: `evav-${i + 1}`,
+          target: `evav-${i + 2}`,
+          wireKind: 'mstp' as const,
+          baud: 76800,
+        })),
+        { source: 'evav-1', target: 'es-1', wireKind: 'hardwired' },
+        { source: 'evav-2', target: 'es-2', wireKind: 'hardwired' },
+        { source: 'evav-3', target: 'es-3', wireKind: 'hardwired' },
+        // Plant trunk: SNE â†’ boiler FEC â†’ chiller FEC (chain, EOL ends).
+        { source: 'sne-plant', target: 'fec-blr', wireKind: 'mstp', baud: 38400 },
+        { source: 'fec-blr', target: 'fec-chw', wireKind: 'mstp', baud: 38400 },
+        // Plant equipment + the pump VFD (with position feedback into
+        // the boiler FEC's UI-3 â€” the G26 path at plant scale).
+        { source: 'fec-blr', target: 'eq-boiler', wireKind: 'hardwired' },
+        { source: 'fec-chw', target: 'eq-chiller', wireKind: 'hardwired' },
+        { source: 'fec-blr', target: 'act-hwp-vfd', wireKind: 'hardwired' },
+        // Position feedback lands generic â€” G32: generic controllers
+        // render no terminal handles, so a targetHandle here makes
+        // xyflow drop the edge entirely (and warn every render).
+        { source: 'act-hwp-vfd', target: 'fec-blr', wireKind: 'hardwired' },
+        // Zones share walls along each row (zoneâ†”zone conduction).
+        ...Array.from({ length: 4 }, (_, i) => ({
+          source: `zone-w${i + 1}`,
+          target: `zone-w${i + 2}`,
+          wireKind: 'hardwired' as const,
+        })),
+        { source: 'zone-e1', target: 'zone-e2', wireKind: 'hardwired' },
+      ],
+      // Thermal programs â€” every VAV does something different: modes
+      // alternate heat/cool, setpoints spread 68â€“74, time constants vary
+      // so the COV streams de-correlate.
+      wires: [
+        ...Array.from({ length: 8 }, (_, i) => ({
+          controllerId: `wvav-${i + 1}`,
+          sensorId: `ws-${i + 1}`,
+          config: {
+            mode: (i % 2 === 0 ? 'heat' : 'cool') as 'heat' | 'cool',
+            setpoint: 68 + (i % 4) * 2,
+            initialZone: 58 + i * 3,
+            tau: 600 + i * 120,
+          },
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          controllerId: `evav-${i + 1}`,
+          sensorId: `es-${i + 1}`,
+          config: {
+            mode: (i % 2 === 0 ? 'cool' : 'heat') as 'heat' | 'cool',
+            setpoint: 70 + i,
+            initialZone: 78 - i * 4,
+            tau: 800 + i * 200,
+          },
+        })),
+      ],
+      focused: 'jace-ahu',
     }),
   },
 ];
