@@ -80,6 +80,16 @@ every item below is a trap we already hit once on the home network:
    the host key (new IP).
 5. Re-run the two-machine smoke test (START HERE section) before any
    recipe.
+
+Status 2026-06-10: lab router deployed (192.168.100.0/24, produced lab5) but
+**power-cycles mysteriously** — suspect the wall-wart first (swap for any
+matching-voltage, equal-or-higher-amperage adapter), then heat. Plan B is a
+VLAN on the main router — **guest-network trap:** consumer routers' "guest
+SSID" ships with client isolation ON, which blocks exactly the
+device-to-device traffic the lab needs. Verify a real VLAN or an "allow
+clients to see each other" toggle before relying on it. Note: remaining
+recipes (TTL ghost, priority array) run fine on the main LAN — isolation is
+only load-bearing for phase-B.
 - **CHECK THE PROFILE FIRST (learned the hard way, 2026-06-10):** run
   `Get-NetConnectionProfile` on EVERY machine before anything else. Both
   lab boxes turned out to be **Public** — meaning every `-Profile Private`
