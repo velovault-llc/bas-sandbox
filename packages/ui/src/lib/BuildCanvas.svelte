@@ -73,6 +73,7 @@
     computeOaLockout,
     HW_LOOP_DEFAULTS,
     CHW_LOOP_DEFAULTS,
+    CW_LOOP_DEFAULTS,
     stepZone,
     initZoneState,
     defaultOccupancySchedule,
@@ -2446,7 +2447,10 @@
       const isTower = eqModel.kind === 'cooling-tower';
       if (!isHotPlant && !isCoolPlant && !isTower) continue;
 
-      const cfg = isHotPlant ? HW_LOOP_DEFAULTS : CHW_LOOP_DEFAULTS;
+      // Per-plant loop physics: towers got CHW defaults before
+      // CW_LOOP_DEFAULTS existed, which "refrigerated" the condenser
+      // loop to the 36 °F chiller floor (found in the mega site).
+      const cfg = isHotPlant ? HW_LOOP_DEFAULTS : isTower ? CW_LOOP_DEFAULTS : CHW_LOOP_DEFAULTS;
       const prev = eqData.loopState ?? initLoopState(cfg, 70);
 
       // Walk actuator → THIS equipment edges. Each actuator's command
@@ -6697,17 +6701,23 @@
       }
     }
 
-    // 4. Supervisor downstream — supervisors should be roots
+    // 4. Supervisor downstream — supervisors should be roots.
+    // EXCEPT supervisor↔supervisor BACnet/IP links: that's how real
+    // sites peer engines (BBMD BDT partners, site-director ↔ engine).
+    // The campus/BBMD demos and the mega site all carry one — was a
+    // standing false warning until 2026-06-11.
     for (const e of edges) {
       const tgt = nodeById.get(e.target);
-      if (tgt && nodeKind(tgt) === 'supervisor') {
-        findings.push({
-          level: 'warning',
-          ruleId: 'supervisor-downstream',
-          message: `${labelOf(e.target)} is a Supervisor wired downstream of ${labelOf(e.source)} — supervisors are usually roots`,
-          subjectId: e.id,
-        });
-      }
+      if (!tgt || nodeKind(tgt) !== 'supervisor') continue;
+      const src = nodeById.get(e.source);
+      const wk = (e.data?.wireKind as WireKind) ?? undefined;
+      if (src && nodeKind(src) === 'supervisor' && wk === 'bacnet-ip') continue;
+      findings.push({
+        level: 'warning',
+        ruleId: 'supervisor-downstream',
+        message: `${labelOf(e.target)} is a Supervisor wired downstream of ${labelOf(e.source)} — supervisors are usually roots`,
+        subjectId: e.id,
+      });
     }
 
     // 5. Orphan nodes
@@ -6717,6 +6727,9 @@
       referenced.add(e.target);
     }
     for (const n of nodes) {
+      // Subnet-zone containers are drawn around devices, never wired —
+      // "not connected" is their natural state, not a finding.
+      if (isSubnetZone(n)) continue;
       if (!referenced.has(n.id)) {
         findings.push({
           level: 'info',

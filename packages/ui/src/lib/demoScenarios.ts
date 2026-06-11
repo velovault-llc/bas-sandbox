@@ -1431,14 +1431,37 @@ export const DEMOS: readonly Demo[] = [
       "Stress-test building. JACE-AHU runs a G36 AHU (driving fan VFD + OA damper + heat/cool valve actuators) plus an 8-VAV MS/TP trunk with mixed sensor types — Pt1000, Ni1000, 10k thermistor, CO₂. NAE-EAST runs 6 more VAVs on its own trunk. SNE-PLANT's FECs ship with REAL ST programs (open >_ Programming on them): FEC-BLR runs outdoor-reset boiler firing, FEC-CHW runs chiller enable with hysteresis, and VAV-101 carries a custom cooling override — the plant actually responds to OAT. Eight zones share walls and drift together. Two faults are hiding in the noise: one drifting sensor and one zone sensor wired to the wrong-kind input. Open the packet log, hit Run at 30×, and watch the MAC flurry, COV stream, and lease renewals. Diagnose at your leisure.",
     scenario: buildScenario({
       nodes: [
-        // ── IP backbone: three engines + L2 switch ─────────────────
+        // ── Subnet containers: the site spans TWO /24s bridged by
+        // BBMDs — cross-subnet broadcasts ride the Annex-J machinery.
+        {
+          id: 'sz-west',
+          kind: 'subnet-zone',
+          label: 'BMS-WEST VLAN',
+          x: 0,
+          y: 5,
+          width: 860,
+          height: 320,
+          data: { cidr: '10.0.1.0/24', color: '#06b6d4' },
+        },
+        {
+          id: 'sz-east',
+          kind: 'subnet-zone',
+          label: 'BMS-EAST VLAN',
+          x: 900,
+          y: 5,
+          width: 420,
+          height: 290,
+          data: { cidr: '10.0.2.0/24', color: '#a855f7' },
+        },
+        // ── IP backbone: three engines + L2 switch. JACE-AHU and
+        // NAE-EAST are BBMDs with each other in their BDTs.
         {
           id: 'sw-core',
           kind: 'switch',
           label: 'SW-CORE',
           x: 640,
           y: 40,
-          data: { subtitle: 'Building core switch' },
+          data: { subtitle: 'West core switch' },
         },
         {
           id: 'jace-ahu',
@@ -1451,8 +1474,10 @@ export const DEMOS: readonly Demo[] = [
             subnetMask: '255.255.255.0',
             gateway: '10.0.1.1',
             vendorModelId: 'tridium-jace-8000',
-            subtitle: 'AHU + west trunk · 8 VAVs',
+            subtitle: 'AHU + west trunk · BBMD → 10.0.2.10',
             eolTerminated: true,
+            isBBMD: true,
+            bdtPeers: ['10.0.2.10'],
           },
         },
         {
@@ -1462,12 +1487,14 @@ export const DEMOS: readonly Demo[] = [
           x: 1060,
           y: 130,
           data: {
-            ipAddress: '10.0.1.11',
+            ipAddress: '10.0.2.10',
             subnetMask: '255.255.255.0',
-            gateway: '10.0.1.1',
+            gateway: '10.0.2.1',
             vendorModelId: 'jci-sne10500',
-            subtitle: 'East trunk · 6 VAVs',
+            subtitle: 'East trunk · BBMD → 10.0.1.10',
             eolTerminated: true,
+            isBBMD: true,
+            bdtPeers: ['10.0.1.10'],
           },
         },
         {
@@ -1590,7 +1617,17 @@ export const DEMOS: readonly Demo[] = [
           label: 'FEC-CHW',
           x: 590,
           y: 330,
-          data: { subtitle: 'Chiller controller', eolTerminated: true },
+          // Mid-chain now that FEC-CT extends the trunk — no termination.
+          data: { subtitle: 'Chiller controller', eolTerminated: false },
+        },
+        {
+          id: 'fec-ct',
+          kind: 'controller',
+          label: 'FEC-CT',
+          x: 720,
+          y: 330,
+          // New chain end — termination moves here.
+          data: { subtitle: 'Tower controller', eolTerminated: true },
         },
         {
           id: 'eq-boiler',
@@ -1624,10 +1661,27 @@ export const DEMOS: readonly Demo[] = [
           y: 460,
           data: { actuatorModelId: 'square-d-classII-contactor', subtitle: 'Chiller enable contactor' },
         },
+        {
+          id: 'act-tw-fan',
+          kind: 'actuator',
+          label: 'TWR-FAN',
+          x: 850,
+          y: 460,
+          data: { actuatorModelId: 'abb-acs320', subtitle: 'Tower fan VFD' },
+        },
+        {
+          id: 'eq-tower',
+          kind: 'equipment',
+          label: 'CT-1',
+          x: 850,
+          y: 580,
+          data: { equipmentModelId: 'baltimore-aircoil-vtl', subtitle: 'Cooling tower' },
+        },
         // Plant supply-temp sensors — make the FECs physics targets so
         // their shipped ST programs actually run each tick.
         { id: 'hws-t', kind: 'sensor', label: 'HWS-T', x: 400, y: 560, data: { signal: 'rtd-pt1000' } },
         { id: 'chws-t', kind: 'sensor', label: 'CHWS-T', x: 650, y: 560, data: { signal: 'rtd-pt1000' } },
+        { id: 'cws-t', kind: 'sensor', label: 'CWS-T', x: 980, y: 560, data: { signal: 'rtd-ni1000' } },
         // ── Zones: a west row sharing walls + an east pair ──────────
         ...Array.from({ length: 5 }, (_, i) => ({
           id: `zone-w${i + 1}`,
@@ -1675,10 +1729,12 @@ export const DEMOS: readonly Demo[] = [
         },
       ],
       edges: [
-        // IP backbone through the core switch + engines' pair traffic.
+        // West IP backbone through the core switch.
         { source: 'jace-ahu', target: 'sw-core', wireKind: 'bacnet-ip' },
-        { source: 'nae-east', target: 'sw-core', wireKind: 'bacnet-ip' },
         { source: 'sne-plant', target: 'sw-core', wireKind: 'bacnet-ip' },
+        // Cross-subnet BBMD link: JACE-AHU (10.0.1.10) ↔ NAE-EAST
+        // (10.0.2.10) — broadcasts ride the BDT, not the local wire.
+        { source: 'jace-ahu', target: 'nae-east', wireKind: 'bacnet-ip' },
         // JACE ↔ AHU direct pair (SubscribeCOV + polls on the wire).
         { source: 'jace-ahu', target: 'ahu1', wireKind: 'bacnet-ip' },
         // AHU drives its actuator rack from live G36 sequence state.
@@ -1712,9 +1768,11 @@ export const DEMOS: readonly Demo[] = [
         { source: 'evav-1', target: 'es-1', wireKind: 'hardwired' },
         { source: 'evav-2', target: 'es-2', wireKind: 'hardwired' },
         { source: 'evav-3', target: 'es-3', wireKind: 'hardwired' },
-        // Plant trunk: SNE → boiler FEC → chiller FEC (chain, EOL ends).
+        // Plant trunk: SNE → boiler FEC → chiller FEC → tower FEC
+        // (chain; EOL at SNE-PLANT and FEC-CT).
         { source: 'sne-plant', target: 'fec-blr', wireKind: 'mstp', baud: 38400 },
         { source: 'fec-blr', target: 'fec-chw', wireKind: 'mstp', baud: 38400 },
+        { source: 'fec-chw', target: 'fec-ct', wireKind: 'mstp', baud: 38400 },
         // Plant equipment + the pump VFD (with position feedback into
         // the boiler FEC's UI-3 — the G26 path at plant scale).
         { source: 'fec-blr', target: 'eq-boiler', wireKind: 'hardwired' },
@@ -1735,6 +1793,10 @@ export const DEMOS: readonly Demo[] = [
         // the shipped programs run).
         { source: 'fec-blr', target: 'hws-t', wireKind: 'hardwired' },
         { source: 'fec-chw', target: 'chws-t', wireKind: 'hardwired' },
+        { source: 'fec-ct', target: 'cws-t', wireKind: 'hardwired' },
+        // Tower fan chain: FEC-CT program → fan VFD → tower.
+        { source: 'fec-ct', target: 'act-tw-fan', wireKind: 'hardwired' },
+        { source: 'act-tw-fan', target: 'eq-tower', wireKind: 'hardwired' },
         // Zones share walls along each row (zone↔zone conduction).
         ...Array.from({ length: 4 }, (_, i) => ({
           source: `zone-w${i + 1}`,
@@ -1770,6 +1832,7 @@ export const DEMOS: readonly Demo[] = [
         // Plant FECs become physics targets so their ST programs run.
         { controllerId: 'fec-blr', sensorId: 'hws-t', config: { mode: 'heat' as const, setpoint: 72 } },
         { controllerId: 'fec-chw', sensorId: 'chws-t', config: { mode: 'cool' as const, setpoint: 72 } },
+        { controllerId: 'fec-ct', sensorId: 'cws-t', config: { mode: 'cool' as const, setpoint: 72 } },
       ],
       // Shipped controller programs (>_ Programming would show these) —
       // the plant runs real logic instead of sitting dead, and one VAV
@@ -1806,6 +1869,18 @@ export const DEMOS: readonly Demo[] = [
             '  run := 0.0;',
             'END_IF',
             'actuator := run;',
+          ].join('\n'),
+        },
+        {
+          controllerId: 'fec-ct',
+          source: [
+            '(* Cooling tower fan: ramp with OAT above 60F. The tower    *)',
+            '(* ALSO hardware-locks-out below 50F OAT (freeze + basin).   *)',
+            'IF oat > 60.0 THEN',
+            '  actuator := CLAMP((oat - 60.0) / 25.0, 0.2, 1.0);',
+            'ELSE',
+            '  actuator := 0.0;',
+            'END_IF',
           ].join('\n'),
         },
         {

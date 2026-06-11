@@ -54,6 +54,16 @@ VAV-101 custom override — verified live, chiller at CHWS 37.2 °F under a
 demoScenarios.ts (committed briefly as mojibake) — repaired via cp1252
 reverse-decode; avoid Set-Content rewrites on UTF-8 sources.
 
+**Mega site v3 (James: prep for IP traffic + use the unused toys):** two
+subnet-zones bridged by BBMDs (JACE-AHU 10.0.1.10 ↔ NAE-EAST 10.0.2.10,
+each in the other's BDT — Annex-J forwarded broadcasts on the wire),
+cooling tower chain (FEC-CT shipped ST program → TWR-FAN VFD → CT-1).
+Four more fixes: G58 (towers ran on CHW config → condenser loop at 37 °F;
+CW_LOOP_DEFAULTS + wet-bulb-approach envelope), G59 (sup↔sup BACnet/IP
+links falsely warned — that's how BBMDs peer), G60 (subnet-zones flagged
+as orphans), G61 (capture-tap dropdown reshuffled — ring-buffer first-seen
+order; now label-sorted). Network pill: healthy, 3 trunks. 380/380.
+
 **Still open from the COV chapter:** G44 (unconfirmed/subscription-less COV
 broadcasts — wire encoder exists, behavior unmodeled), G50 (duplicate
 subscriptions multiplying traffic — wants Site Director's manual subscribe

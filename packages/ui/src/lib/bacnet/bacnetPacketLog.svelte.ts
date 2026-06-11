@@ -237,14 +237,19 @@ export function visiblePackets(): BacnetPacket[] {
 }
 
 /** Unique trunk ids currently represented in the buffer — used to
- *  populate the per-trunk filter dropdown. */
+ *  populate the per-trunk filter dropdown. Sorted by label so the
+ *  options hold still: the buffer is a ring, so first-seen order
+ *  changes as old packets fall off, and an insertion-ordered list
+ *  reshuffles under the user's cursor mid-click. */
 export function trunkIdsInBuffer(): { id: string; label: string }[] {
   const seen = new Map<string, string>();
   for (const p of bacnetPacketLog.packets) {
     if (!p.trunkId) continue; // Skip packets with no trunk context (IP broadcasts).
     if (!seen.has(p.trunkId)) seen.set(p.trunkId, p.trunkLabel ?? p.trunkId);
   }
-  return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+  return Array.from(seen.entries())
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** Pretty-print a packet for one-line display.

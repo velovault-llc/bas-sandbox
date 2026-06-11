@@ -129,7 +129,9 @@ function stepLoopInner(
   inputs: LoopInputs,
   dt: number,
 ): LoopState {
-  const isCooling = config.kind === 'chilled-water';
+  // Chilled-water AND condenser-water plants REMOVE heat from their
+  // loop (chiller evaporator / tower fill); only hot-water adds it.
+  const isCooling = config.kind !== 'hot-water';
   // Pump-driven flow. Zero-flow at zero command means loop ΔT goes to
   // infinity in the formula below, so clamp to a small idle flow.
   const flow_gpm = Math.max(0.5, inputs.pumpCommand * config.designFlowGpm);
@@ -146,11 +148,14 @@ function stepLoopInner(
   // around 36 °F (a 150-ton machine vs a 15% idle load sent CHWS to
   // −1287 °F before this existed); a boiler's high-limit aquastat caps
   // HW around 210 °F. Linear derate inside an approach band.
-  const envelope = isCooling
-    ? Math.max(0, Math.min(1, (state.T_supply - 36) / 8))
-    : config.kind === 'hot-water'
-      ? Math.max(0, Math.min(1, (210 - state.T_supply) / 10))
-      : 1;
+  const envelope =
+    config.kind === 'chilled-water'
+      ? Math.max(0, Math.min(1, (state.T_supply - 36) / 8))
+      : config.kind === 'condenser-water'
+        // A tower approaches ambient WET bulb — proxy: dry bulb − 12 °F,
+        // never below 60 °F. It cannot refrigerate; it only rejects.
+        ? Math.max(0, Math.min(1, (state.T_supply - Math.max(60, inputs.outsideTemp - 12)) / 6))
+        : Math.max(0, Math.min(1, (210 - state.T_supply) / 10));
 
   // Heat being added (HW) or removed (CHW) by the plant this tick.
   // BTU/hr at the plant heat exchanger.
@@ -233,4 +238,16 @@ export const CHW_LOOP_DEFAULTS: LoopConfig = {
   designFlowGpm: 360, // ~2.4 GPM/ton
   capacityBtu: 150 * 12_000, // 150 tons × 12,000 BTU/hr/ton
   loopMassLbs: 800 * 8.33,
+};
+
+/** Condenser-water config for a 150-ton open tower. CW loops run hot —
+ *  85 °F supply (to the chiller condenser) / 95 °F return at design —
+ *  and the tower can only approach ambient wet bulb, never below. */
+export const CW_LOOP_DEFAULTS: LoopConfig = {
+  kind: 'condenser-water',
+  designSupplyTemp: 85,
+  designReturnTemp: 95,
+  designFlowGpm: 450, // ~3 GPM/ton condenser side
+  capacityBtu: 150 * 15_000, // rejection ≈ tons × 15,000 BTU/hr (incl. compressor heat)
+  loopMassLbs: 600 * 8.33,
 };

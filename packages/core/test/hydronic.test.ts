@@ -4,6 +4,7 @@ import {
   initLoopState,
   HW_LOOP_DEFAULTS,
   CHW_LOOP_DEFAULTS,
+  CW_LOOP_DEFAULTS,
 } from '../src/sim/hydronic.js';
 
 describe('Hot-water loop physics', () => {
@@ -157,6 +158,20 @@ describe('Numerical stability at fast-forward tick sizes', () => {
     }
     expect(s.T_supply).toBeLessThan(215);
     expect(s.T_supply).toBeGreaterThan(180);
+  });
+
+  it('a cooling tower REJECTS heat but cannot refrigerate below ambient approach', () => {
+    // Regression: towers ran on CHW_LOOP_DEFAULTS and chilled the
+    // condenser loop to 37 °F on a 92 °F day. A tower approaches wet
+    // bulb (proxy: dry bulb − 12 °F) — full fan on a hot day should
+    // settle CWS in the 80s, never the 30s.
+    let s = initLoopState(CW_LOOP_DEFAULTS, 95);
+    for (let i = 0; i < 200; i++) {
+      s = stepLoop(s, CW_LOOP_DEFAULTS, { plantCommand: 1, pumpCommand: 1, loadCommand: 0.3, outsideTemp: 92 }, 1800);
+    }
+    expect(Number.isFinite(s.T_supply)).toBe(true);
+    expect(s.T_supply).toBeGreaterThan(75);
+    expect(s.T_supply).toBeLessThan(100);
   });
 
   it('idle HW loop at dt=1800 s converges the same way', () => {

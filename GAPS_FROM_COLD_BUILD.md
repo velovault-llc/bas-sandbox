@@ -750,6 +750,22 @@ it, and shook out four real findings in one session:
   stepLoop now derates plant output approaching 36 °F CHW / 210 °F HW
   and substeps large dt like stepZone. Verified live: running chiller
   settles CHWS/CHWR 37.2/38.7 °F.
+- **G58 — ✅ FIXED — cooling towers simulated as chillers.** The plant
+  pass picked `CHW_LOOP_DEFAULTS` for every non-boiler, so CT-1
+  "refrigerated" its condenser loop to 37 °F on a 92 °F day. Added
+  `CW_LOOP_DEFAULTS` (85/95 design, 450 GPM) + condenser-water as a
+  heat-REMOVING kind in stepLoop with a wet-bulb-approach envelope
+  (dry bulb − 12 °F, floor 60 °F). Verified live: CWS/CWR 80.9/82.4 °F.
+- **G59 — ✅ FIXED — supervisor↔supervisor BACnet/IP links warned
+  "supervisors are usually roots".** That's how real sites peer engines
+  (BBMD BDT partners; Site Director ↔ engines next). Standing false
+  warning in every BBMD demo. Now skipped for sup↔sup bacnet-ip edges.
+- **G60 — ✅ FIXED — subnet-zone containers flagged as orphan nodes.**
+  They're drawn around devices, never wired; excluded from the check.
+- **G61 — ✅ FIXED — capture-tap dropdown reordered itself.** Options
+  came from first-seen order in the RING buffer, so as old packets fell
+  off, the list reshuffled under the cursor mid-click (James caught it).
+  Now sorted by label.
 - **NEW CAPABILITY — scenarios ship controller PROGRAMS.** `programs[]`
   on BasScenarioV1: raw ST applied via setProgramSource on load (like a
   site backup carrying the controller database). Mega site now ships

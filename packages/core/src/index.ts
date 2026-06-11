@@ -134,6 +134,7 @@ export {
   computeOaLockout,
   HW_LOOP_DEFAULTS,
   CHW_LOOP_DEFAULTS,
+  CW_LOOP_DEFAULTS,
 } from './sim/hydronic.js';
 export type {
   LoopKind,
