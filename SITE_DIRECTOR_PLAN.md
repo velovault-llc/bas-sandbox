@@ -4,8 +4,9 @@
 > The idea being that you can program things through there, adjust COV's and
 > other things you would need to do in an IRL situation."
 
-Status: **queued** (after the wiring-revamp tail: slices 3 + 5). This doc
-scopes it so the idea doesn't evaporate.
+Status: **ready to build** — design calls answered 2026-06-11 (below).
+Does NOT need to wait for slices 3 + 5: SD.1/SD.2 are orthogonal to the IP
+port model and the equipment split; interleave by session mood.
 
 ## Why this is the right next big arc
 
@@ -46,20 +47,45 @@ built — UI actions become wire lessons automatically.
 
 ## Phasing
 
+**Architectural keystone (build first, in SD.1): the supervisor knowledge
+store.** A first-class model of "what the supervisor actually knows" —
+per-device object lists, last-known values, HOW it knows each one (polled
+vs COV), and staleness. Today that knowledge is implicit in BuildCanvas
+locals. Extracting it (a) feeds the point tree, (b) keeps the Site
+Director a NEW surface reading a store instead of growing the 10k-line
+BuildCanvas, and (c) is exactly what field view needs — after the
+2026-06-11 COV lease work, an expired subscription leaves a visibly stale
+value sitting in the tree with its age. The TTL ghost becomes an
+experience instead of a log line. (G42 — point names in summaries — also
+lands naturally here as supervisor-resolved display.)
+
+**Rig tie-in:** capture the PRIORITY ARRAY recipe on the lab rig BEFORE
+building SD.2, same ground-truth-first playbook that paid off for COV
+(G47–G51).
+
 | Phase | Scope |
 |---|---|
-| SD.1 | Designate-site-director role + the tab + live point tree (browse only). Every refresh visibly polls (ReadProperty/RPM packets). |
+| SD.1 | Site-director designation (BOTH paths: promote-an-engine toggle + dedicated ADS/server catalog node) + the tab + supervisor knowledge store + live point tree (browse only). Every refresh visibly polls (ReadProperty/RPM packets). |
 | SD.2 | Command dialog: WriteProperty with **priority array** modeling on every commandable object (AO/AV/BO/BV), release/relinquish, "in control" indicator. |
 | SD.3 | COV increment editing per object → re-subscribe on the wire; per-object subscription list view. |
 | SD.4 | Trends (the sample history already exists per target), schedules (the occupancy schedule objects), alarm console (alarms already fire — give them ack/state). |
 | SD.5 | Program download: deploy a SpecLang/ST program from the site director to a controller; transfer visible as traffic. |
 
-## Open questions for James
+## Design calls — answered by James, 2026-06-11
 
-1. Dedicated ADS/server node in the catalog, or "any engine can be
-   promoted to site director" (Metasys allows both)?
-2. Easy/Realistic split: does Realistic hide the omniscient canvas values
-   while the site director is open (you know only what the supervisor
-   polls)? That could be the strongest realism lever in the whole tool.
-3. How JCI-flavored should the GUI read? (Vendor-neutral layout that
-   *rhymes* with Metasys/Niagara probably safest.)
+1. **Node model: BOTH in SD.1.** Promote-an-engine role toggle AND a
+   dedicated ADS/server catalog node from the start (Metasys allows both;
+   small site = engine is site director, big site = ADS). The ADS node is
+   a supervisor variant in the catalog — engines connect to it over
+   BACnet/IP.
+2. **Field view: YES, as a toggle inside Realistic.** When on, canvas node
+   values grey out and the point tree shows only what the supervisor
+   knows — last-known values with staleness + source (polled vs COV).
+   Not forced, so demos and Easy mode stay friendly. This is the
+   strongest realism lever in the tool; the supervisor knowledge store
+   (above) is its data spine.
+3. **GUI flavor: vendor-neutral that rhymes.** Nav tree left, detail
+   right, command dialog with 16 priority slots — anyone who's used
+   Metasys/Niagara recognizes the shape, but terminology stays generic
+   (BACnet-standard terms are vendor-neutral anyway). No trade-dress
+   risk; fits the federal vendor-neutral training angle.
