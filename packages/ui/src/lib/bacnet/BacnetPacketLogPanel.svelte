@@ -225,6 +225,7 @@
       value?: string;
       statusFlags?: string;   // e.g. "F,F,F,F"
       deadband?: string;
+      lifetime?: string;
     };
     raw: string;
   } {
@@ -246,6 +247,7 @@
         value?: string;
         statusFlags?: string;
         deadband?: string;
+        lifetime?: string;
       },
       raw: s,
     };
@@ -268,9 +270,15 @@
     // statusFlags from COV summaries — pattern like "(F,F,F,F)" or "(T,F,F,F)".
     const mStatus = /statusFlags?[:\s]*\(?([TF],[TF],[TF],[TF])\)?/i.exec(s);
     if (mStatus) det.service.statusFlags = mStatus[1];
-    // Deadband from SubscribeCOV.
-    const mDeadband = /deadband\s+([\d.]+)\s*([^\s)]+)?/i.exec(s);
+    // Deadband from SubscribeCOV. Units stop at ',' too — the summary
+    // reads "(deadband 0.5°F, lifetime 120s · renewal)".
+    const mDeadband = /deadband\s+([\d.]+)\s*([^\s),]+)?/i.exec(s);
     if (mDeadband) det.service.deadband = mDeadband[2] ? `${mDeadband[1]} ${mDeadband[2]}` : mDeadband[1];
+    // Subscription lease (G48): lifetime + whether this is a half-life renewal.
+    const mLifetime = /lifetime\s+(\d+)\s*s/i.exec(s);
+    if (mLifetime) {
+      det.service.lifetime = `${mLifetime[1]} s${/·\s*renewal/i.test(s) ? ' (renewal at lifetime/2)' : ''}`;
+    }
     // ReadProperty-ACK value: prefer typed field; otherwise look for "= <num>".
     if (p.value !== undefined) {
       det.service.value = typeof p.value === 'boolean'
@@ -557,6 +565,9 @@
                 {/if}
                 {#if det.service.deadband}
                   <div class="row"><span class="k">Deadband</span><span class="v">{det.service.deadband}</span></div>
+                {/if}
+                {#if det.service.lifetime}
+                  <div class="row"><span class="k">Lifetime</span><span class="v">{det.service.lifetime}</span></div>
                 {/if}
                 {#if det.service.statusFlags}
                   <div class="row">

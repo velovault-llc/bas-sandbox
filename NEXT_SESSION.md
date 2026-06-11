@@ -1,8 +1,40 @@
 # Next Session — Prep Notes
 
-Last updated: 2026-06-10. Author: James + Claude.
+Last updated: 2026-06-11. Author: James + Claude.
 
-## 🔖 Resume here — 2026-06-10 evening ("knock em all out" build sprint, ALL COMMITTED)
+## 🔖 Resume here — 2026-06-11 (COV ground-truth arc: G47/G48/G49 shipped)
+
+**The lab rig's COV chapter paid off** — the sim's COV lifecycle now matches
+the real-stack captures:
+
+- **G47** — initial notification on every (re)subscribe (0.2–7 s later,
+  deterministic jitter), tagged in the packet log. *Gotcha fixed during
+  verification: a pending initial must survive renewal re-arms — at high
+  sim speed a renewal lands every tick and rescheduling starved it forever
+  (zero notifications, silently — caught live in the firehose demo).*
+- **G48** — 120 s leases in the SubscribeCOV wire bytes; supervisor renews
+  at exactly lifetime/2 ("· renewal" heartbeat in the log; inspector shows
+  a Lifetime row). **TTL ghost (lab7c) modeled:** kill the subscriber and
+  the device notifies into the void until the lease lapses, then goes
+  silent with a runtime-log warning. Verified: deleted JACE-MAIN mid-run,
+  all four VAV leases expired with the note.
+- **G49** — per-subscription 0.2–7 s scan cadence (bacserv band) gates
+  delta checks; intermediate writes vanish like the capture shows.
+- Lease/scan math is pure + tested in `@bas/core` → `bacnet/cov.ts`
+  (370/370 core tests · typecheck 0 · verified live in the firehose demo).
+
+**Still open from the COV chapter:** G44 (unconfirmed/subscription-less COV
+broadcasts — wire encoder exists, behavior unmodeled), G50 (duplicate
+subscriptions multiplying traffic — wants Site Director's manual subscribe
+first), G43/G45/G46 (RPM, timeSync, who-Has).
+
+**Remaining big rocks (unchanged):** slice 3 (IP port model + broadcast
+storm), slice 5 (equipment/controller split, G40 air-side physics),
+repeater catalog device, 2d EOL sim-consequence, Site Director arc (open
+questions for James at the bottom of SITE_DIRECTOR_PLAN.md), programming
+walkthrough (step 4).
+
+## 🔖 Previous resume point — 2026-06-10 evening ("knock em all out" build sprint, ALL COMMITTED)
 
 **Four commits landed** (`77ec882` → `2880987` → `1b58939` → `0559941`):
 all prior uncommitted work + revamp slices **1, 2, 2b, 2c, 4, 6, 7** shipped,

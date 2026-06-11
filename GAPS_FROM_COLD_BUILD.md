@@ -648,20 +648,33 @@ LAN) — each of these is on a real wire and absent from the sim:
 
 From `wireshark/lab3-cov-lifecycle.pcapng` (the COV-lifecycle ground truth):
 
-- **G47 — no initial notification on subscribe.** Real devices notify the
-  current value immediately on every (re)subscribe (observed ~12/12 times,
-  0.2–7 s later). The sandbox seeds `lastReportedValue` silently — a
-  subscriber never learns the starting value via COV.
-- **G48 — subscription lifetime/renewal not modeled.** The sandbox's
-  subscriptions are eternal. Real: lifetime (YABE default 120 s) with the
-  client re-subscribing at **exactly lifetime/2** — a periodic
-  SubscribeCOV+ACK heartbeat the packet log should show. (TTL-expiry
-  behavior still uncaptured — needs a self-changing value; Room Simulator.)
-- **G49 (flavor) — COV detection is scan-based against last-NOTIFIED.**
-  bacserv evaluates Δ vs the last value it notified, on a 0.2–7 s scan —
-  rapid intermediate writes vanish without ever hitting the wire. The
-  sandbox's per-tick check vs lastReported has the same Δ semantics ✓ but
-  notifies same-tick; a small randomized scan latency would match reality.
+- **G47 — ✅ FIXED (2026-06-11) — no initial notification on subscribe.**
+  Real devices notify the current value immediately on every (re)subscribe
+  (observed ~12/12 times, 0.2–7 s later). The sandbox seeded
+  `lastReportedValue` silently. Now every (re)subscribe schedules an
+  initial ConfirmedCOVNotification 0.2–7 s out (deterministic hash jitter),
+  tagged "initial notification (subscribe/renewal)" in the log. Verified
+  live in the COV firehose demo. Implementation note: a pending initial
+  must SURVIVE renewal re-arms — at high sim speeds a renewal lands every
+  tick and naively rescheduling starved the initial forever.
+- **G48 — ✅ MODELED (2026-06-11) — subscription lifetime/renewal not
+  modeled.** Subscriptions are now 120 s leases (`COV_LIFETIME_DEFAULT_S`,
+  carried in the SubscribeCOV wire bytes); the supervisor renews at exactly
+  lifetime/2 — the SubscribeCOV+ACK heartbeat shows in the packet log
+  tagged "· renewal", and the inspector decodes a Lifetime row. TTL-expiry
+  ground truth came from lab7c (device silent at lease+115.3 s of 120):
+  modeled as the "TTL ghost" — delete/lose the subscriber and the device
+  keeps notifying until the lease lapses, then stops with a runtime-log
+  warning ("no error on the wire; stale values just sit"). Verified live:
+  deleted JACE-MAIN mid-run, all four VAV leases expired with the note.
+  Lease math is pure + tested in `@bas/core` (`bacnet/cov.ts`, 9 tests).
+- **G49 (flavor) — ✅ MODELED (2026-06-11) — COV detection is scan-based
+  against last-NOTIFIED.** bacserv evaluates Δ vs the last value it
+  notified, on a 0.2–7 s scan — rapid intermediate writes vanish without
+  ever hitting the wire. The sandbox now gates each subscription's delta
+  check on a per-subscription `nextScanAtSimSec` with deterministic 0.2–7 s
+  jitter (same band as bacserv) — notifications lag changes and
+  intermediate writes vanish, matching the capture.
 - **G50 (lesson candidate) — duplicate subscriptions multiply traffic.**
   Real devices keep one subscription per (subscriber, process-id) — three
   stray YABE rows produced 3 notifications per change. The sandbox dedupes

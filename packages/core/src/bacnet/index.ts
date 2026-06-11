@@ -87,6 +87,19 @@ export type {
 } from './l2vlan.js';
 
 export {
+  COV_LIFETIME_DEFAULT_S,
+  COV_RENEWAL_FRACTION,
+  COV_SCAN_MIN_S,
+  COV_SCAN_MAX_S,
+  covRenewalDueAt,
+  covExpiresAt,
+  isCovRenewalDue,
+  isCovLeaseExpired,
+  covScanDelay,
+} from './cov.js';
+export type { CovLease } from './cov.js';
+
+export {
   checkBacnetConformance,
   summarizeConformance,
 } from './conformance.js';

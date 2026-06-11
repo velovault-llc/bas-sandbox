@@ -383,12 +383,22 @@ export function emitSubscribeCov(opts: {
   objectId: string;
   deadband: number;
   deadbandUnits?: string;
+  /** ASHRAE 135 §13.1 lease in seconds; 0/omitted = indefinite. Real
+   *  clients lease (YABE defaults to 120 s) and renew at lifetime/2. */
+  lifetimeSeconds?: number;
+  /** Marks a lifetime/2 renewal so the log can tell the heartbeat from
+   *  the original subscribe. Wire bytes are identical either way. */
+  renewal?: boolean;
 }): BuiltPacket {
   const dstPart = opts.dstLabel ? ` → ${opts.dstLabel}` : '';
   const unitsPart = opts.deadbandUnits ?? '';
+  const lifetimeS = opts.lifetimeSeconds ?? 0;
+  const leasePart = lifetimeS > 0
+    ? `, lifetime ${lifetimeS}s${opts.renewal ? ' · renewal' : ''}`
+    : '';
   const summary =
     `${opts.srcLabel}${dstPart}: SubscribeCOV ${opts.objectId} ` +
-    `(deadband ${opts.deadband}${unitsPart})`;
+    `(deadband ${opts.deadband}${unitsPart}${leasePart})`;
   let wireBytes: string | undefined;
   try {
     wireBytes = bytesToHex(wireEncodeSubscribeCov({
@@ -399,9 +409,7 @@ export function emitSubscribeCov(opts: {
       subscriberProcessId: 1,
       monitoredObjectId: opts.objectId,
       issueConfirmed: true,
-      // ASHRAE 135 §13.1: lifetime=0 = indefinite. Most sandbox
-      // subscriptions ride for the whole sim session, so 0 fits.
-      lifetimeSeconds: 0,
+      lifetimeSeconds: lifetimeS,
     }));
   } catch {
     wireBytes = undefined;
