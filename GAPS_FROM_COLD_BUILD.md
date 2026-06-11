@@ -669,6 +669,21 @@ From `wireshark/lab3-cov-lifecycle.pcapng` (the COV-lifecycle ground truth):
 - bacserv **boot dance** (lab2): `who-Is <own instance range>` BEFORE i-Am —
   a device checking for instance collision at startup. Candidate sim
   behavior + duplicate-DI lesson tie-in.
+- **G51 (lesson-grade, from lab5) — BACnet stacks silently fall back to
+  EPHEMERAL UDP ports when 47808 is taken — and keep working.** Observed
+  live: YABE↔RoomSim ran a full subscribe/notify conversation on
+  61450↔63354. Consequences: port-filtered captures see nothing, Wireshark
+  shows anonymous "UDP", port-based firewall rules don't match — a network
+  that is provably alive while every standard diagnostic says silent. Cost
+  us hours; would cost a real tech a truck day. Sandbox today hardcodes
+  47808 everywhere. **Candidates:** model per-device UDP port (+ mismatch
+  lesson: "devices on different ports can't hear each other's broadcasts");
+  packet-log teaching note when traffic rides a non-standard port; ties to
+  the fixed-instance/fixed-port commissioning discipline (G-roulette).
+- **(observed, lab5) initial COV notification content differs BY STACK:**
+  bacserv sends PV+status-flags; YABE's .NET stack sends the FULL object
+  (name/units/reliability/…). The spec permits both — fixture for the
+  structured-PDU work and a nice "vendors differ" teaching beat.
 
 - **G29 (P1) — ✅ FIXED — AHU/zones ignored the Weather drive's OAT.** James
   picked Atlanta (OAT 72°F) but the AHU stayed at 60°F. Root cause: the weather
