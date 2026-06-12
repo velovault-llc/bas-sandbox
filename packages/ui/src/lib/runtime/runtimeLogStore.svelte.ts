@@ -87,6 +87,11 @@ export const runtimeLog = $state<RuntimeLogStore>({
  *  reasonable viewport size. Bumped from 250 after the user hit the
  *  "I can't grab the runtime log" bug repeatedly with the smaller value. */
 const PANEL_MIN_HEADER_VISIBLE = 360;
+// When collapsed the panel is just its ~40px header bar, so it can travel
+// almost to the top of the canvas without its header slipping off-screen.
+// Reserve only enough to keep the header grabbable. (Expanded still uses the
+// full 360 above so the body + header stay on-screen.)
+const PANEL_MIN_HEADER_VISIBLE_COLLAPSED = 72;
 
 export function setPanelPosition(x: number, y: number): void {
   const { cx, cy } = clampToViewport(x, y);
@@ -111,7 +116,11 @@ export function resetPanelPosition(): void {
  *  bottom = closer to top. */
 function clampToViewport(x: number, y: number): { cx: number; cy: number } {
   if (typeof window === 'undefined') return { cx: Math.max(0, x), cy: Math.max(0, y) };
-  const maxY = Math.max(0, window.innerHeight - PANEL_MIN_HEADER_VISIBLE);
+  // Collapsed panels can tuck much higher since only the header shows.
+  const reserveY = runtimeLog.panelOpen
+    ? PANEL_MIN_HEADER_VISIBLE
+    : PANEL_MIN_HEADER_VISIBLE_COLLAPSED;
+  const maxY = Math.max(0, window.innerHeight - reserveY);
   const maxX = Math.max(0, window.innerWidth - PANEL_MIN_HEADER_VISIBLE);
   return {
     cx: Math.min(maxX, Math.max(0, x)),
@@ -159,6 +168,9 @@ export function clearLog(): void {
 
 export function togglePanel(): void {
   runtimeLog.panelOpen = !runtimeLog.panelOpen;
+  // Expanding may need the panel pulled back down so its header + body stay
+  // on-screen (the collapsed clamp allows it much higher up).
+  rehydratePanelPosition();
   if (typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(LS_OPEN, runtimeLog.panelOpen ? '1' : '0');

@@ -848,7 +848,7 @@
   }
 
   .left-drawer.open {
-    width: 22rem;
+    width: 19rem;
     overflow-y: auto;
     padding: 0.75rem;
   }
@@ -1064,10 +1064,10 @@
     }
   }
 
-  /* On laptop-width screens the 22rem drawer leaves too little canvas. */
+  /* On laptop-width screens the drawer leaves too little canvas. */
   @media (max-width: 1500px) {
     .left-drawer.open {
-      width: 18rem;
+      width: 17rem;
     }
   }
 
